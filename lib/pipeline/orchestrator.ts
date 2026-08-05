@@ -33,6 +33,33 @@ function cleanDomainName(domain: string): string {
   return label.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+// og:site_name is usually the best source (see resolveName below) but a real
+// live run surfaced a company saved as literally "Mysite" — a never-
+// customized WordPress/theme default that happened to be set as the site
+// name. Distrust the handful of common placeholder values rather than
+// blindly trusting whatever og:site_name says.
+const PLACEHOLDER_SITE_NAMES = new Set([
+  "mysite",
+  "my site",
+  "home",
+  "untitled",
+  "welcome",
+  "wordpress",
+  "new site",
+  "site title",
+]);
+
+function resolveName(
+  siteName: string | null,
+  classifiedName: string | null,
+  domain: string
+): string {
+  if (siteName && !PLACEHOLDER_SITE_NAMES.has(siteName.trim().toLowerCase())) {
+    return siteName;
+  }
+  return classifiedName ?? cleanDomainName(domain);
+}
+
 export async function runSearchPipeline(
   searchId: string,
   industry: Industry,
@@ -131,7 +158,7 @@ export async function runSearchPipeline(
         } catch (e) {
           await supabase.from("companies").insert({
             ...base,
-            name: page.siteName ?? cleanDomainName(candidate.domain),
+            name: resolveName(page.siteName, null, candidate.domain),
             industry,
             status: "rejected",
             rejection_reason: `Classification failed: ${(e as Error).message}`.slice(0, 500),
@@ -141,17 +168,23 @@ export async function runSearchPipeline(
           continue;
         }
 
-        // Best available source, in trust order: the page's own og:site_name,
-        // then what the classifier read off the page body, then a cleaned-up
-        // domain — never the raw Google-search title (see openrouter.ts).
-        const companyName =
-          page.siteName ?? classification.companyName ?? cleanDomainName(candidate.domain);
+        // Best available source, in trust order: the page's own og:site_name
+        // (unless it's a placeholder — see resolveName), then what the
+        // classifier read off the page body, then a cleaned-up domain —
+        // never the raw Google-search title (see openrouter.ts).
+        const companyName = resolveName(page.siteName, classification.companyName, candidate.domain);
+
+        // Stored under the search's own vertical, not the classifier's
+        // read — a candidate came from a Maps category search scoped to one
+        // vertical already, so this row belongs in that vertical's folder
+        // regardless (the classifier's industry read is only used above to
+        // catch actual mismatches, e.g. a landscape-*architecture* firm
+        // with no install crews turning up in a landscaping search).
+        const withName = { ...base, name: companyName, industry };
 
         if (classification.industry === "other") {
           await supabase.from("companies").insert({
-            ...base,
-            name: companyName,
-            industry,
+            ...withName,
             status: "rejected",
             rejection_reason: classification.rejectionReason ?? "Outside the landscaping/home-builder ICP",
           });
@@ -165,7 +198,22 @@ export async function runSearchPipeline(
         let rejectionReason = classification.rejectionReason;
         let disproveNotes: string | null = null;
 
-        if (classification.qualifies) {
+        // Size + current-ownership gates — independent of whether the
+        // succession signal itself is real (see openrouter.ts: a genuine
+        // signal can still get cut on either). Checked before the disprove
+        // pass since neither needs signal-authenticity scrutiny.
+        if (finalQualifies && !classification.stillFamilyOwned) {
+          finalQualifies = false;
+          rejectionReason =
+            "No longer family-owned — acquired/consolidated, current leadership shows no family members.";
+        } else if (finalQualifies && classification.sizeFit === "too_small") {
+          finalQualifies = false;
+          rejectionReason = "Too small — below the target revenue band, too small to be the owner-led business coached.";
+        } else if (finalQualifies && classification.sizeFit === "too_big") {
+          finalQualifies = false;
+          rejectionReason =
+            "Too big — above the target band, a regional or national-scale operator, not an owner-led family business mid-handoff.";
+        } else if (finalQualifies) {
           try {
             const disprove = await disprovePass(companyName, classification, page.text);
             disproveNotes = disprove.notes;
@@ -183,12 +231,11 @@ export async function runSearchPipeline(
         const { data: inserted, error: insertErr } = await supabase
           .from("companies")
           .insert({
-            ...base,
-            name: companyName,
-            industry: classification.industry,
+            ...withName,
             status: finalQualifies ? "qualified" : "rejected",
             confidence: finalQualifies ? finalConfidence : null,
             rejection_reason: finalQualifies ? null : rejectionReason,
+            revenue_band: classification.revenueEstimate,
             founder_name: classification.founderName,
             founder_title: classification.founderTitle,
             next_gen_name: classification.nextGenName,

@@ -1,7 +1,16 @@
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const MODEL = "anthropic/claude-sonnet-5";
 
-async function chat(messages: { role: string; content: string }[], maxTokens = 700): Promise<string> {
+// The scope's ICP revenue band — hardcoded for now since it's core criteria,
+// not something Jonathan adjusts per search. Move to a UI field alongside
+// vertical/state if that ever changes.
+const TARGET_REVENUE_BAND = "$3M-$15M";
+
+// 800 was enough for the original 8-field schema; the revenueEstimate/
+// sizeFit/stillFamilyOwned fields added on top of it pushed real responses
+// past that and truncated mid-JSON (a real failure seen live, not a
+// theoretical one) — 1200 leaves real headroom.
+async function chat(messages: { role: string; content: string }[], maxTokens = 1200): Promise<string> {
   if (!OPENROUTER_API_KEY) throw new Error("OPENROUTER_API_KEY is not set");
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
@@ -49,23 +58,47 @@ export interface ClassificationResult {
   nextGenName: string | null;
   nextGenTitle: string | null;
   quote: string | null;
+  revenueEstimate: string | null; // e.g. "$5-10M (est.)" — best-effort, from textual proxies
+  sizeFit: "too_small" | "in_band" | "too_big" | "unknown";
+  stillFamilyOwned: boolean; // false if acquired/consolidated even though history says "family owned"
   rejectionReason: string | null;
 }
 
+// Calibrated against a real delivered proof for this exact client (13
+// qualified, 15 verify-flagged, dozens of specific cuts across CA/NY/TX/FL)
+// — see project memory for the full example. Two corrections from that
+// calibration, both directly from Jonathan's own reaction to a first pass
+// that was too strict and missing a filter entirely:
+//   1. Size/ownership gates were completely absent before — the real proof
+//      cuts genuine succession stories for being "too big" (regional/
+//      national operators) or "too small" (sub-scale), and cuts companies
+//      that still market themselves as "family owned" but have quietly been
+//      acquired. Added both as explicit checks below.
+//   2. The confidence bar was too strict — the real "verify" tier keeps
+//      companies with quite thin evidence (e.g. just "family owned" +  a
+//      team page, no explicit two-generation naming in the excerpt). Loosen
+//      accordingly: err toward "verify" over rejecting when there's a real,
+//      credible hint, not just when it's airtight.
 const CLASSIFY_SYSTEM = `You are screening company websites for The Goldhill Group, a coaching practice for family-owned businesses navigating leadership succession. The ICP is strictly landscaping companies and home builders (general contractors / custom home builders) — nothing else.
 
-First read the page for the real company name ("companyName") — the actual business name as the page itself presents it (header/logo text, "Welcome to X", copyright line, etc), NOT a search-result title or SEO meta description. A Google-search title like "Landscaping, Sod, Retaining Walls | Woodstock, GA" is not a company name; the real name is usually shorter and appears in the page's own branding (e.g. "Mixon Landscaping"). If the page text genuinely gives no clue, return null rather than guessing.
+First read the page for the real company name ("companyName") — the actual business name as the page itself presents it (header/logo text, "Welcome to X", copyright line, etc), NOT a search-result title or SEO meta description.
 
-Then identify "industry": "landscaping", "home_builder", or "other" (anything that isn't clearly one of the first two — e.g. HVAC, roofing, a landscape architecture firm with no install crews, a real-estate brokerage). If "other", this can never qualify regardless of the succession signal — set qualifies: false and say so in rejectionReason.
+Then identify "industry": "landscaping", "home_builder", or "other" (anything that isn't clearly one of the first two). If "other", this can never qualify — set qualifies: false and say so in rejectionReason.
 
-The signal you are looking for (only relevant if industry is landscaping or home_builder): the company's OWN website (About/Team/Leadership page) names TWO GENERATIONS together — a founder or senior leader still active AND a named next-generation family member in a real role — with some language suggesting succession, transition, or the business passing down. This must come from the page text itself, not be inferred from a shared last name alone.
+THE SIGNAL (only relevant if industry is landscaping or home_builder): the company's OWN website names a founder/senior leader AND a next-generation family member together, with some hint of continuity or handoff — this can be explicit ("stepping into the President role") or soft ("family owned and operated" + a team page listing a son/daughter/family surname in a real role). You do NOT need an airtight, fully-spelled-out succession narrative to flag something — a real, credible hint is enough for "verify." Reserve outright rejection for when there is genuinely nothing: only one generation ever named, or a professionally-run team with zero family framing anywhere on the page.
 
 Score confidence:
-- "high": both generations clearly named with titles, AND explicit succession/transition language (e.g. "planning his transition," "stepping into the President role," "next generation of leadership").
-- "medium": the pairing is there but succession language is implied rather than stated outright (e.g. two people just have the same last name and clearly-generational titles, with no explicit "transition" language).
-- "verify": borderline — a real hint (e.g. a name mentioned without a title, or family language without a second name) that a human should double-check, not something to score confidently either way.
+- "high": both generations clearly named with titles, AND explicit succession/transition language.
+- "medium": the pairing is there (named individuals, generational relationship stated or obvious) but succession language is implied rather than spelled out.
+- "verify": a real but thinner hint — e.g. "family owned and operated" plus a team page with a plausible family member, or a name mentioned without a clear title, or continuity implied without being stated outright. When genuinely unsure between verify and reject, choose verify — a human reviewing an evidence-backed maybe is the point of this list, not a mistake to avoid.
 
-If there is no such pairing at all (only the founder, or a professionally-managed team with no family framing, or a family member with a title but no succession language and no reason to think this is a transition), it does NOT qualify — return qualifies: false with a short, specific rejectionReason.
+TWO ADDITIONAL GATES — check these even when the succession signal itself is real and clear (a genuine signal can still get cut on either of these):
+
+1. "stillFamilyOwned" (boolean): is the company CURRENTLY family-run? Read the page for signs it's been acquired, consolidated into a larger platform/holding company, or now run by a purely professional (non-family) executive team — even if the page's history section still says "founded by" a family. Phrases like "a [Company] brand," "part of the [X] family of companies" (as a corporate portfolio, not a literal family), an executive team with no family surnames, or an "our companies" / "our locations" structure typical of a roll-up are all signs of false.
+
+2. "sizeFit": estimate where the company likely falls versus a ${TARGET_REVENUE_BAND} revenue target, using whatever textual proxies the page gives you — years in business, team/crew size, fleet size, service area breadth, number of locations, scale of projects described, review count if mentioned. Return "too_small" (a one or two-person operation, clearly sub-scale), "too_big" (an obvious regional/national-scale operator, multiple states, a large corporate-feeling org chart), "in_band" (plausibly fits), or "unknown" if the page gives no real signal either way — "unknown" is common and fine, do not force a guess; it does not disqualify on its own. Put your best-effort estimate in "revenueEstimate" as a short string like "$5-10M (est.)", or null if truly unknown.
+
+A company only fails on gate 1 or 2 when there's a real, specific reason in the text — not by default, and not from missing information alone (missing info -> "unknown"/null, not an automatic cut).
 
 Respond with ONLY a JSON object (no markdown fences, no prose) matching this shape:
 {
@@ -79,9 +112,13 @@ Respond with ONLY a JSON object (no markdown fences, no prose) matching this sha
   "nextGenName": string | null,
   "nextGenTitle": string | null,
   "quote": string | null,
+  "revenueEstimate": string | null,
+  "sizeFit": "too_small" | "in_band" | "too_big" | "unknown",
+  "stillFamilyOwned": boolean,
   "rejectionReason": string | null
 }
-"quote" must be a short direct excerpt (<= 40 words) copied verbatim from the page text that best supports the decision — required when qualifies is true, null when false unless a quote explains the rejection well.`;
+"quote" must be a short direct excerpt (<= 40 words) copied verbatim from the page text that best supports the decision — required when qualifies is true, null when false unless a quote explains the rejection well.
+"rejectionReason" when qualifies is false should read like one of: "Cut — only one generation is on the leadership page, no founder-and-next-gen pair shown together." / "No mention of any leadership team or family members." / a specific, concrete reason in that same plain style. (Size and ownership gates are applied separately after this call, not inside rejectionReason.)`;
 
 export async function classifySignal(
   titleHint: string,
@@ -106,9 +143,9 @@ export interface DisproveResult {
   revisedRejectionReason: string | null;
 }
 
-const DISPROVE_SYSTEM = `You are the skeptical second reviewer on a lead-qualification pipeline for The Goldhill Group. A first pass classified a company as showing a family-succession signal. Your job is to actively try to DISPROVE that classification using the same page text — look for reasons it's weaker than claimed (coincidental surname, no real title, language that's aspirational rather than descriptive, a already-completed transition with no current founder in seat, etc).
+const DISPROVE_SYSTEM = `You are the second reviewer on a lead-qualification pipeline for The Goldhill Group. A first pass classified a company as showing a family-succession signal. Check the same page text for a REAL, SPECIFIC problem with that read — a coincidental surname with no stated relationship, a title that turns out to belong to someone unrelated, an already-fully-completed transition with no founder still in the picture at all, etc.
 
-If your attempt to disprove it fails (the classification holds up), keep it, optionally softening confidence one notch if warranted. If you find a real reason it's weaker than claimed, downgrade confidence (e.g. high -> medium, medium -> verify) or reject it outright (holds: false) with a specific reason.
+This is a real check, not a formality, but it is not the place to be a harder grader than the first pass. Thin evidence is normal and expected at "verify" tier — the reference list this system is calibrated against kept companies with quite minimal evidence (e.g. just "family owned and operated" plus a team page) at verify. Only downgrade or reject when you find a concrete, specific reason the read doesn't hold up — never simply because the evidence feels light. When genuinely unsure, let the first pass's read stand.
 
 Respond with ONLY a JSON object (no markdown fences, no prose):
 {
