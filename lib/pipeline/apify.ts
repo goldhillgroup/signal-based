@@ -1,8 +1,22 @@
 import type { Industry } from "../supabase/types";
-import { industryLabel } from "./parse-query";
+import { stateNameFor } from "./us-states";
 
 const APIFY_TOKEN = process.env.APIFY_TOKEN;
 const APIFY_BASE = "https://api.apify.com/v2";
+
+// Vertical-specific Google Maps category searches — matches the two
+// verticals in the signed scope (family-owned landscaping + home builders).
+// Real-world terms a business would actually list itself under on its
+// Google Business Profile, not generic marketing phrasing.
+const VERTICAL_SEARCH_TERMS: Record<Industry, string[]> = {
+  landscaping: ["landscaping company", "lawn care company", "landscape design company"],
+  home_builder: ["custom home builder", "general contractor", "home construction company"],
+};
+
+function searchTermsFor(industry: Industry | null): string[] {
+  if (industry) return VERTICAL_SEARCH_TERMS[industry];
+  return [...VERTICAL_SEARCH_TERMS.landscaping, ...VERTICAL_SEARCH_TERMS.home_builder];
+}
 
 // Directories/aggregators/socials — never the company's own site, so the
 // scope's "read the company's own About/Team/Leadership page" test can't
@@ -67,81 +81,60 @@ async function runActorSync(actorId: string, input: Record<string, unknown>, tim
   return res.json();
 }
 
-// Step 1 — discovery. One Google-search-scraper run, structured query built
-// from the parsed industry/state intent, deduped to unique company domains
-// with directory/social sites filtered out.
+// Step 1 — discovery. Google Maps Scraper (compass/crawler-google-places),
+// searched by vertical-specific category terms against ONE state (the actor
+// only takes one location per run, which conveniently matches the scope's
+// "one vertical, one geography" boundary anyway). Replaced an earlier
+// Google-web-search-based approach — real A/B tested: web search surfaced
+// ~50% noise (directories, "best of" listicles, trade publications) that
+// had to be filtered or wasted a classify call; Maps results are inherently
+// real local businesses in the right category, zero noise, and cheaper
+// per-candidate ($0.007 + $0.004/place vs. multiple google-search-scraper
+// SERP pages). See project memory for the comparison.
 export async function discoverCandidates(params: {
   industry: Industry | null;
   states: string[];
   limit: number;
-  round?: number; // 1-indexed — later rounds request deeper SERP pages so a
-  // repeat call surfaces domains beyond what earlier rounds already saw,
-  // rather than re-fetching (and then filtering out) the same top results.
+  round?: number; // 1-indexed — later rounds ask Maps for more places per
+  // term so a repeat call surfaces businesses beyond what earlier rounds
+  // already returned, rather than re-fetching the same top-ranked set.
   excludeDomains?: Set<string>;
 }): Promise<{ candidates: Candidate[]; exhausted: boolean }> {
   const { industry, states, limit, round = 1, excludeDomains } = params;
 
-  const industryPart = industryLabel(industry);
-  const statePart = states.length > 0 ? states.join(" OR ") : "";
-
-  // A handful of phrasings in ONE actor call (Apify's google-search-scraper
-  // takes newline-separated queries as one run) — a single fixed phrase caps
-  // out around a hundred-ish organic results before Google starts repeating
-  // near-duplicates; varying the phrasing surfaces more distinct domains for
-  // large targets without multiplying actor invocations.
-  const queries = [
-    `family owned ${industryPart} company ${statePart} about us`,
-    `${industryPart} company ${statePart} our story founder`,
-    `${industryPart} business ${statePart} family owned team`,
-  ]
-    .map((q) => q.replace(/\s+/g, " ").trim())
-    .join("\n");
-
-  const maxPagesPerQuery = Math.min(round * 2, 8);
-  // 3 queries * maxPagesPerQuery SERP pages each — deeper rounds take
-  // meaningfully longer (round 3's default 120s timed out for real in
-  // testing); scale with it rather than eating that as a lost round.
-  const discoverTimeoutSecs = Math.min(280, 60 + maxPagesPerQuery * 15);
+  const searchTerms = searchTermsFor(industry);
+  const locationQuery = states.length > 0 ? `${stateNameFor(states[0])}, USA` : "United States";
+  const perTerm = Math.min(20 * round, 120);
+  const timeoutSecs = Math.min(280, 60 + perTerm * searchTerms.length * 1.5);
 
   const items = (await runActorSync(
-    "apify~google-search-scraper",
+    "compass~crawler-google-places",
     {
-      queries,
-      resultsPerPage: 100,
-      maxPagesPerQuery,
-      countryCode: "us",
-      languageCode: "en",
+      searchStringsArray: searchTerms,
+      locationQuery,
+      maxCrawledPlacesPerSearch: perTerm,
+      language: "en",
+      skipClosedPlaces: true,
     },
-    discoverTimeoutSecs
-  )) as Array<{ organicResults?: Array<{ url: string; title: string }> }>;
-
-  const organic = items.flatMap((page) => page.organicResults ?? []);
+    timeoutSecs
+  )) as Array<{ title?: string; website?: string | null; categoryName?: string }>;
 
   const seen = new Set<string>(excludeDomains ?? []);
   const candidates: Candidate[] = [];
-  for (const r of organic) {
-    const host = hostnameOf(r.url);
+  for (const place of items) {
+    if (!place.website) continue; // no site to fetch/classify — not worth carrying forward
+    const host = hostnameOf(place.website);
     if (!host || isBlocked(host) || seen.has(host)) continue;
-    if (isListicleTitle(r.title)) continue;
     seen.add(host);
-    candidates.push({ domain: host, url: r.url, title: r.title ?? host });
+    candidates.push({ domain: host, url: place.website, title: place.title ?? host });
     if (candidates.length >= limit) break;
   }
 
-  // "Exhausted" — the search surfaced fewer fresh domains than asked for,
-  // meaning this query has nothing left to give; the caller should stop
-  // looping rather than re-requesting the same near-empty result set.
+  // "Exhausted" — this round surfaced fewer fresh domains than asked for,
+  // meaning the category+state pool has nothing left to give; the caller
+  // should stop looping rather than re-requesting a near-empty result set.
   const exhausted = candidates.length < limit;
   return { candidates, exhausted };
-}
-
-// "Best landscaping companies in X," "Top 10 home builders" — directory/
-// roundup articles that show up in the same search results as real company
-// sites. They're never "the company's own website," so filter on title
-// before a single Apify or OpenRouter call is spent on one.
-function isListicleTitle(title: string | undefined): boolean {
-  if (!title) return false;
-  return /\b(best|top\s*\d+|\d+\s*best|reviews?)\b/i.test(title);
 }
 
 export interface FetchedPage {

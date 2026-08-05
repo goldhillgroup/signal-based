@@ -156,7 +156,12 @@ interface SearchesContextValue {
   getFolder: (id: string) => SearchFolder | undefined;
   fetchFolder: (id: string) => Promise<SearchFolder | null>;
   fetchCompanies: (id: string) => Promise<Company[]>;
-  createSearch: (query: string, targetSignals: number) => Promise<{ id: string; label: string }>;
+  createSearch: (params: {
+    industry: Industry;
+    state: string;
+    refinement?: string;
+    targetSignals: number;
+  }) => Promise<{ id: string; label: string }>;
 }
 
 const SearchesContext = createContext<SearchesContextValue | null>(null);
@@ -203,11 +208,16 @@ export function SearchesProvider({ children }: { children: ReactNode }) {
   );
 
   const createSearch = useCallback(
-    async (query: string, targetSignals: number) => {
+    async (params: {
+      industry: Industry;
+      state: string;
+      refinement?: string;
+      targetSignals: number;
+    }) => {
       const res = await fetch("/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, targetSignals }),
+        body: JSON.stringify(params),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));

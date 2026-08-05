@@ -1,13 +1,14 @@
 import Image from "next/image";
 import Link from "next/link";
-import { RadarIcon, InboxIcon, ChartIcon } from "./icons";
+import { RadarIcon } from "./icons";
 import { SignOutButton } from "./SignOutButton";
 
-const NAV_ITEMS = [
-  { label: "Signal Radar", icon: RadarIcon, href: "/dashboard", active: true },
-  { label: "Crawl Runs", icon: InboxIcon, href: null, active: false },
-  { label: "Reports", icon: ChartIcon, href: null, active: false },
-];
+// Just the one real destination for now — "Crawl Runs" and "Reports" were
+// placeholders from an earlier design (a standing continuous-crawl model)
+// that never got built; removed rather than left as dead buttons that do
+// nothing when clicked. Add back once there's something real behind them —
+// e.g. "Reports" as aggregate stats across all folders.
+const NAV_ITEMS = [{ label: "Signal Radar", icon: RadarIcon, href: "/dashboard", active: true }];
 
 export function Sidebar({ userEmail }: { userEmail: string | null }) {
   return (

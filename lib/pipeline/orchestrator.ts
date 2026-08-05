@@ -1,8 +1,7 @@
 import { createServiceRoleClient } from "../supabase/server";
-import { parseIntent } from "./parse-query";
 import { discoverCandidates, fetchCompanyPages, pickBestPage } from "./apify";
 import { classifySignal, disprovePass } from "./openrouter";
-import type { SearchRow } from "../supabase/types";
+import type { Industry, SearchRow } from "../supabase/types";
 
 // Contact enrichment (Anymailfinder + MillionVerifier) is built and tested
 // (lib/pipeline/anymailfinder.ts, millionverifier.ts) but deliberately NOT
@@ -34,11 +33,15 @@ function cleanDomainName(domain: string): string {
   return label.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export async function runSearchPipeline(searchId: string, query: string, targetSignals: number) {
+export async function runSearchPipeline(
+  searchId: string,
+  industry: Industry,
+  states: string[],
+  targetSignals: number
+) {
   const supabase = createServiceRoleClient();
 
   try {
-    const { states, industry } = parseIntent(query);
     const scanCeiling = Math.min(targetSignals * MAX_SCAN_MULTIPLIER, ABSOLUTE_SCAN_CEILING);
 
     const seenDomains = new Set<string>();
@@ -113,7 +116,7 @@ export async function runSearchPipeline(searchId: string, query: string, targetS
           await supabase.from("companies").insert({
             ...base,
             name: cleanDomainName(candidate.domain),
-            industry: industry ?? "landscaping",
+            industry,
             status: "rejected",
             rejection_reason: "No About/Team/Leadership page could be fetched from this domain",
           });
@@ -129,7 +132,7 @@ export async function runSearchPipeline(searchId: string, query: string, targetS
           await supabase.from("companies").insert({
             ...base,
             name: page.siteName ?? cleanDomainName(candidate.domain),
-            industry: industry ?? "landscaping",
+            industry,
             status: "rejected",
             rejection_reason: `Classification failed: ${(e as Error).message}`.slice(0, 500),
           });
@@ -148,7 +151,7 @@ export async function runSearchPipeline(searchId: string, query: string, targetS
           await supabase.from("companies").insert({
             ...base,
             name: companyName,
-            industry: industry ?? "landscaping",
+            industry,
             status: "rejected",
             rejection_reason: classification.rejectionReason ?? "Outside the landscaping/home-builder ICP",
           });
@@ -234,8 +237,8 @@ export async function runSearchPipeline(searchId: string, query: string, targetS
     // A round-level hiccup (caught above) still ends in status: 'complete' —
     // whatever was found and saved is real and shown as-is; the note just
     // explains why the count may fall short of the target. Only an error
-    // outside the round loop (e.g. parseIntent, the DB itself) reaches the
-    // outer catch and produces a genuine status: 'failed'.
+    // outside the round loop (e.g. the DB itself) reaches the outer catch
+    // and produces a genuine status: 'failed'.
     await bump(supabase, searchId, {
       status: "complete",
       error_message: stoppedEarlyReason,

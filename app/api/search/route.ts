@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { runSearchPipeline } from "@/lib/pipeline/orchestrator";
+import { industryLabel } from "@/lib/pipeline/parse-query";
+import { stateNameFor } from "@/lib/pipeline/us-states";
+import type { Industry } from "@/lib/supabase/types";
 
 // Raise the ceiling where the deployment platform honors it (Vercel Pro+ with
 // Fluid compute goes up to 800s). A full run loops discover -> fetch ->
@@ -14,18 +17,31 @@ export const maxDuration = 300;
 
 const MIN_TARGET = 1;
 const MAX_TARGET = 200; // UI-level sanity cap — see MAX_SCAN_MULTIPLIER/ABSOLUTE_SCAN_CEILING in the orchestrator for the real cost ceiling
+const VALID_INDUSTRIES: Industry[] = ["landscaping", "home_builder"];
 
 export async function POST(req: Request) {
-  const { query, targetSignals } = (await req.json().catch(() => ({}))) as {
-    query?: string;
+  const body = (await req.json().catch(() => ({}))) as {
+    industry?: string;
+    state?: string;
+    refinement?: string;
     targetSignals?: number;
   };
-  if (!query || !query.trim()) {
-    return NextResponse.json({ error: "query is required" }, { status: 400 });
+
+  const industry = body.industry as Industry;
+  if (!VALID_INDUSTRIES.includes(industry)) {
+    return NextResponse.json(
+      { error: "industry must be 'landscaping' or 'home_builder'" },
+      { status: 400 }
+    );
   }
+  const state = (body.state ?? "").trim().toUpperCase();
+  if (state.length !== 2) {
+    return NextResponse.json({ error: "state is required (2-letter code)" }, { status: 400 });
+  }
+  const refinement = (body.refinement ?? "").trim();
 
   const target = Math.min(
-    Math.max(Math.round(targetSignals ?? 20), MIN_TARGET),
+    Math.max(Math.round(body.targetSignals ?? 20), MIN_TARGET),
     MAX_TARGET
   );
 
@@ -37,13 +53,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const trimmed = query.trim();
-  const label = trimmed.length > 60 ? `${trimmed.slice(0, 60)}…` : trimmed;
+  // Human-readable label built server-side from the structured fields — the
+  // free-text refinement is along for the ride in the label/query only, it
+  // never drives the actual discovery filters (see lib/pipeline/apify.ts).
+  const label = `${industryLabel(industry)} companies in ${stateNameFor(state)}`;
+  const query = refinement ? `${label} — ${refinement}` : label;
 
   const { data: search, error } = await supabase
     .from("searches")
     .insert({
-      query: trimmed,
+      query,
       label,
       status: "running",
       target_signals: target,
@@ -61,7 +80,7 @@ export async function POST(req: Request) {
 
   // Runs after this response is sent, within the extended function lifetime
   // (see maxDuration above) — the client polls the `searches` row for progress.
-  after(() => runSearchPipeline(search.id, trimmed, target));
+  after(() => runSearchPipeline(search.id, industry, [state], target));
 
   return NextResponse.json({ id: search.id, label: search.label });
 }

@@ -3,35 +3,40 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSearches } from "@/lib/searches-store";
+import { US_STATES } from "@/lib/pipeline/us-states";
+import { INDUSTRY_META } from "@/lib/signal-meta";
+import type { Industry } from "@/lib/supabase/types";
 import { FolderCard } from "./FolderCard";
 import { SearchProgress } from "./SearchProgress";
-import { SearchIcon, ZapIcon } from "./icons";
-
-const EXAMPLE_PROMPTS = [
-  "Landscaping companies in Texas showing succession signals",
-  "Family-owned home builders in North Carolina and Ohio",
-  "Georgia landscaping companies where the founder is handing off",
-];
+import { ZapIcon } from "./icons";
 
 const TARGET_OPTIONS = [10, 20, 50, 100];
+const REFINEMENT_EXAMPLES = [
+  "succession signals",
+  "founder retiring",
+  "second generation taking over",
+];
 
 export function SearchHome() {
   const router = useRouter();
   const { folders, loading, createSearch } = useSearches();
-  const [query, setQuery] = useState("");
+  const [industry, setIndustry] = useState<Industry | null>(null);
+  const [state, setState] = useState("");
+  const [refinement, setRefinement] = useState("");
   const [target, setTarget] = useState(20);
-  const [running, setRunning] = useState<{ id: string; query: string } | null>(null);
+  const [running, setRunning] = useState<{ id: string; label: string } | null>(null);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState("");
 
-  async function startSearch(q: string) {
-    const text = q.trim();
-    if (!text || starting) return;
+  const canSearch = industry !== null && state !== "" && !starting;
+
+  async function startSearch() {
+    if (!industry || !state || starting) return;
     setError("");
     setStarting(true);
     try {
-      const { id } = await createSearch(text, target);
-      setRunning({ id, query: text });
+      const { id, label } = await createSearch({ industry, state, refinement, targetSignals: target });
+      setRunning({ id, label });
     } catch (e) {
       setError((e as Error).message || "Could not start that search.");
     } finally {
@@ -43,7 +48,7 @@ export function SearchHome() {
     if (!running) return;
     const id = running.id;
     setRunning(null);
-    setQuery("");
+    setRefinement("");
     router.push(`/dashboard/lists/${id}`);
   }
 
@@ -54,7 +59,7 @@ export function SearchHome() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <div className="pt-6 text-center sm:pt-14">
+      <div className="pt-6 text-center sm:pt-10">
         <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-gh-navy text-white">
           <ZapIcon className="h-5 w-5" />
         </span>
@@ -62,38 +67,83 @@ export function SearchHome() {
           Who are you looking for?
         </h1>
         <p className="mx-auto mt-2 max-w-lg text-sm leading-relaxed text-gh-ink-secondary">
-          Describe the family businesses you want to find — an industry, a state, the
-          signal you're after. Signal Radar keeps discovering and classifying until
-          it has that many qualified signals, or runs out of companies to check.
+          One vertical, one state at a time — Signal Radar keeps discovering and
+          classifying real local businesses until it has that many qualified
+          signals, or runs out of companies to check.
         </p>
       </div>
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          startSearch(query);
-        }}
-        className="mx-auto mt-6 max-w-2xl"
-      >
-        <div className="flex items-center gap-2 rounded-2xl border border-gh-border bg-gh-surface p-2 shadow-sm focus-within:border-gh-sky focus-within:ring-2 focus-within:ring-gh-sky/20">
-          <SearchIcon className="ml-2 h-4.5 w-4.5 shrink-0 text-gh-ink-muted" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            type="text"
-            placeholder="e.g. Landscaping companies in Texas showing succession signals"
-            className="flex-1 bg-transparent py-2 text-sm text-gh-ink placeholder:text-gh-ink-muted focus:outline-none"
-          />
-          <button
-            type="submit"
-            disabled={!query.trim() || starting}
-            className="shrink-0 rounded-xl bg-gh-navy px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-gh-navy-2 disabled:opacity-40"
-          >
-            {starting ? "Starting…" : "Search"}
-          </button>
+      <div className="mx-auto mt-6 max-w-2xl rounded-2xl border border-gh-border bg-gh-surface p-5 shadow-sm">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-gh-ink-secondary">
+              Vertical
+            </label>
+            <div className="flex gap-2">
+              {(["landscaping", "home_builder"] as Industry[]).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setIndustry(key)}
+                  className={`flex-1 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors ${
+                    industry === key
+                      ? "border-gh-navy bg-gh-navy text-white"
+                      : "border-gh-border bg-gh-surface-sunken text-gh-ink-secondary hover:border-gh-sky/40"
+                  }`}
+                >
+                  {INDUSTRY_META[key].label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="state" className="mb-1.5 block text-xs font-semibold text-gh-ink-secondary">
+              State
+            </label>
+            <select
+              id="state"
+              value={state}
+              onChange={(e) => setState(e.target.value)}
+              className="w-full rounded-lg border border-gh-border bg-gh-surface-sunken px-3 py-2.5 text-sm text-gh-ink focus:border-gh-sky focus:outline-none focus:ring-2 focus:ring-gh-sky/20"
+            >
+              <option value="">Choose a state…</option>
+              {US_STATES.map((s) => (
+                <option key={s.code} value={s.code}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+        <div className="mt-4">
+          <label htmlFor="refinement" className="mb-1.5 block text-xs font-semibold text-gh-ink-secondary">
+            Signal focus <span className="font-normal text-gh-ink-muted">(optional)</span>
+          </label>
+          <input
+            id="refinement"
+            value={refinement}
+            onChange={(e) => setRefinement(e.target.value)}
+            type="text"
+            placeholder="e.g. succession signals, founder retiring…"
+            className="w-full rounded-lg border border-gh-border bg-gh-surface-sunken px-3 py-2.5 text-sm text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none focus:ring-2 focus:ring-gh-sky/20"
+          />
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {REFINEMENT_EXAMPLES.map((ex) => (
+              <button
+                key={ex}
+                type="button"
+                onClick={() => setRefinement(ex)}
+                className="rounded-full border border-gh-border bg-gh-surface px-2.5 py-1 text-[11px] font-medium text-gh-ink-secondary transition-colors hover:border-gh-sky/40 hover:text-gh-ink"
+              >
+                {ex}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium text-gh-ink-muted">Signals to find:</span>
           {TARGET_OPTIONS.map((n) => (
             <button
@@ -111,27 +161,22 @@ export function SearchHome() {
           ))}
         </div>
         {target >= 50 && (
-          <p className="mt-1.5 text-center text-[11px] text-gh-ink-muted">
+          <p className="mt-1.5 text-[11px] text-gh-ink-muted">
             Larger targets take longer — the pipeline keeps discovering and
             classifying new companies in rounds until it gets close.
           </p>
         )}
 
+        <button
+          type="button"
+          onClick={startSearch}
+          disabled={!canSearch}
+          className="mt-5 w-full rounded-xl bg-gh-navy py-3 text-sm font-semibold text-white transition-colors hover:bg-gh-navy-2 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {starting ? "Starting…" : "Search"}
+        </button>
         {error && <p className="mt-2 text-center text-xs font-medium text-gh-critical">{error}</p>}
-
-        <div className="mt-3 flex flex-wrap justify-center gap-2">
-          {EXAMPLE_PROMPTS.map((prompt) => (
-            <button
-              key={prompt}
-              type="button"
-              onClick={() => startSearch(prompt)}
-              className="rounded-full border border-gh-border bg-gh-surface px-3 py-1.5 text-xs font-medium text-gh-ink-secondary transition-colors hover:border-gh-sky/40 hover:text-gh-ink"
-            >
-              {prompt}
-            </button>
-          ))}
-        </div>
-      </form>
+      </div>
 
       <div className="mt-12">
         <div className="mb-4 flex items-center justify-between">
@@ -155,7 +200,7 @@ export function SearchHome() {
       {running && (
         <SearchProgress
           searchId={running.id}
-          query={running.query}
+          query={running.label}
           onComplete={handleComplete}
           onError={handleError}
         />
