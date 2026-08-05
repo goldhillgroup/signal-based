@@ -13,10 +13,13 @@ const EXAMPLE_PROMPTS = [
   "Georgia landscaping companies where the founder is handing off",
 ];
 
+const TARGET_OPTIONS = [10, 20, 50, 100];
+
 export function SearchHome() {
   const router = useRouter();
   const { folders, loading, createSearch } = useSearches();
   const [query, setQuery] = useState("");
+  const [target, setTarget] = useState(20);
   const [running, setRunning] = useState<{ id: string; query: string } | null>(null);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState("");
@@ -27,7 +30,7 @@ export function SearchHome() {
     setError("");
     setStarting(true);
     try {
-      const { id } = await createSearch(text);
+      const { id } = await createSearch(text, target);
       setRunning({ id, query: text });
     } catch (e) {
       setError((e as Error).message || "Could not start that search.");
@@ -60,8 +63,8 @@ export function SearchHome() {
         </h1>
         <p className="mx-auto mt-2 max-w-lg text-sm leading-relaxed text-gh-ink-secondary">
           Describe the family businesses you want to find — an industry, a state, the
-          signal you're after. Signal Radar runs the search and hands back a
-          verified, evidence-backed list.
+          signal you're after. Signal Radar keeps discovering and classifying until
+          it has that many qualified signals, or runs out of companies to check.
         </p>
       </div>
 
@@ -89,6 +92,30 @@ export function SearchHome() {
             {starting ? "Starting…" : "Search"}
           </button>
         </div>
+
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+          <span className="text-xs font-medium text-gh-ink-muted">Signals to find:</span>
+          {TARGET_OPTIONS.map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => setTarget(n)}
+              className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                target === n
+                  ? "bg-gh-navy text-white"
+                  : "border border-gh-border bg-gh-surface text-gh-ink-secondary hover:border-gh-sky/40"
+              }`}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+        {target >= 50 && (
+          <p className="mt-1.5 text-center text-[11px] text-gh-ink-muted">
+            Larger targets take longer — the pipeline keeps discovering and
+            classifying new companies in rounds until it gets close.
+          </p>
+        )}
 
         {error && <p className="mt-2 text-center text-xs font-medium text-gh-critical">{error}</p>}
 

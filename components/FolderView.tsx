@@ -63,17 +63,28 @@ export function FolderView({ folder, companies }: { folder: SearchFolder; compan
             <h1 className="font-display text-2xl font-semibold text-gh-ink">{folder.label}</h1>
             <p className="mt-1 text-sm text-gh-ink-secondary">&ldquo;{folder.query}&rdquo;</p>
           </div>
-          <p className="text-xs text-gh-ink-muted">
-            Completed{" "}
-            {folder.finishedAt
-              ? new Date(folder.finishedAt).toLocaleString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  hour: "numeric",
-                  minute: "2-digit",
-                })
-              : "—"}
-          </p>
+          <div className="text-right">
+            <p className="text-xs text-gh-ink-muted">
+              Completed{" "}
+              {folder.finishedAt
+                ? new Date(folder.finishedAt).toLocaleString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })
+                : "—"}
+            </p>
+            {stats.qualified + stats.verify < folder.targetSignals && (
+              <p className="mt-0.5 text-xs text-gh-ink-muted">
+                {stats.qualified + stats.verify} of {folder.targetSignals} requested
+                {folder.candidatesPoolExhausted ? " — pool exhausted" : ""}
+              </p>
+            )}
+            {folder.errorMessage && (
+              <p className="mt-0.5 max-w-xs text-xs text-gh-ink-muted">{folder.errorMessage}</p>
+            )}
+          </div>
         </div>
       </div>
 

@@ -119,6 +119,8 @@ export interface Database {
           label: string;
           status: SearchStatus;
           error_message: string | null;
+          target_signals: number;
+          candidates_pool_exhausted: boolean;
           candidates_found: number;
           pages_fetched: number;
           companies_scanned: number;

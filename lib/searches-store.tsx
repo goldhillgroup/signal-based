@@ -35,6 +35,8 @@ export interface SearchFolder {
   errorMessage: string | null;
   createdAt: string;
   finishedAt: string | null;
+  targetSignals: number;
+  candidatesPoolExhausted: boolean;
   candidatesFound: number;
   pagesFetched: number;
   companiesScanned: number;
@@ -54,6 +56,8 @@ function mapSearchRow(row: SearchRow): SearchFolder {
     errorMessage: row.error_message,
     createdAt: row.created_at,
     finishedAt: row.finished_at,
+    targetSignals: row.target_signals,
+    candidatesPoolExhausted: row.candidates_pool_exhausted,
     candidatesFound: row.candidates_found,
     pagesFetched: row.pages_fetched,
     companiesScanned: row.companies_scanned,
@@ -152,7 +156,7 @@ interface SearchesContextValue {
   getFolder: (id: string) => SearchFolder | undefined;
   fetchFolder: (id: string) => Promise<SearchFolder | null>;
   fetchCompanies: (id: string) => Promise<Company[]>;
-  createSearch: (query: string) => Promise<{ id: string; label: string }>;
+  createSearch: (query: string, targetSignals: number) => Promise<{ id: string; label: string }>;
 }
 
 const SearchesContext = createContext<SearchesContextValue | null>(null);
@@ -199,11 +203,11 @@ export function SearchesProvider({ children }: { children: ReactNode }) {
   );
 
   const createSearch = useCallback(
-    async (query: string) => {
+    async (query: string, targetSignals: number) => {
       const res = await fetch("/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query }),
+        body: JSON.stringify({ query, targetSignals }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));

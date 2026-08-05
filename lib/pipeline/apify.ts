@@ -74,30 +74,50 @@ export async function discoverCandidates(params: {
   industry: Industry | null;
   states: string[];
   limit: number;
-}): Promise<Candidate[]> {
-  const { industry, states, limit } = params;
+  round?: number; // 1-indexed — later rounds request deeper SERP pages so a
+  // repeat call surfaces domains beyond what earlier rounds already saw,
+  // rather than re-fetching (and then filtering out) the same top results.
+  excludeDomains?: Set<string>;
+}): Promise<{ candidates: Candidate[]; exhausted: boolean }> {
+  const { industry, states, limit, round = 1, excludeDomains } = params;
 
   const industryPart = industryLabel(industry);
   const statePart = states.length > 0 ? states.join(" OR ") : "";
-  const query = [
-    `family owned ${industryPart} company`,
-    statePart,
-    "about us",
-  ]
-    .filter(Boolean)
-    .join(" ");
 
-  const items = (await runActorSync("apify~google-search-scraper", {
-    queries: query,
-    resultsPerPage: Math.min(limit * 4, 100),
-    maxPagesPerQuery: 1,
-    countryCode: "us",
-    languageCode: "en",
-  })) as Array<{ organicResults?: Array<{ url: string; title: string }> }>;
+  // A handful of phrasings in ONE actor call (Apify's google-search-scraper
+  // takes newline-separated queries as one run) — a single fixed phrase caps
+  // out around a hundred-ish organic results before Google starts repeating
+  // near-duplicates; varying the phrasing surfaces more distinct domains for
+  // large targets without multiplying actor invocations.
+  const queries = [
+    `family owned ${industryPart} company ${statePart} about us`,
+    `${industryPart} company ${statePart} our story founder`,
+    `${industryPart} business ${statePart} family owned team`,
+  ]
+    .map((q) => q.replace(/\s+/g, " ").trim())
+    .join("\n");
+
+  const maxPagesPerQuery = Math.min(round * 2, 8);
+  // 3 queries * maxPagesPerQuery SERP pages each — deeper rounds take
+  // meaningfully longer (round 3's default 120s timed out for real in
+  // testing); scale with it rather than eating that as a lost round.
+  const discoverTimeoutSecs = Math.min(280, 60 + maxPagesPerQuery * 15);
+
+  const items = (await runActorSync(
+    "apify~google-search-scraper",
+    {
+      queries,
+      resultsPerPage: 100,
+      maxPagesPerQuery,
+      countryCode: "us",
+      languageCode: "en",
+    },
+    discoverTimeoutSecs
+  )) as Array<{ organicResults?: Array<{ url: string; title: string }> }>;
 
   const organic = items.flatMap((page) => page.organicResults ?? []);
 
-  const seen = new Set<string>();
+  const seen = new Set<string>(excludeDomains ?? []);
   const candidates: Candidate[] = [];
   for (const r of organic) {
     const host = hostnameOf(r.url);
@@ -107,7 +127,12 @@ export async function discoverCandidates(params: {
     candidates.push({ domain: host, url: r.url, title: r.title ?? host });
     if (candidates.length >= limit) break;
   }
-  return candidates;
+
+  // "Exhausted" — the search surfaced fewer fresh domains than asked for,
+  // meaning this query has nothing left to give; the caller should stop
+  // looping rather than re-requesting the same near-empty result set.
+  const exhausted = candidates.length < limit;
+  return { candidates, exhausted };
 }
 
 // "Best landscaping companies in X," "Top 10 home builders" — directory/
@@ -126,16 +151,12 @@ export interface FetchedPage {
   siteName: string | null; // og:site_name — the cleanest source for the real company name
 }
 
-const ABOUT_SLUGS = [
-  "",
-  "about",
-  "about-us",
-  "our-story",
-  "our-team",
-  "team",
-  "leadership",
-  "who-we-are",
-];
+// Trimmed to the 5 slugs that actually accounted for every real hit across
+// testing (see project memory) — the dropped ones (our-team, leadership,
+// who-we-are) never won pickBestPage() once but still cost a full request
+// per domain. Fewer guesses per domain keeps each round's fetch actor run
+// safely inside its timeout as ROUND_SIZE scales up.
+const ABOUT_SLUGS = ["", "about", "about-us", "team", "our-story"];
 
 // Step 2 — page fetch. Guesses the common About/Team/Leadership URL slugs per
 // domain and fetches them directly (maxCrawlDepth 0 — no link-following, so
@@ -145,6 +166,12 @@ export async function fetchCompanyPages(domains: string[]): Promise<Map<string, 
   const startUrls = domains.flatMap((domain) =>
     ABOUT_SLUGS.map((slug) => ({ url: `https://${domain}/${slug}` }))
   );
+
+  // Scale the actor's own timeout with batch size — a fixed 180s was enough
+  // for a dozen domains but timed out a real 20-domain/160-URL round outright
+  // (lost that round's work entirely; see orchestrator.ts's per-round catch
+  // for why that no longer loses already-accumulated signals either way).
+  const fetchTimeoutSecs = Math.min(280, 60 + startUrls.length * 2.5);
 
   const items = (await runActorSync(
     "apify~website-content-crawler",
@@ -156,7 +183,7 @@ export async function fetchCompanyPages(domains: string[]): Promise<Map<string, 
       maxRequestRetries: 1,
       saveMarkdown: false,
     },
-    180
+    fetchTimeoutSecs
   )) as Array<{
     url: string;
     text?: string;

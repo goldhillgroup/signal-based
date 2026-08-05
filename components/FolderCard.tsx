@@ -45,6 +45,14 @@ export function FolderCard({ folder }: { folder: SearchFolder }) {
           </>
         )}
       </div>
+
+      {!isRunning && !isFailed && folder.qualifiedCount + folder.verifyCount < folder.targetSignals && (
+        <p className="mt-2 text-[11px] text-gh-ink-muted">
+          {folder.candidatesPoolExhausted
+            ? `Ran out of new companies to check — ${folder.qualifiedCount + folder.verifyCount} of ${folder.targetSignals} requested`
+            : `${folder.qualifiedCount + folder.verifyCount} of ${folder.targetSignals} requested`}
+        </p>
+      )}
     </button>
   );
 }
