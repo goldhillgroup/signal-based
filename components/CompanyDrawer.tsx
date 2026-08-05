@@ -1,0 +1,228 @@
+"use client";
+
+import { useState } from "react";
+import type { ReactNode } from "react";
+import { Company } from "@/lib/mock-companies";
+import { INDUSTRY_META } from "@/lib/signal-meta";
+import {
+  ConfidenceBadge,
+  StatusBadge,
+  FindStatusBadge,
+  VerificationBadge,
+} from "./badges";
+import { XIcon, BuildingIcon } from "./icons";
+import { formatRelativeDate } from "@/lib/stats";
+
+export function CompanyDrawer({
+  company,
+  onClose,
+}: {
+  company: Company | null;
+  onClose: () => void;
+}) {
+  const open = company !== null;
+  const [copied, setCopied] = useState(false);
+
+  async function copyEmail(email: string) {
+    try {
+      await navigator.clipboard.writeText(email);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // clipboard API unavailable — no-op, email is still visible to copy manually
+    }
+  }
+
+  return (
+    <>
+      <div
+        className={`fixed inset-0 z-30 bg-gh-navy-3/40 transition-opacity ${
+          open ? "opacity-100" : "pointer-events-none opacity-0"
+        }`}
+        onClick={onClose}
+        aria-hidden
+      />
+      <aside
+        className={`fixed right-0 top-0 z-40 h-full w-full max-w-md transform overflow-y-auto bg-gh-surface shadow-2xl transition-transform duration-200 ${
+          open ? "translate-x-0" : "translate-x-full"
+        }`}
+        aria-hidden={!open}
+      >
+        {company && (
+          <div className="flex h-full flex-col">
+            <div className="flex items-start justify-between gap-3 border-b border-gh-border p-5">
+              <div>
+                <span
+                  className="mb-2 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold text-white"
+                  style={{ background: INDUSTRY_META[company.industry].color }}
+                >
+                  {INDUSTRY_META[company.industry].label}
+                </span>
+                <h2 className="font-display text-xl font-semibold text-gh-ink">
+                  {company.name}
+                </h2>
+                <p className="mt-0.5 text-sm text-gh-ink-secondary">
+                  {company.city}, {company.state} &middot; {company.revenueBand} &middot;{" "}
+                  {company.employeeBand} employees
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gh-ink-muted transition-colors hover:bg-gh-surface-sunken hover:text-gh-ink"
+                aria-label="Close"
+              >
+                <XIcon className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 space-y-6 overflow-y-auto p-5">
+              <div className="grid grid-cols-2 gap-3">
+                <InfoTile label="Status">
+                  <StatusBadge status={company.status} />
+                </InfoTile>
+                <InfoTile label="Confidence">
+                  {company.confidence ? (
+                    <ConfidenceBadge confidence={company.confidence} />
+                  ) : (
+                    <span className="text-sm text-gh-ink-muted">Not yet classified</span>
+                  )}
+                </InfoTile>
+                <InfoTile label="First seen">
+                  <p className="text-sm font-medium text-gh-ink">
+                    {formatRelativeDate(company.firstSeenAt)}
+                  </p>
+                </InfoTile>
+                <InfoTile label="Last checked">
+                  <p className="text-sm font-medium text-gh-ink">
+                    {formatRelativeDate(company.lastCrawledAt)}
+                  </p>
+                </InfoTile>
+              </div>
+
+              {company.status === "rejected" && company.rejectionReason && (
+                <div className="rounded-lg border-l-2 border-gh-critical bg-gh-surface-sunken p-3.5">
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gh-ink-muted">
+                    Rejection reason
+                  </p>
+                  <p className="text-sm text-gh-ink-secondary">{company.rejectionReason}</p>
+                </div>
+              )}
+
+              {company.evidence && (
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gh-ink-muted">
+                    Signal evidence
+                  </p>
+                  <blockquote
+                    className="rounded-lg border-l-2 bg-gh-surface-sunken p-3.5 text-sm leading-relaxed text-gh-ink-secondary"
+                    style={{ borderColor: INDUSTRY_META[company.industry].color }}
+                  >
+                    {company.evidence.quote}
+                  </blockquote>
+                  <p className="mt-2 text-xs text-gh-ink-muted">
+                    Source: {company.evidence.sourceUrl.replace("https://", "")} ·{" "}
+                    {company.evidence.pageType} page
+                  </p>
+                  {company.evidence.disproveNotes && (
+                    <div className="mt-2 rounded-lg bg-gh-surface-sunken p-3">
+                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gh-ink-muted">
+                        Disprove pass
+                      </p>
+                      <p className="text-xs leading-relaxed text-gh-ink-secondary">
+                        {company.evidence.disproveNotes}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {(company.founderName || company.nextGenName) && (
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gh-ink-muted">
+                    Leadership
+                  </p>
+                  <div className="space-y-2.5 rounded-lg border border-gh-border p-3.5 text-sm">
+                    {company.founderName && (
+                      <Row k="Founder" v={`${company.founderName}${company.founderTitle ? ` — ${company.founderTitle}` : ""}`} />
+                    )}
+                    {company.nextGenName && (
+                      <Row k="Next generation" v={`${company.nextGenName}${company.nextGenTitle ? ` — ${company.nextGenTitle}` : ""}`} />
+                    )}
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <span className="text-gh-ink-muted">Website</span>
+                      <span className="inline-flex items-center gap-1 font-medium text-gh-ink-secondary">
+                        <BuildingIcon className="h-3.5 w-3.5" />
+                        {company.domain}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {company.contact && (
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gh-ink-muted">
+                    Contact
+                  </p>
+                  <div className="space-y-3 rounded-lg border border-gh-border p-3.5">
+                    <div className="flex items-center justify-between">
+                      <FindStatusBadge status={company.contact.findStatus} />
+                      {company.contact.findStatus === "found" && (
+                        <VerificationBadge status={company.contact.verificationStatus} />
+                      )}
+                    </div>
+                    {company.contact.name && (
+                      <Row
+                        k="Name"
+                        v={`${company.contact.name}${company.contact.nameInferred ? " (inferred from email)" : ""}${
+                          company.contact.title ? ` — ${company.contact.title}` : ""
+                        }`}
+                      />
+                    )}
+                    {company.contact.email ? (
+                      <div className="flex items-center justify-between gap-2 text-sm">
+                        <span className="text-gh-ink-muted">Email</span>
+                        <button
+                          type="button"
+                          onClick={() => copyEmail(company.contact!.email!)}
+                          className="font-medium text-gh-sky hover:underline"
+                        >
+                          {copied ? "Copied ✓" : company.contact.email}
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gh-ink-muted">
+                        No individually published email found at this domain.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </aside>
+    </>
+  );
+}
+
+function InfoTile({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="rounded-lg border border-gh-border p-3">
+      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-gh-ink-muted">
+        {label}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+function Row({ k, v }: { k: string; v: string }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-gh-ink-muted">{k}</span>
+      <span className="font-medium text-gh-ink">{v}</span>
+    </div>
+  );
+}

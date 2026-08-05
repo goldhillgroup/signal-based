@@ -1,26 +1,98 @@
 @import "tailwindcss";
 
+/*
+  Goldhill Group brand system, pulled from thegoldhillgroup.com:
+  navy #001a57 (primary), sky blue #0FA5E1, lime #B3D137, gold #FDE428, orange #EF8B19.
+  Categorical + status roles below are the dataviz-skill-validated derivatives of
+  those raw brand hues (see /scratchpad/goldhill-assets for the palette validation run).
+*/
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+
+  /* surfaces */
+  --gh-page: #f7f8fa;
+  --gh-surface: #ffffff;
+  --gh-surface-sunken: #f1f3f6;
+  --gh-border: #e3e7ee;
+  --gh-border-strong: #cdd4e0;
+
+  /* ink */
+  --gh-ink: #0b1220;
+  --gh-ink-secondary: #4b5768;
+  --gh-ink-muted: #8892a0;
+
+  /* brand */
+  --gh-navy: #001a57;
+  --gh-navy-2: #09276f;
+  --gh-navy-3: #0c1f3f;
+  --gh-sky: #0fa5e1;
+  --gh-lime: #b3d137;
+  --gh-gold: #fde428;
+  --gh-orange: #ef8b19;
+
+  /* categorical (validated: all-pass light mode adjacency) */
+  --gh-cat-1: #2451a4; /* navy-blue    */
+  --gh-cat-2: #ef8b19; /* orange       */
+  --gh-cat-3: #1b8a5a; /* teal-green   */
+  --gh-cat-4: #6b4c8a; /* plum         */
+  --gh-cat-5: #c99a00; /* gold         */
+
+  /* status (fixed, never themed) */
+  --gh-good: #0ca30c;
+  --gh-warning: #fab219;
+  --gh-serious: #ec835a;
+  --gh-critical: #d03b3b;
+
+  /* sequential (blue, brand-hued) */
+  --gh-seq-100: #dce6f7;
+  --gh-seq-200: #b9cdef;
+  --gh-seq-300: #86ace3;
+  --gh-seq-400: #5488d3;
+  --gh-seq-500: #2451a4;
+  --gh-seq-600: #1b3e80;
+  --gh-seq-700: #142e5f;
+
+  --background: var(--gh-page);
+  --foreground: var(--gh-ink);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-gh-page: var(--gh-page);
+  --color-gh-surface: var(--gh-surface);
+  --color-gh-surface-sunken: var(--gh-surface-sunken);
+  --color-gh-border: var(--gh-border);
+  --color-gh-border-strong: var(--gh-border-strong);
+  --color-gh-ink: var(--gh-ink);
+  --color-gh-ink-secondary: var(--gh-ink-secondary);
+  --color-gh-ink-muted: var(--gh-ink-muted);
+  --color-gh-navy: var(--gh-navy);
+  --color-gh-navy-2: var(--gh-navy-2);
+  --color-gh-navy-3: var(--gh-navy-3);
+  --color-gh-sky: var(--gh-sky);
+  --color-gh-lime: var(--gh-lime);
+  --color-gh-gold: var(--gh-gold);
+  --color-gh-orange: var(--gh-orange);
+  --color-gh-good: var(--gh-good);
+  --color-gh-warning: var(--gh-warning);
+  --color-gh-serious: var(--gh-serious);
+  --color-gh-critical: var(--gh-critical);
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-poppins);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-inter), system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+::selection {
+  background: var(--gh-sky);
+  color: #ffffff;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
 }
