@@ -1,50 +1,224 @@
 "use client";
 
-// Client-side stand-in for the real thing: a `searches` row in Supabase +
-// a `search_id` on each `companies` row (see supabase/migrations). Lives at
-// the dashboard layout level so it survives client-side navigation between
-// the search home and a folder's detail page without a real backend yet.
-// Swap `addSearch` for an insert + realtime subscription once the pipeline exists.
+// Real Supabase-backed replacement for the earlier client-Context mock.
+// Folders (`searches` rows) and their companies now live in the database —
+// see supabase/migrations/20260805010000_searches.sql and
+// lib/pipeline/orchestrator.ts for what actually populates them.
 
-import { createContext, useContext, useMemo, useState, ReactNode } from "react";
-import { MOCK_SEARCHES, SearchFolder } from "./mock-searches";
-import { runSearch } from "./search-engine";
-import { Company } from "./mock-companies";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  ReactNode,
+} from "react";
+import { createClient } from "./supabase/client";
+import type {
+  SearchRow,
+  SearchStatus,
+  Industry,
+  CompanyStatus,
+  Confidence,
+  PageType,
+  FindStatus,
+  VerificationStatus,
+} from "./supabase/types";
+import type { Company } from "./mock-companies";
+
+export interface SearchFolder {
+  id: string;
+  query: string;
+  label: string;
+  status: SearchStatus;
+  errorMessage: string | null;
+  createdAt: string;
+  finishedAt: string | null;
+  candidatesFound: number;
+  pagesFetched: number;
+  companiesScanned: number;
+  qualifiedCount: number;
+  verifyCount: number;
+  rejectedCount: number;
+  contactsFound: number;
+  contactsVerified: number;
+}
+
+function mapSearchRow(row: SearchRow): SearchFolder {
+  return {
+    id: row.id,
+    query: row.query,
+    label: row.label,
+    status: row.status,
+    errorMessage: row.error_message,
+    createdAt: row.created_at,
+    finishedAt: row.finished_at,
+    candidatesFound: row.candidates_found,
+    pagesFetched: row.pages_fetched,
+    companiesScanned: row.companies_scanned,
+    contactsFound: row.contacts_found,
+    contactsVerified: row.contacts_verified,
+    qualifiedCount: row.qualified_count,
+    verifyCount: row.verify_count,
+    rejectedCount: row.rejected_count,
+  };
+}
+
+// Supabase's PostgREST embeds a to-many relation as an array even when it's
+// functionally one row (one evidence quote, one contact per company here).
+interface CompanyJoinRow {
+  id: string;
+  domain: string;
+  name: string;
+  industry: Industry;
+  state: string | null;
+  city: string | null;
+  revenue_band: string | null;
+  employee_band: string | null;
+  status: CompanyStatus;
+  confidence: Confidence | null;
+  rejection_reason: string | null;
+  founder_name: string | null;
+  founder_title: string | null;
+  next_gen_name: string | null;
+  next_gen_title: string | null;
+  source_url: string | null;
+  first_seen_at: string;
+  last_crawled_at: string;
+  signal_evidence: Array<{
+    quote: string;
+    source_url: string;
+    page_type: PageType;
+    disprove_notes: string | null;
+  }>;
+  contacts: Array<{
+    name: string | null;
+    name_inferred: boolean;
+    title: string | null;
+    email: string | null;
+    find_status: FindStatus;
+    verification_status: VerificationStatus;
+  }>;
+}
+
+function mapCompanyRow(row: CompanyJoinRow): Company {
+  const evidence = row.signal_evidence?.[0];
+  const contact = row.contacts?.[0];
+  return {
+    id: row.id,
+    domain: row.domain,
+    name: row.name,
+    industry: row.industry,
+    state: row.state ?? "—",
+    city: row.city ?? "—",
+    revenueBand: row.revenue_band ?? "Unknown",
+    employeeBand: row.employee_band ?? "Unknown",
+    status: row.status,
+    confidence: row.confidence,
+    rejectionReason: row.rejection_reason,
+    founderName: row.founder_name,
+    founderTitle: row.founder_title,
+    nextGenName: row.next_gen_name,
+    nextGenTitle: row.next_gen_title,
+    sourceUrl: row.source_url,
+    firstSeenAt: row.first_seen_at,
+    lastCrawledAt: row.last_crawled_at,
+    evidence: evidence
+      ? {
+          quote: evidence.quote,
+          sourceUrl: evidence.source_url,
+          pageType: evidence.page_type,
+          disproveNotes: evidence.disprove_notes ?? undefined,
+        }
+      : null,
+    contact: contact
+      ? {
+          name: contact.name,
+          nameInferred: contact.name_inferred,
+          title: contact.title,
+          email: contact.email,
+          findStatus: contact.find_status,
+          verificationStatus: contact.verification_status,
+        }
+      : null,
+  };
+}
 
 interface SearchesContextValue {
   folders: SearchFolder[];
+  loading: boolean;
+  refreshFolders: () => Promise<void>;
   getFolder: (id: string) => SearchFolder | undefined;
-  getCompanies: (id: string) => Company[];
-  addSearch: (query: string) => string; // returns new folder id
+  fetchFolder: (id: string) => Promise<SearchFolder | null>;
+  fetchCompanies: (id: string) => Promise<Company[]>;
+  createSearch: (query: string) => Promise<{ id: string; label: string }>;
 }
 
 const SearchesContext = createContext<SearchesContextValue | null>(null);
 
-let nextId = 1;
-
 export function SearchesProvider({ children }: { children: ReactNode }) {
-  const [folders, setFolders] = useState<SearchFolder[]>(MOCK_SEARCHES);
+  const supabase = useMemo(() => createClient(), []);
+  const [folders, setFolders] = useState<SearchFolder[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refreshFolders = useCallback(async () => {
+    const { data } = await supabase
+      .from("searches")
+      .select("*")
+      .order("created_at", { ascending: false });
+    setFolders((data ?? []).map(mapSearchRow));
+    setLoading(false);
+  }, [supabase]);
+
+  useEffect(() => {
+    refreshFolders();
+  }, [refreshFolders]);
+
+  const getFolder = useCallback((id: string) => folders.find((f) => f.id === id), [folders]);
+
+  const fetchFolder = useCallback(
+    async (id: string): Promise<SearchFolder | null> => {
+      const { data } = await supabase.from("searches").select("*").eq("id", id).single();
+      return data ? mapSearchRow(data) : null;
+    },
+    [supabase]
+  );
+
+  const fetchCompanies = useCallback(
+    async (id: string): Promise<Company[]> => {
+      const { data, error } = await supabase
+        .from("companies")
+        .select("*, signal_evidence(*), contacts(*)")
+        .eq("search_id", id)
+        .order("last_crawled_at", { ascending: false });
+      if (error || !data) return [];
+      return (data as unknown as CompanyJoinRow[]).map(mapCompanyRow);
+    },
+    [supabase]
+  );
+
+  const createSearch = useCallback(
+    async (query: string) => {
+      const res = await fetch("/api/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error ?? "Search failed to start");
+      }
+      const data = (await res.json()) as { id: string; label: string };
+      await refreshFolders();
+      return data;
+    },
+    [refreshFolders]
+  );
 
   const value = useMemo<SearchesContextValue>(
-    () => ({
-      folders,
-      getFolder: (id) => folders.find((f) => f.id === id),
-      getCompanies: (id) => {
-        const folder = folders.find((f) => f.id === id);
-        return folder ? runSearch(folder.query) : [];
-      },
-      addSearch: (query) => {
-        const id = `search-live-${nextId++}`;
-        const now = new Date().toISOString().slice(0, 10);
-        const label = query.length > 42 ? `${query.slice(0, 42)}…` : query;
-        setFolders((prev) => [
-          { id, query, label, createdAt: now, finishedAt: now },
-          ...prev,
-        ]);
-        return id;
-      },
-    }),
-    [folders]
+    () => ({ folders, loading, refreshFolders, getFolder, fetchFolder, fetchCompanies, createSearch }),
+    [folders, loading, refreshFolders, getFolder, fetchFolder, fetchCompanies, createSearch]
   );
 
   return <SearchesContext.Provider value={value}>{children}</SearchesContext.Provider>;

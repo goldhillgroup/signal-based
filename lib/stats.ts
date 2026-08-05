@@ -1,7 +1,7 @@
-import { MOCK_COMPANIES, Company } from "./mock-companies";
+import { Company } from "./mock-companies";
 import { Confidence } from "./supabase/types";
 
-export function getSummaryStats(companies: Company[] = MOCK_COMPANIES) {
+export function getSummaryStats(companies: Company[]) {
   const total = companies.length;
   const qualified = companies.filter(
     (c) => c.status === "qualified" && c.confidence !== "verify"
@@ -19,7 +19,7 @@ export function getSummaryStats(companies: Company[] = MOCK_COMPANIES) {
   return { total, qualified, verify, rejected, pending, contactsFound, contactsVerified };
 }
 
-export function getIndustryBreakdown(companies: Company[] = MOCK_COMPANIES) {
+export function getIndustryBreakdown(companies: Company[]) {
   const pool = companies.filter((c) => c.status === "qualified");
   const counts = { landscaping: 0, home_builder: 0 };
   pool.forEach((c) => {
@@ -32,7 +32,7 @@ export function getIndustryBreakdown(companies: Company[] = MOCK_COMPANIES) {
   ];
 }
 
-export function getConfidenceBreakdown(companies: Company[] = MOCK_COMPANIES) {
+export function getConfidenceBreakdown(companies: Company[]) {
   const pool = companies.filter((c) => c.status === "qualified" && c.confidence);
   const counts: Record<Confidence, number> = { high: 0, medium: 0, verify: 0 };
   pool.forEach((c) => {
@@ -46,11 +46,14 @@ export function getConfidenceBreakdown(companies: Company[] = MOCK_COMPANIES) {
   }));
 }
 
-// Daily discovery volume (first_seen_at) for the trend chart.
-export function getDailyTrend(companies: Company[] = MOCK_COMPANIES) {
+// Daily discovery volume (first_seen_at) for the trend chart. firstSeenAt may
+// be a plain date (old mock data) or a full Supabase timestamptz (live data)
+// — always bucket by the date portion.
+export function getDailyTrend(companies: Company[]) {
   const byDay = new Map<string, number>();
   companies.forEach((c) => {
-    byDay.set(c.firstSeenAt, (byDay.get(c.firstSeenAt) ?? 0) + 1);
+    const day = c.firstSeenAt.slice(0, 10);
+    byDay.set(day, (byDay.get(day) ?? 0) + 1);
   });
 
   const dates = Array.from(byDay.keys()).sort();
@@ -66,10 +69,13 @@ export function getDailyTrend(companies: Company[] = MOCK_COMPANIES) {
   return days;
 }
 
-export function formatRelativeDate(iso: string, today = "2026-08-05") {
-  const d = new Date(iso + "T00:00:00");
-  const t = new Date(today + "T00:00:00");
-  const diffDays = Math.round((t.getTime() - d.getTime()) / 86_400_000);
+export function formatRelativeDate(iso: string, today: Date = new Date()) {
+  // Accepts either a plain date ("2026-08-05") or a full Supabase timestamptz
+  // ("2026-08-05T14:23:11.123456+00:00") — normalize both to a day boundary.
+  const d = new Date(iso.length <= 10 ? `${iso}T00:00:00` : iso);
+  const t = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diffDays = Math.round((t.getTime() - dayStart.getTime()) / 86_400_000);
   if (diffDays <= 0) return "Today";
   if (diffDays === 1) return "Yesterday";
   if (diffDays < 7) return `${diffDays}d ago`;

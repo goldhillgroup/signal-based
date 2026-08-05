@@ -1,21 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { SearchFolder } from "@/lib/mock-searches";
-import { Company } from "@/lib/mock-companies";
-import { getSummaryStats } from "@/lib/stats";
+import { SearchFolder } from "@/lib/searches-store";
 import { formatRelativeDate } from "@/lib/stats";
 import { FolderIcon } from "./icons";
 
-export function FolderCard({
-  folder,
-  companies,
-}: {
-  folder: SearchFolder;
-  companies: Company[];
-}) {
+export function FolderCard({ folder }: { folder: SearchFolder }) {
   const router = useRouter();
-  const stats = getSummaryStats(companies);
+  const isRunning = folder.status === "running";
+  const isFailed = folder.status === "failed";
 
   return (
     <button
@@ -28,7 +21,7 @@ export function FolderCard({
           <FolderIcon className="h-4.5 w-4.5" />
         </span>
         <span className="tabular text-xs font-medium text-gh-ink-muted">
-          {formatRelativeDate(folder.finishedAt)}
+          {formatRelativeDate(folder.finishedAt ?? folder.createdAt)}
         </span>
       </div>
 
@@ -40,9 +33,17 @@ export function FolderCard({
       </p>
 
       <div className="mt-4 flex w-full flex-wrap items-center gap-1.5">
-        <StatChip value={stats.qualified} label="qualified" color="#0b7a0b" bg="#e2f6e2" />
-        <StatChip value={stats.verify} label="verify" color="#9a4a1f" bg="#fbe4d7" />
-        <StatChip value={stats.rejected} label="rejected" color="#8892a0" bg="var(--gh-surface-sunken)" />
+        {isRunning ? (
+          <StatChip value="Running…" label="" color="#0b5e85" bg="#e2f3fb" />
+        ) : isFailed ? (
+          <StatChip value="Failed" label="" color="#a3272a" bg="#fbdcdc" />
+        ) : (
+          <>
+            <StatChip value={folder.qualifiedCount} label="qualified" color="#0b7a0b" bg="#e2f6e2" />
+            <StatChip value={folder.verifyCount} label="verify" color="#9a4a1f" bg="#fbe4d7" />
+            <StatChip value={folder.rejectedCount} label="rejected" color="#8892a0" bg="var(--gh-surface-sunken)" />
+          </>
+        )}
       </div>
     </button>
   );
@@ -54,7 +55,7 @@ function StatChip({
   color,
   bg,
 }: {
-  value: number;
+  value: number | string;
   label: string;
   color: string;
   bg: string;
@@ -64,7 +65,7 @@ function StatChip({
       className="tabular inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold"
       style={{ color, background: bg }}
     >
-      {value} <span className="font-normal opacity-80">{label}</span>
+      {value} {label && <span className="font-normal opacity-80">{label}</span>}
     </span>
   );
 }

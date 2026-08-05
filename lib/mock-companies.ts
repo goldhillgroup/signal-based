@@ -46,9 +46,12 @@ export interface Company {
   contact: Contact | null;
 }
 
-// Illustrative mock data shaped exactly like the real schema (supabase/migrations)
-// so it's a drop-in swap once Apify/OpenRouter/Anymailfinder/MillionVerifier are
-// wired up. Fictional companies standing in for the live crawl — target ICP per
+// The pipeline is live now (lib/pipeline/*.ts, lib/searches-store.tsx) — the
+// app no longer imports MOCK_COMPANIES. Kept only as a fixture for local UI
+// work without spending real Apify/OpenRouter/Anymailfinder/MillionVerifier
+// credits; the `Company`/`Evidence`/`Contact` types above are still the real,
+// actively-used shape the live data gets mapped into. Fictional companies,
+// target ICP per
 // Scope_Jonathan_Goldhill_Engine.md: family-owned landscaping + home-building
 // companies, $3-15M revenue, four agreed states (placeholder states below).
 export const MOCK_COMPANIES: Company[] = [

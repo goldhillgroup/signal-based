@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Company } from "@/lib/mock-companies";
-import { SearchFolder } from "@/lib/mock-searches";
+import { SearchFolder } from "@/lib/searches-store";
 import {
   getSummaryStats,
   getIndustryBreakdown,
@@ -63,7 +63,17 @@ export function FolderView({ folder, companies }: { folder: SearchFolder; compan
             <h1 className="font-display text-2xl font-semibold text-gh-ink">{folder.label}</h1>
             <p className="mt-1 text-sm text-gh-ink-secondary">&ldquo;{folder.query}&rdquo;</p>
           </div>
-          <p className="text-xs text-gh-ink-muted">Completed {folder.finishedAt}</p>
+          <p className="text-xs text-gh-ink-muted">
+            Completed{" "}
+            {folder.finishedAt
+              ? new Date(folder.finishedAt).toLocaleString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                })
+              : "—"}
+          </p>
         </div>
       </div>
 

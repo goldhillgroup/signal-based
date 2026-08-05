@@ -3,8 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSearches } from "@/lib/searches-store";
-import { runSearch } from "@/lib/search-engine";
-import { Company } from "@/lib/mock-companies";
 import { FolderCard } from "./FolderCard";
 import { SearchProgress } from "./SearchProgress";
 import { SearchIcon, ZapIcon } from "./icons";
@@ -17,23 +15,38 @@ const EXAMPLE_PROMPTS = [
 
 export function SearchHome() {
   const router = useRouter();
-  const { folders, getCompanies, addSearch } = useSearches();
+  const { folders, loading, createSearch } = useSearches();
   const [query, setQuery] = useState("");
-  const [running, setRunning] = useState<{ query: string; results: Company[] } | null>(null);
+  const [running, setRunning] = useState<{ id: string; query: string } | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState("");
 
-  function startSearch(q: string) {
+  async function startSearch(q: string) {
     const text = q.trim();
-    if (!text) return;
-    const results = runSearch(text);
-    setRunning({ query: text, results });
+    if (!text || starting) return;
+    setError("");
+    setStarting(true);
+    try {
+      const { id } = await createSearch(text);
+      setRunning({ id, query: text });
+    } catch (e) {
+      setError((e as Error).message || "Could not start that search.");
+    } finally {
+      setStarting(false);
+    }
   }
 
   function handleComplete() {
     if (!running) return;
-    const id = addSearch(running.query);
+    const id = running.id;
     setRunning(null);
     setQuery("");
     router.push(`/dashboard/lists/${id}`);
+  }
+
+  function handleError(message: string) {
+    setRunning(null);
+    setError(message);
   }
 
   return (
@@ -70,12 +83,14 @@ export function SearchHome() {
           />
           <button
             type="submit"
-            disabled={!query.trim()}
+            disabled={!query.trim() || starting}
             className="shrink-0 rounded-xl bg-gh-navy px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-gh-navy-2 disabled:opacity-40"
           >
-            Search
+            {starting ? "Starting…" : "Search"}
           </button>
         </div>
+
+        {error && <p className="mt-2 text-center text-xs font-medium text-gh-critical">{error}</p>}
 
         <div className="mt-3 flex flex-wrap justify-center gap-2">
           {EXAMPLE_PROMPTS.map((prompt) => (
@@ -95,21 +110,27 @@ export function SearchHome() {
         <div className="mb-4 flex items-center justify-between">
           <h2 className="font-display text-sm font-semibold text-gh-ink">Your lists</h2>
           <p className="text-xs text-gh-ink-muted">
-            {folders.length} search{folders.length === 1 ? "" : "es"}
+            {loading ? "Loading…" : `${folders.length} search${folders.length === 1 ? "" : "es"}`}
           </p>
         </div>
+        {!loading && folders.length === 0 && (
+          <p className="rounded-xl border border-dashed border-gh-border bg-gh-surface p-8 text-center text-sm text-gh-ink-muted">
+            No searches yet — run your first one above.
+          </p>
+        )}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {folders.map((folder) => (
-            <FolderCard key={folder.id} folder={folder} companies={getCompanies(folder.id)} />
+            <FolderCard key={folder.id} folder={folder} />
           ))}
         </div>
       </div>
 
       {running && (
         <SearchProgress
+          searchId={running.id}
           query={running.query}
-          results={running.results}
           onComplete={handleComplete}
+          onError={handleError}
         />
       )}
     </div>

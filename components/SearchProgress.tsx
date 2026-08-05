@@ -1,120 +1,101 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Company } from "@/lib/mock-companies";
-import { estimateScannedPool } from "@/lib/search-engine";
+import { useSearches, SearchFolder } from "@/lib/searches-store";
 import { RadarIcon } from "./icons";
 
 interface Props {
+  searchId: string;
   query: string;
-  results: Company[];
-  onComplete: () => void;
+  onComplete: (folder: SearchFolder) => void;
+  onError: (message: string) => void;
 }
 
-type StepKey = "discover" | "fetch" | "classify" | "contacts" | "verify";
+type StepKey = "discover" | "fetch" | "classify" | "contacts";
 
 const STEP_LABELS: Record<StepKey, string> = {
   discover: "Discovering candidate companies",
   fetch: "Fetching leadership pages",
   classify: "Classifying signals",
-  contacts: "Finding next-gen contacts",
-  verify: "Verifying deliverability",
+  contacts: "Finding & verifying contacts",
 };
-const STEP_ORDER: StepKey[] = ["discover", "fetch", "classify", "contacts", "verify"];
+const STEP_ORDER: StepKey[] = ["discover", "fetch", "classify", "contacts"];
 
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+// Real pipeline runs each candidate through classify -> contact -> verify in
+// one pass (see lib/pipeline/orchestrator.ts), so "contacts" naturally trails
+// "classify" per-company rather than waiting for it to fully finish first —
+// this derives a reasonable current-step-for-display from the same
+// cumulative counters the backend writes onto the `searches` row.
+function deriveStep(folder: SearchFolder): { active: StepKey; done: Set<StepKey> } {
+  const done = new Set<StepKey>();
+  const classified = folder.qualifiedCount + folder.verifyCount + folder.rejectedCount;
+
+  if (folder.candidatesFound === 0) return { active: "discover", done };
+  done.add("discover");
+
+  if (folder.pagesFetched < folder.companiesScanned) return { active: "fetch", done };
+  done.add("fetch");
+
+  if (classified < folder.companiesScanned) return { active: "classify", done };
+  done.add("classify");
+
+  return { active: "contacts", done };
 }
 
-export function SearchProgress({ query, results, onComplete }: Props) {
-  const [activeStep, setActiveStep] = useState<StepKey>("discover");
-  const [done, setDone] = useState<Set<StepKey>>(new Set());
-  const [counts, setCounts] = useState({
-    scanned: 0,
-    fetched: 0,
-    qualified: 0,
-    verify: 0,
-    rejected: 0,
-    contactsFound: 0,
-    contactsValid: 0,
-  });
-  const startedRef = useRef(false);
-
-  const scannedTarget = estimateScannedPool(results.length);
-  const qualifiedTarget = results.filter((c) => c.status === "qualified" && c.confidence !== "verify").length;
-  const verifyTarget = results.filter((c) => c.status === "qualified" && c.confidence === "verify").length;
-  const rejectedTarget = results.filter((c) => c.status === "rejected").length;
-  const contactsFoundTarget = results.filter((c) => c.contact?.findStatus === "found").length;
-  const contactsValidTarget = results.filter((c) => c.contact?.verificationStatus === "valid").length;
+export function SearchProgress({ searchId, query, onComplete, onError }: Props) {
+  const { fetchFolder } = useSearches();
+  const [folder, setFolder] = useState<SearchFolder | null>(null);
+  const stopRef = useRef(false);
 
   useEffect(() => {
-    if (startedRef.current) return;
-    startedRef.current = true;
+    stopRef.current = false;
 
-    async function tickTo(
-      key: keyof typeof counts,
-      target: number,
-      durationMs: number
-    ) {
-      if (target === 0) {
-        await sleep(durationMs * 0.4);
-        return;
+    async function poll() {
+      while (!stopRef.current) {
+        const f = await fetchFolder(searchId);
+        if (!f) {
+          onError("Search vanished — try again.");
+          return;
+        }
+        setFolder(f);
+
+        if (f.status === "failed") {
+          onError(f.errorMessage ?? "Search failed for an unknown reason.");
+          return;
+        }
+        if (f.status === "complete") {
+          onComplete(f);
+          return;
+        }
+
+        await new Promise((r) => setTimeout(r, 900));
       }
-      const steps = Math.min(target, 14);
-      const stepDelay = durationMs / steps;
-      for (let i = 1; i <= steps; i++) {
-        await sleep(stepDelay);
-        const value = Math.round((target * i) / steps);
-        setCounts((prev) => ({ ...prev, [key]: value }));
-      }
-      setCounts((prev) => ({ ...prev, [key]: target }));
     }
 
-    async function run() {
-      setActiveStep("discover");
-      await tickTo("scanned", scannedTarget, 900);
-      setDone((d) => new Set(d).add("discover"));
-
-      setActiveStep("fetch");
-      await tickTo("fetched", scannedTarget, 900);
-      setDone((d) => new Set(d).add("fetch"));
-
-      setActiveStep("classify");
-      await Promise.all([
-        tickTo("qualified", qualifiedTarget, 1100),
-        tickTo("verify", verifyTarget, 1100),
-        tickTo("rejected", rejectedTarget, 1100),
-      ]);
-      setDone((d) => new Set(d).add("classify"));
-
-      setActiveStep("contacts");
-      await tickTo("contactsFound", contactsFoundTarget, 800);
-      setDone((d) => new Set(d).add("contacts"));
-
-      setActiveStep("verify");
-      await tickTo("contactsValid", contactsValidTarget, 700);
-      setDone((d) => new Set(d).add("verify"));
-
-      await sleep(400);
-      onComplete();
-    }
-
-    run();
+    poll();
+    return () => {
+      stopRef.current = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [searchId]);
+
+  if (!folder) {
+    return null;
+  }
+
+  const { active, done } = deriveStep(folder);
 
   function stepDetail(key: StepKey): string {
+    if (!folder) return "";
     switch (key) {
       case "discover":
-        return `${counts.scanned} candidates found`;
+        return `${folder.candidatesFound} candidates found`;
       case "fetch":
-        return `${counts.fetched}/${scannedTarget} pages fetched`;
+        return `${folder.pagesFetched}/${folder.companiesScanned} pages fetched`;
       case "classify":
-        return `${counts.qualified} qualified · ${counts.verify} verify · ${counts.rejected} rejected`;
+        return `${folder.qualifiedCount} qualified · ${folder.verifyCount} verify · ${folder.rejectedCount} rejected`;
       case "contacts":
-        return `${counts.contactsFound}/${qualifiedTarget + verifyTarget} found`;
-      case "verify":
-        return `${counts.contactsValid}/${contactsFoundTarget || counts.contactsFound} valid`;
+        return `${folder.contactsFound} found · ${folder.contactsVerified} verified`;
     }
   }
 
@@ -147,7 +128,7 @@ export function SearchProgress({ query, results, onComplete }: Props) {
         <div className="mt-6 space-y-1">
           {STEP_ORDER.map((key) => {
             const isDone = done.has(key);
-            const isActive = activeStep === key && !isDone;
+            const isActive = active === key && !isDone;
             return (
               <div
                 key={key}
