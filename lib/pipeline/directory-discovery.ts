@@ -28,16 +28,22 @@ import { createServiceRoleClient } from "../supabase/server";
 const CLAUDE_ONLINE_MODEL = "anthropic/claude-sonnet-5:online";
 const CLAUDE_MODEL = "anthropic/claude-sonnet-5"; // no :online — reading text already in hand, no search needed
 
+// Angles cover each vertical's whole trade family — the green trades include
+// tree care and irrigation, which have their own trade associations (TCIA,
+// Irrigation Association) that NALP's directory won't list. See
+// openrouter.ts's CLASSIFY_SYSTEM for why the umbrella is this wide.
 const DIRECTORY_ANGLES: Record<Industry, string[]> = {
   landscaping: [
     "the official state contractor/landscaper licensing board's public license-holder lookup",
     "NALP (National Association of Landscape Professionals) local chapter or member directory",
-    "a local Chamber of Commerce or BBB-accredited-business directory listing for landscaping companies",
+    "TCIA (Tree Care Industry Association) or Irrigation Association member directory, or a state arborist/irrigation association member list",
+    "a local Chamber of Commerce or BBB-accredited-business directory listing for landscaping, tree service, or irrigation companies",
   ],
   home_builder: [
     "the official state contractor licensing board's public license-holder lookup for home builders/general contractors",
     "NAHB (National Association of Home Builders) local Home Builders Association member directory",
-    "a local Chamber of Commerce or BBB-accredited-business directory listing for custom home builders",
+    "NARI (National Association of the Remodeling Industry) local chapter member directory",
+    "a local Chamber of Commerce or BBB-accredited-business directory listing for custom home builders or design-build remodelers",
   ],
 };
 

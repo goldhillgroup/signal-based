@@ -85,7 +85,7 @@ export async function POST(req: Request) {
 
   // Runs after this response is sent, within the extended function lifetime
   // (see maxDuration above) — the client polls the `searches` row for progress.
-  after(() => runSearchPipeline(search.id, industry, [state], target, mode));
+  after(() => runSearchPipeline(search.id, industry, [state], target, mode, refinement || null));
 
   return NextResponse.json({ id: search.id, label: search.label });
 }

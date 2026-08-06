@@ -69,7 +69,13 @@ export async function runSearchPipeline(
   industry: Industry,
   states: string[],
   targetSignals: number,
-  mode: SearchMode = "signal"
+  mode: SearchMode = "signal",
+  // Optional free-text focus from the search form. Passed to classification
+  // as a non-overriding hint only — see classifySignal in openrouter.ts. It
+  // deliberately does NOT touch discovery: letting free text steer which
+  // companies get found is exactly how a search drifts off the agreed
+  // vertical, which the structured vertical+state inputs exist to prevent.
+  refinement?: string | null
 ) {
   const supabase = createServiceRoleClient();
 
@@ -178,7 +184,7 @@ export async function runSearchPipeline(
 
         let classification;
         try {
-          classification = await classifySignal(candidate.title, page.url, page.text);
+          classification = await classifySignal(candidate.title, page.url, page.text, refinement);
         } catch (e) {
           await supabase.from("companies").insert({
             ...base,

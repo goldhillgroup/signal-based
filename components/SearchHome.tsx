@@ -162,6 +162,15 @@ export function SearchHome() {
           <label htmlFor="refinement" className="mb-1.5 block text-xs font-semibold text-gh-ink-secondary">
             Signal focus <span className="font-normal text-gh-ink-muted">(optional)</span>
           </label>
+          {/* Deliberately does NOT steer discovery — only nudges what
+              classification pays attention to within the vertical + state
+              above. Letting free text pick which companies get found is how a
+              search drifts off the agreed vertical; the two required
+              structured inputs exist to make that impossible. */}
+          <p className="mb-1.5 text-[11px] leading-relaxed text-gh-ink-muted">
+            A hint for what to look for within {INDUSTRY_META[industry ?? "landscaping"].label.toLowerCase()} in your chosen
+            state — it never changes which companies get searched.
+          </p>
           <input
             id="refinement"
             value={refinement}

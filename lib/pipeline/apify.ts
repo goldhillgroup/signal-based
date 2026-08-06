@@ -60,9 +60,27 @@ async function assertUnderBudget(token: string) {
 // verticals in the signed scope (family-owned landscaping + home builders).
 // Real-world terms a business would actually list itself under on its
 // Google Business Profile, not generic marketing phrasing.
+// Covers each vertical's whole trade family, not one narrow category — the
+// client's own reference list counted tree service and irrigation companies
+// as in-scope landscaping leads (see openrouter.ts's CLASSIFY_SYSTEM for the
+// full reasoning). Maps categorizes fairly strictly, so a "landscaping
+// company" search alone genuinely does NOT surface tree services; they need
+// their own terms. Cost stays flat as terms are added — see the per-round
+// place budget in discoverViaMaps rather than a fixed per-term count.
 const VERTICAL_SEARCH_TERMS: Record<Industry, string[]> = {
-  landscaping: ["landscaping company", "lawn care company", "landscape design company"],
-  home_builder: ["custom home builder", "general contractor", "home construction company"],
+  landscaping: [
+    "landscaping company",
+    "lawn care company",
+    "landscape design company",
+    "tree service company",
+    "irrigation contractor",
+  ],
+  home_builder: [
+    "custom home builder",
+    "general contractor",
+    "home construction company",
+    "design build remodeler",
+  ],
 };
 
 function searchTermsFor(industry: Industry | null): string[] {
@@ -157,7 +175,13 @@ async function discoverViaMaps(
 ): Promise<Candidate[]> {
   const searchTerms = searchTermsFor(industry);
   const locationQuery = states.length > 0 ? `${stateNameFor(states[0])}, USA` : "United States";
-  const perTerm = Math.min(20 * round, 120);
+  // Budget places per ROUND, then split across however many terms there are —
+  // rather than a fixed count per term, which silently multiplied Apify cost
+  // every time a term was added (this actor bills per place scraped, and the
+  // round's `limit` cut happens afterward, so extra places are paid for
+  // whether or not they're used). Widening trade coverage is now free.
+  const roundPlaceBudget = Math.min(60 * round, 360);
+  const perTerm = Math.max(10, Math.floor(roundPlaceBudget / searchTerms.length));
   const timeoutSecs = Math.min(280, 60 + perTerm * searchTerms.length * 1.5);
 
   const items = (await runActorSync(
@@ -181,16 +205,19 @@ async function discoverViaMaps(
 // channel isn't category coverage (Maps already has that), it's precision:
 // surfacing companies whose own site or local press already uses the
 // language of a real handoff, which a generic category listing can't do.
+// Adjacent trades folded in via OR rather than as extra queries — this actor
+// bills per SERP page, so covering tree service / irrigation / remodelers
+// this way widens the trade family without increasing the query count.
 const SUCCESSION_QUERY_TERMS: Record<Industry, string[]> = {
   landscaping: [
-    '"second generation" family owned landscaping company',
-    '"family owned" landscaping company "joined the business"',
-    'father son landscaping company "family business"',
+    '"second generation" family owned landscaping OR "tree service" company',
+    '"family owned" landscaping OR irrigation company "joined the business"',
+    'father son landscaping OR "tree service" company "family business"',
   ],
   home_builder: [
-    '"second generation" family owned home builder',
-    '"family owned" custom home builder "joined the business"',
-    'father son home builder "family business"',
+    '"second generation" family owned home builder OR remodeler',
+    '"family owned" custom home builder OR "general contractor" "joined the business"',
+    'father son home builder OR remodeler "family business"',
   ],
 };
 
