@@ -1,5 +1,11 @@
 // Full US state list — used by the SearchHome geography dropdown and by
 // parse-query.ts's free-text fallback. Single source of truth for both.
+// The four states named in the method Jonathan describes ('California, New
+// York, Texas, and Florida') and covered by the delivered proof. Surfaced
+// first in the picker as the agreed baseline — every other state stays
+// selectable, since the point is a default, not a restriction.
+export const AGREED_STATES = ["CA", "NY", "TX", "FL"];
+
 export const US_STATES: { code: string; name: string }[] = [
   { code: "AL", name: "Alabama" },
   { code: "AK", name: "Alaska" },

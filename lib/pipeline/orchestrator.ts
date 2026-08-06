@@ -75,7 +75,13 @@ export async function runSearchPipeline(
   // deliberately does NOT touch discovery: letting free text steer which
   // companies get found is exactly how a search drifts off the agreed
   // vertical, which the structured vertical+state inputs exist to prevent.
-  refinement?: string | null
+  refinement?: string | null,
+  // Step 01's revenue band, per-search. Both null = no limit. Applied as a
+  // SOFT gate: a company only gets cut when the classifier's own size read
+  // actively contradicts the chosen band — never on "unknown", since that
+  // estimate comes from soft textual proxies (crew size, years in business),
+  // not real financials, and cutting on a guess discards real companies.
+  band?: { min: number | null; max: number | null }
 ) {
   const supabase = createServiceRoleClient();
 
@@ -259,10 +265,25 @@ export async function runSearchPipeline(
         // see companies outside $3-15M in results until Jonathan confirms the
         // band he actually wants. Re-enable by restoring the two branches
         // below (git history: this commit) once that's settled.
+        // Soft band check — only fires when a band is actually set AND the
+        // classifier's size read directly contradicts it. sizeFit "unknown"
+        // (common, and fine) never cuts.
+        const bandSet = !!band && (band.min !== null || band.max !== null);
+        const belowBand =
+          bandSet && band!.min !== null && classification.sizeFit === "too_small";
+        const aboveBand =
+          bandSet && band!.max !== null && classification.sizeFit === "too_big";
+
         if (finalQualifies && !classification.stillFamilyOwned) {
           finalQualifies = false;
           rejectionReason =
             "No longer family-owned — acquired/consolidated, current leadership shows no family members.";
+        } else if (finalQualifies && belowBand) {
+          finalQualifies = false;
+          rejectionReason = `Too small — reads below the $${band!.min}M lower bound set for this search.`;
+        } else if (finalQualifies && aboveBand) {
+          finalQualifies = false;
+          rejectionReason = `Too big — reads above the $${band!.max}M upper bound set for this search.`;
         } else if (finalQualifies && hasSignal) {
           // Only worth running the disprove pass when there's an actual
           // signal claim to check — a filter/hybrid company accepted purely
@@ -305,6 +326,7 @@ export async function runSearchPipeline(
             confidence: finalQualifies && finalHasSignal ? finalConfidence : null,
             has_signal: finalQualifies ? finalHasSignal : null,
             discovery_channel: candidate.channel ?? null,
+            operating_model: classification.operatingModel ?? null,
             rejection_reason: finalQualifies ? null : rejectionReason,
             revenue_band: classification.revenueEstimate,
             founder_name: classification.founderName,

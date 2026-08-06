@@ -27,6 +27,8 @@ export async function POST(req: Request) {
     refinement?: string;
     targetSignals?: number;
     mode?: string;
+    revenueMinMusd?: number | null;
+    revenueMaxMusd?: number | null;
   };
 
   const industry = body.industry as Industry;
@@ -71,6 +73,10 @@ export async function POST(req: Request) {
       status: "running",
       mode,
       target_signals: target,
+      // Step 01's band. Both null = "no limit" (an explicit choice in the UI),
+      // so `?? null` rather than a default here — the UI owns the baseline.
+      revenue_min_musd: body.revenueMinMusd ?? null,
+      revenue_max_musd: body.revenueMaxMusd ?? null,
       created_by: user.id,
     })
     .select("id, label")
@@ -85,7 +91,12 @@ export async function POST(req: Request) {
 
   // Runs after this response is sent, within the extended function lifetime
   // (see maxDuration above) — the client polls the `searches` row for progress.
-  after(() => runSearchPipeline(search.id, industry, [state], target, mode, refinement || null));
+  after(() =>
+    runSearchPipeline(search.id, industry, [state], target, mode, refinement || null, {
+      min: body.revenueMinMusd ?? null,
+      max: body.revenueMaxMusd ?? null,
+    })
+  );
 
   return NextResponse.json({ id: search.id, label: search.label });
 }

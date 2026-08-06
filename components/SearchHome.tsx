@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSearches } from "@/lib/searches-store";
-import { US_STATES } from "@/lib/pipeline/us-states";
+import { US_STATES, AGREED_STATES } from "@/lib/pipeline/us-states";
 import { INDUSTRY_META } from "@/lib/signal-meta";
 import type { Industry, SearchMode } from "@/lib/supabase/types";
 import { FolderCard } from "./FolderCard";
@@ -36,6 +36,17 @@ const MODE_META: Record<SearchMode, { label: string; description: string; target
 };
 const MODE_ORDER: SearchMode[] = ["hybrid", "signal", "filter"];
 
+// Step 01 of the stated method names a $3-15M band. Kept as the DEFAULT
+// rather than a hard rule — "no limit" is one click away, and the estimate
+// itself comes from soft textual proxies (crew size, years in business), not
+// real financials, so it should never feel like a locked constraint.
+const BAND_OPTIONS: { label: string; min: number | null; max: number | null }[] = [
+  { label: "$3-15M (baseline)", min: 3, max: 15 },
+  { label: "Under $3M", min: null, max: 3 },
+  { label: "$15M+", min: 15, max: null },
+  { label: "No limit", min: null, max: null },
+];
+
 export function SearchHome() {
   const router = useRouter();
   const { folders, loading, createSearch } = useSearches();
@@ -44,6 +55,7 @@ export function SearchHome() {
   const [mode, setMode] = useState<SearchMode>("hybrid");
   const [refinement, setRefinement] = useState("");
   const [target, setTarget] = useState(20);
+  const [bandIdx, setBandIdx] = useState(0); // defaults to the $3-15M baseline
   const [running, setRunning] = useState<{ id: string; label: string } | null>(null);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState("");
@@ -55,7 +67,16 @@ export function SearchHome() {
     setError("");
     setStarting(true);
     try {
-      const { id, label } = await createSearch({ industry, state, refinement, targetSignals: target, mode });
+      const band = BAND_OPTIONS[bandIdx];
+      const { id, label } = await createSearch({
+        industry,
+        state,
+        refinement,
+        targetSignals: target,
+        mode,
+        revenueMinMusd: band.min,
+        revenueMaxMusd: band.max,
+      });
       setRunning({ id, label });
     } catch (e) {
       setError((e as Error).message || "Could not start that search.");
@@ -149,11 +170,20 @@ export function SearchHome() {
               className="w-full rounded-lg border border-gh-border bg-gh-surface-sunken px-3 py-2.5 text-sm text-gh-ink focus:border-gh-sky focus:outline-none focus:ring-2 focus:ring-gh-sky/20"
             >
               <option value="">Choose a state…</option>
-              {US_STATES.map((s) => (
-                <option key={s.code} value={s.code}>
-                  {s.name}
-                </option>
-              ))}
+              <optgroup label="Agreed states">
+                {US_STATES.filter((s) => AGREED_STATES.includes(s.code)).map((s) => (
+                  <option key={s.code} value={s.code}>
+                    {s.name}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Other states">
+                {US_STATES.filter((s) => !AGREED_STATES.includes(s.code)).map((s) => (
+                  <option key={s.code} value={s.code}>
+                    {s.name}
+                  </option>
+                ))}
+              </optgroup>
             </select>
           </div>
         </div>
@@ -194,6 +224,24 @@ export function SearchHome() {
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-gh-ink-muted">Revenue band:</span>
+          {BAND_OPTIONS.map((b, i) => (
+            <button
+              key={b.label}
+              type="button"
+              onClick={() => setBandIdx(i)}
+              className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                bandIdx === i
+                  ? "bg-gh-navy text-white"
+                  : "border border-gh-border bg-gh-surface text-gh-ink-secondary hover:border-gh-sky/40"
+              }`}
+            >
+              {b.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium text-gh-ink-muted">{MODE_META[mode].targetLabel}</span>
           {TARGET_OPTIONS.map((n) => (
             <button

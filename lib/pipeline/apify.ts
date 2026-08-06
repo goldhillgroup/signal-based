@@ -377,9 +377,32 @@ type RawFetchedItem = {
   metadata?: { openGraph?: Array<{ property: string; content: string }> };
 };
 
-// One domain's 5 URL guesses, in a single small actor call with a fixed,
-// predictable timeout. Failure here (that domain's site hangs/times out)
-// only costs that one domain — never the batch.
+// Follow ONE hop from the seeded pages to team/leadership pages that live at
+// paths flat slug-guessing can never reach. This closes a real, measured
+// miss: a research pass qualified Russell Landscape Group off
+// `/about-us/our-team/` (founder + next-gen both named there), while this
+// pipeline had REJECTED the same company as "no page could be fetched" —
+// its evidence page is nested one level below /about-us, so no flat guess
+// list would ever find it. Since "two generations named on the company's own
+// team page" is the single criterion the whole product turns on, not
+// reaching team pages was the most expensive gap in the fetch step.
+const TEAM_PAGE_GLOBS = [
+  "**/team**",
+  "**/our-team**",
+  "**/meet**",
+  "**/leadership**",
+  "**/staff**",
+  "**/about/**",
+  "**/about-us/**",
+  "**/who-we-are**",
+  "**/our-story**",
+  "**/our-family**",
+];
+
+// One domain: 5 seeded URL guesses plus a single hop to any team-ish page
+// they link to, in one small actor call with a fixed, predictable timeout.
+// Failure here (that domain's site hangs/times out) only costs that one
+// domain — never the batch.
 async function fetchOneDomain(domain: string): Promise<RawFetchedItem[]> {
   const startUrls = ABOUT_SLUGS.map((slug) => ({ url: `https://${domain}/${slug}` }));
   return (await runActorSync(
@@ -387,14 +410,16 @@ async function fetchOneDomain(domain: string): Promise<RawFetchedItem[]> {
     {
       startUrls,
       crawlerType: "cheerio",
-      maxCrawlDepth: 0,
-      maxCrawlPages: startUrls.length,
+      // depth 1 + globs: follow links, but ONLY to team/leadership-shaped
+      // URLs, so this never turns into a general site crawl. maxCrawlPages
+      // is the hard ceiling on what that hop can cost.
+      maxCrawlDepth: 1,
+      includeUrlGlobs: TEAM_PAGE_GLOBS.map((glob) => ({ glob: `https://${domain}${glob}` })),
+      maxCrawlPages: startUrls.length + 5,
       maxRequestRetries: 1,
       saveMarkdown: false,
     },
-    60 // 5 URLs, cheerio (no JS rendering) — this is generous on its own; the
-    // old design's problem was never "5 URLs need >60s," it was bundling 15
-    // domains' worth of URLs behind ONE shared timeout.
+    90 // raised from 60 — one hop means up to 5 more pages per domain.
   )) as RawFetchedItem[];
 }
 
@@ -423,6 +448,120 @@ async function withConcurrency<T>(items: T[], limit: number, run: (item: T) => P
 // slow domain only ever loses itself.
 const FETCH_CONCURRENCY = 6;
 
+// ── Free path: plain fetch + regex extraction, no Apify, no cost ──────────
+// The fetch step touches EVERY discovered company, so it's the single
+// largest Apify line item — bigger than discovery now that the directory
+// channel carries most of the candidates. Most small-trade-business sites
+// are plain server-rendered HTML that a bare fetch() handles fine, so the
+// paid crawler is only genuinely needed for the JS-rendered / bot-blocking
+// minority. Try free first, fall back to Apify per-domain.
+const FREE_FETCH_TIMEOUT_MS = 8000;
+const FREE_FETCH_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36";
+
+function htmlToText(html: string): string {
+  return html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function ogSiteNameFrom(html: string): string | null {
+  const m =
+    html.match(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i) ??
+    html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:site_name["']/i);
+  return m?.[1] ?? null;
+}
+
+async function freeFetchOne(
+  url: string
+): Promise<{ page: FetchedPage; teamLinks: string[] } | null> {
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": FREE_FETCH_UA, Accept: "text/html,application/xhtml+xml" },
+      redirect: "follow",
+      signal: AbortSignal.timeout(FREE_FETCH_TIMEOUT_MS),
+    });
+    if (!res.ok) return null;
+    const ct = res.headers.get("content-type") ?? "";
+    if (!ct.includes("html")) return null;
+    const html = await res.text();
+    const text = htmlToText(html);
+    // A JS-rendered shell yields almost no text — treat that as a miss so the
+    // Apify fallback (which renders) gets its turn, rather than passing an
+    // empty page to an expensive classify call.
+    if (text.length < 400) return null;
+    const host = hostnameOf(res.url) ?? hostnameOf(url);
+    if (!host) return null;
+    return {
+      page: { domain: host, url: res.url || url, text, siteName: ogSiteNameFrom(html) },
+      teamLinks: extractTeamLinks(html, res.url || url),
+    };
+  } catch {
+    return null;
+  }
+}
+
+// The free path has to do its own one-hop link following, or it would silently
+// undo the nested-team-page fix above: a domain whose /about fetches fine for
+// free would return that page and never reach /about-us/our-team/, which is
+// exactly the evidence page the whole product depends on.
+function extractTeamLinks(html: string, baseUrl: string): string[] {
+  const out = new Set<string>();
+  for (const m of html.matchAll(/<a\b[^>]*href=["']([^"'#]+)["']/gi)) {
+    const href = m[1];
+    if (!TEAM_URL_RE.test(href)) continue;
+    try {
+      const abs = new URL(href, baseUrl);
+      if (hostnameOf(abs.href) !== hostnameOf(baseUrl)) continue; // same site only
+      out.add(abs.href);
+    } catch {
+      // malformed href — skip
+    }
+  }
+  return Array.from(out).slice(0, 3);
+}
+
+// Tries the seeded slugs for free, then one free hop to any team pages they
+// link to. Returns null when the free path produced nothing usable, so the
+// caller knows to fall back to Apify.
+async function freeFetchDomain(domain: string): Promise<FetchedPage[] | null> {
+  const seeded = await Promise.all(
+    ABOUT_SLUGS.map((slug) => freeFetchOne(`https://${domain}/${slug}`))
+  );
+  const hits = seeded.filter((r): r is { page: FetchedPage; teamLinks: string[] } => r !== null);
+  if (hits.length === 0) return null;
+
+  // Dedupe by FINAL url — different seeded slugs routinely redirect to the
+  // same page (/about -> /about-us/), and a duplicate costs a wasted classify
+  // token budget for no new information.
+  const pages: FetchedPage[] = [];
+  const seenUrls = new Set<string>();
+  for (const h of hits) {
+    if (seenUrls.has(h.page.url)) continue;
+    seenUrls.add(h.page.url);
+    pages.push(h.page);
+  }
+  const teamUrls = Array.from(new Set(hits.flatMap((h) => h.teamLinks))).filter(
+    (u) => !seenUrls.has(u)
+  );
+
+  const followed = await Promise.all(teamUrls.slice(0, 3).map((u) => freeFetchOne(u)));
+  followed.forEach((r) => {
+    if (r) pages.push(r.page);
+  });
+  return pages;
+}
+
 export async function fetchCompanyPages(domains: string[]): Promise<Map<string, FetchedPage[]>> {
   // Fail loud on real misconfiguration (e.g. missing token) before the
   // per-domain try/catch below has a chance to swallow it as "this domain's
@@ -433,6 +572,13 @@ export async function fetchCompanyPages(domains: string[]): Promise<Map<string, 
   const byDomain = new Map<string, FetchedPage[]>();
 
   await withConcurrency(domains, FETCH_CONCURRENCY, async (domain) => {
+    // Free path first — costs nothing and handles the plain-HTML majority.
+    const free = await freeFetchDomain(domain);
+    if (free) {
+      byDomain.set(domain, free);
+      return;
+    }
+
     let items: RawFetchedItem[];
     try {
       items = await fetchOneDomain(domain);
@@ -461,19 +607,36 @@ export async function fetchCompanyPages(domains: string[]): Promise<Map<string, 
   return byDomain;
 }
 
-// Picks the best fetched page for classification: prefer an about/team/
-// leadership-flavored URL, but only among pages with substantial content —
-// a thin/near-empty page matching the URL pattern must never beat a
-// content-rich homepage just because its path looks more promising.
+// Picks the best fetched page for classification, among pages with
+// substantial content — a thin/near-empty page matching a URL pattern must
+// never beat a content-rich homepage just because its path looks more
+// promising.
+//
+// TIERED, not one flat regex: a TEAM/leadership page outranks a generic
+// About page, because the whole product turns on "two generations named on
+// the company's own team page" — that's where a founder and a next-gen
+// family member actually appear side by side, while /about is usually
+// company history prose. The old flat regex treated /about and
+// /about-us/our-team/ as equally good and returned whichever came first in
+// fetch order, so a real team page could lose to a generic one.
 const MIN_SUBSTANTIAL_LENGTH = 300;
+const TEAM_URL_RE = /team|leadership|staff|meet-|our-people|our-family/i;
+const ABOUT_URL_RE = /about|who-we-are|our-story|history/i;
 
 export function pickBestPage(pages: FetchedPage[]): FetchedPage | null {
   if (pages.length === 0) return null;
   const substantial = pages.filter((p) => p.text.length >= MIN_SUBSTANTIAL_LENGTH);
   const pool = substantial.length > 0 ? substantial : pages;
 
-  const keyworded = pool.find((p) => /about|team|leadership|who-we-are|our-story/i.test(p.url));
-  if (keyworded) return keyworded;
+  // Within a tier, prefer the longest page — more text, more chance both
+  // generations are actually on it.
+  const byLength = (a: FetchedPage, b: FetchedPage) => b.text.length - a.text.length;
 
-  return [...pool].sort((a, b) => b.text.length - a.text.length)[0];
+  const team = pool.filter((p) => TEAM_URL_RE.test(p.url)).sort(byLength);
+  if (team.length > 0) return team[0];
+
+  const about = pool.filter((p) => ABOUT_URL_RE.test(p.url)).sort(byLength);
+  if (about.length > 0) return about[0];
+
+  return [...pool].sort(byLength)[0];
 }

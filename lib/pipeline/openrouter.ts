@@ -76,6 +76,10 @@ export interface ClassificationResult {
   quote: string | null;
   revenueEstimate: string | null; // e.g. "$5-10M (est.)" — best-effort, from textual proxies
   sizeFit: "too_small" | "in_band" | "too_big" | "unknown";
+  // Step 04 of the stated method ("operating model, then reach") — his
+  // delivered proof shows a "Crews:" line on every card. Captured for every
+  // company; never a rejection gate.
+  operatingModel: "own_crews" | "subcontract" | "mixed" | "unknown";
   stillFamilyOwned: boolean; // false if acquired/consolidated even though history says "family owned"
   rejectionReason: string | null;
 }
@@ -128,6 +132,8 @@ TWO ADDITIONAL GATES — check these even when the succession signal itself is r
 
 2. "sizeFit": estimate where the company likely falls versus a ${TARGET_REVENUE_BAND} revenue target, using whatever textual proxies the page gives you — years in business, team/crew size, fleet size, service area breadth, number of locations, scale of projects described, review count if mentioned. Return "too_small" (a one or two-person operation, clearly sub-scale), "too_big" (an obvious regional/national-scale operator, multiple states, a large corporate-feeling org chart), "in_band" (plausibly fits), or "unknown" if the page gives no real signal either way — "unknown" is common and fine, do not force a guess; it does not disqualify on its own. Put your best-effort estimate in "revenueEstimate" as a short string like "$5-10M (est.)", or null if truly unknown.
 
+3. "operatingModel": does the company run its OWN crews/employees, SUBCONTRACT the work out, or both? Read for signals like "our crews", "our team of technicians", "our employees" (own_crews) vs. "our network of trusted trade partners", "our subcontractors" (subcontract), vs. explicit mentions of both (mixed). Return "unknown" if the page doesn't say — that is common and completely fine. This is recorded for context, never used to qualify or disqualify.
+
 A company only fails on gate 1 or 2 when there's a real, specific reason in the text — not by default, and not from missing information alone (missing info -> "unknown"/null, not an automatic cut).
 
 Respond with ONLY a JSON object (no markdown fences, no prose) matching this shape — note companyName and founderName/founderTitle come first, matching STEP 1/STEP 2 above; fill them in before you reason about the rest:
@@ -144,6 +150,7 @@ Respond with ONLY a JSON object (no markdown fences, no prose) matching this sha
   "quote": string | null,
   "revenueEstimate": string | null,
   "sizeFit": "too_small" | "in_band" | "too_big" | "unknown",
+  "operatingModel": "own_crews" | "subcontract" | "mixed" | "unknown",
   "stillFamilyOwned": boolean,
   "rejectionReason": string | null
 }

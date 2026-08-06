@@ -34,6 +34,9 @@ export type EnrichmentStatus = "idle" | "running" | "complete" | "failed";
 //   signal-bearing-first — everyone who fits the ICP, with the real
 //   triggers surfaced at the top.
 export type SearchMode = "signal" | "filter" | "hybrid";
+// Step 04 of the stated method — whether the company runs its own crews or
+// subcontracts. Recorded for context, never a rejection gate.
+export type OperatingModel = "own_crews" | "subcontract" | "mixed" | "unknown";
 
 export interface Database {
   public: {
@@ -59,6 +62,7 @@ export interface Database {
           source_url: string | null;
           has_signal: boolean | null;
           discovery_channel: string | null;
+          operating_model: OperatingModel | null;
           first_seen_at: string;
           last_crawled_at: string;
           created_at: string;
@@ -138,6 +142,8 @@ export interface Database {
           enrichment_status: EnrichmentStatus;
           enrichment_error: string | null;
           target_signals: number;
+          revenue_min_musd: number | null;
+          revenue_max_musd: number | null;
           candidates_pool_exhausted: boolean;
           candidates_found: number;
           pages_fetched: number;

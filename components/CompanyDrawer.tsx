@@ -15,6 +15,15 @@ import { formatRelativeDate } from "@/lib/stats";
 
 // Which discovery channel surfaced this company — see lib/pipeline/apify.ts's
 // discoverCandidates() and lib/pipeline/directory-discovery.ts.
+// Step 04 of the stated method — his delivered proof shows this as a
+// "Crews:" line on every card.
+const OPERATING_MODEL_LABELS: Record<string, string> = {
+  own_crews: "Direct crews",
+  subcontract: "Subcontracts",
+  mixed: "Mixed (crews + subs)",
+  unknown: "Not stated on site",
+};
+
 const CHANNEL_LABELS: Record<string, string> = {
   directory: "Industry directory / licensing board",
   web_search: "Web search (succession phrasing)",
@@ -173,6 +182,12 @@ export function CompanyDrawer({
                         {company.domain}
                       </span>
                     </div>
+                    {company.operatingModel && (
+                      <Row
+                        k="Crews"
+                        v={OPERATING_MODEL_LABELS[company.operatingModel] ?? company.operatingModel}
+                      />
+                    )}
                     {company.discoveryChannel && (
                       <Row k="Found via" v={CHANNEL_LABELS[company.discoveryChannel] ?? company.discoveryChannel} />
                     )}

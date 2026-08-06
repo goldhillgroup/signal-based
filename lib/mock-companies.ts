@@ -45,6 +45,7 @@ export interface Company {
   // result (no signal was required); in 'hybrid' it's what results rank on.
   hasSignal: boolean | null;
   discoveryChannel: string | null;
+  operatingModel?: string | null;
   firstSeenAt: string;
   lastCrawledAt: string;
   evidence: Evidence | null;

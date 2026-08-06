@@ -100,6 +100,7 @@ interface CompanyJoinRow {
   source_url: string | null;
   has_signal: boolean | null;
   discovery_channel: string | null;
+  operating_model: string | null;
   first_seen_at: string;
   last_crawled_at: string;
   signal_evidence: Array<{
@@ -140,6 +141,7 @@ function mapCompanyRow(row: CompanyJoinRow): Company {
     sourceUrl: row.source_url,
     hasSignal: row.has_signal,
     discoveryChannel: row.discovery_channel,
+    operatingModel: row.operating_model,
     firstSeenAt: row.first_seen_at,
     lastCrawledAt: row.last_crawled_at,
     evidence: evidence
@@ -181,6 +183,8 @@ interface SearchesContextValue {
     state: string;
     refinement?: string;
     targetSignals: number;
+    revenueMinMusd?: number | null;
+    revenueMaxMusd?: number | null;
     mode?: SearchMode;
   }) => Promise<{ id: string; label: string }>;
   startEnrichment: (searchId: string) => Promise<void>;
@@ -259,6 +263,8 @@ export function SearchesProvider({ children }: { children: ReactNode }) {
       state: string;
       refinement?: string;
       targetSignals: number;
+      revenueMinMusd?: number | null;
+      revenueMaxMusd?: number | null;
       mode?: SearchMode;
     }) => {
       const res = await fetch("/api/search", {
