@@ -2,22 +2,54 @@ import type { Industry } from "../supabase/types";
 import { stateNameFor } from "./us-states";
 import { resolveSetting } from "../settings";
 
-// Prefers APIFY_TOKEN_3, then _2, then the primary APIFY_TOKEN — keeps
+// Prefers APIFY_TOKEN_4, then _3, _2, then the primary APIFY_TOKEN — keeps
 // test-run cost off Jonathan's account during development. _2 ran dry
-// testing actor schemas (see .env.local); _3 is the current one with real
-// balance. Editable from /dashboard/settings (DB value wins); each falls
-// through to its own env var when unset in Settings — see lib/settings.ts.
-async function getApifyToken(): Promise<string> {
-  const [t3, t2, t1] = await Promise.all([
+// testing actor schemas, _3 ran dry live-testing (both $5/mo free-tier
+// accounts, see .env.local for reset dates); _4 is the current one. Editable
+// from /dashboard/settings (DB value wins); each falls through to its own
+// env var when unset in Settings — see lib/settings.ts.
+async function getApifyToken(): Promise<{ token: string; isToken4: boolean }> {
+  const [t4, t3, t2, t1] = await Promise.all([
+    resolveSetting("APIFY_TOKEN_4", process.env.APIFY_TOKEN_4),
     resolveSetting("APIFY_TOKEN_3", process.env.APIFY_TOKEN_3),
     resolveSetting("APIFY_TOKEN_2", process.env.APIFY_TOKEN_2),
     resolveSetting("APIFY_TOKEN", process.env.APIFY_TOKEN),
   ]);
+  if (t4) return { token: t4, isToken4: true };
   const token = t3 || t2 || t1;
   if (!token) throw new Error("APIFY_TOKEN is not set");
-  return token;
+  return { token, isToken4: false };
 }
 const APIFY_BASE = "https://api.apify.com/v2";
+
+// Self-imposed spending cap — ONLY for token 4 (info@frydai.ai, a $29/mo
+// plan Apify's API refused to lower: "cannot be less than 29"). The other
+// tokens are $5/mo free-tier accounts already hard-capped by Apify itself;
+// this guard is specifically to keep this one account's real $29 ceiling
+// from ever being used past $5 by this app, not a generic cap on every token.
+const BUDGET_CAP_USD = 5;
+const BUDGET_CHECK_TTL_MS = 15_000; // avoid hammering /limits on a burst of concurrent fetch calls
+let budgetCache: { usedUsd: number; checkedAt: number } | null = null;
+
+async function assertUnderBudget(token: string) {
+  const now = Date.now();
+  if (!budgetCache || now - budgetCache.checkedAt > BUDGET_CHECK_TTL_MS) {
+    const res = await fetch(`${APIFY_BASE}/users/me/limits?token=${token}`);
+    if (res.ok) {
+      const body = await res.json().catch(() => null);
+      const usedUsd = body?.data?.current?.monthlyUsageUsd;
+      if (typeof usedUsd === "number") budgetCache = { usedUsd, checkedAt: now };
+    }
+    // A failed limits check doesn't block the run — this is a spending
+    // guard, not the primary error path; an outage here shouldn't be why a
+    // search fails.
+  }
+  if (budgetCache && budgetCache.usedUsd >= BUDGET_CAP_USD) {
+    throw new Error(
+      `Apify self-imposed budget cap hit: this account has used $${budgetCache.usedUsd.toFixed(2)} this cycle (cap: $${BUDGET_CAP_USD}). Raise BUDGET_CAP_USD in lib/pipeline/apify.ts or switch tokens to continue.`
+    );
+  }
+}
 
 // Vertical-specific Google Maps category searches — matches the two
 // verticals in the signed scope (family-owned landscaping + home builders).
@@ -81,7 +113,8 @@ function isBlocked(host: string): boolean {
 }
 
 async function runActorSync(actorId: string, input: Record<string, unknown>, timeoutSecs = 120) {
-  const token = await getApifyToken();
+  const { token, isToken4 } = await getApifyToken();
+  if (isToken4) await assertUnderBudget(token);
   const res = await fetch(
     `${APIFY_BASE}/acts/${actorId}/run-sync-get-dataset-items?token=${token}&timeout=${timeoutSecs}`,
     {

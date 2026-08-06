@@ -44,6 +44,11 @@ export async function resolveSetting(key: string, envFallback?: string): Promise
 export const SETTINGS_KEYS = [
   { key: "APIFY_TOKEN", label: "Apify — primary token", envFallback: "APIFY_TOKEN" },
   { key: "APIFY_TOKEN_2", label: "Apify — token 2 (fallback)", envFallback: "APIFY_TOKEN_2" },
+  {
+    key: "APIFY_TOKEN_4",
+    label: "Apify — token 4 ($29/mo plan, code-capped at $5)",
+    envFallback: "APIFY_TOKEN_4",
+  },
   { key: "APIFY_TOKEN_3", label: "Apify — token 3 (fallback)", envFallback: "APIFY_TOKEN_3" },
   { key: "OPENROUTER_API_KEY", label: "OpenRouter", envFallback: "OPENROUTER_API_KEY" },
   { key: "ANYMAILFINDER_API_KEY", label: "Anymailfinder", envFallback: "ANYMAILFINDER_API_KEY" },
