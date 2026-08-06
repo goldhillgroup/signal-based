@@ -1,7 +1,10 @@
 import type { Industry } from "../supabase/types";
 import { stateNameFor } from "./us-states";
 
-const APIFY_TOKEN = process.env.APIFY_TOKEN;
+// Prefers APIFY_TOKEN_2 (Daniel's own account) when set — keeps test-run
+// cost off Jonathan's account during development. Unset APIFY_TOKEN_2 to
+// fall back to the primary APIFY_TOKEN.
+const APIFY_TOKEN = process.env.APIFY_TOKEN_2 || process.env.APIFY_TOKEN;
 const APIFY_BASE = "https://api.apify.com/v2";
 
 // Vertical-specific Google Maps category searches — matches the two
