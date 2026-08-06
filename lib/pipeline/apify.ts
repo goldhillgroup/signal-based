@@ -252,22 +252,19 @@ export interface FetchedPage {
 // safely inside its timeout as ROUND_SIZE scales up.
 const ABOUT_SLUGS = ["", "about", "about-us", "team", "our-story"];
 
-// Step 2 — page fetch. Guesses the common About/Team/Leadership URL slugs per
-// domain and fetches them directly (maxCrawlDepth 0 — no link-following, so
-// 404s on guessed slugs are cheap and don't blow the run budget). One actor
-// run covers every candidate domain at once.
-export async function fetchCompanyPages(domains: string[]): Promise<Map<string, FetchedPage[]>> {
-  const startUrls = domains.flatMap((domain) =>
-    ABOUT_SLUGS.map((slug) => ({ url: `https://${domain}/${slug}` }))
-  );
+type RawFetchedItem = {
+  url: string;
+  text?: string;
+  crawl?: { httpStatusCode?: number };
+  metadata?: { openGraph?: Array<{ property: string; content: string }> };
+};
 
-  // Scale the actor's own timeout with batch size — a fixed 180s was enough
-  // for a dozen domains but timed out a real 20-domain/160-URL round outright
-  // (lost that round's work entirely; see orchestrator.ts's per-round catch
-  // for why that no longer loses already-accumulated signals either way).
-  const fetchTimeoutSecs = Math.min(280, 60 + startUrls.length * 2.5);
-
-  const items = (await runActorSync(
+// One domain's 5 URL guesses, in a single small actor call with a fixed,
+// predictable timeout. Failure here (that domain's site hangs/times out)
+// only costs that one domain — never the batch.
+async function fetchOneDomain(domain: string): Promise<RawFetchedItem[]> {
+  const startUrls = ABOUT_SLUGS.map((slug) => ({ url: `https://${domain}/${slug}` }));
+  return (await runActorSync(
     "apify~website-content-crawler",
     {
       startUrls,
@@ -277,28 +274,72 @@ export async function fetchCompanyPages(domains: string[]): Promise<Map<string, 
       maxRequestRetries: 1,
       saveMarkdown: false,
     },
-    fetchTimeoutSecs
-  )) as Array<{
-    url: string;
-    text?: string;
-    crawl?: { httpStatusCode?: number };
-    metadata?: { openGraph?: Array<{ property: string; content: string }> };
-  }>;
+    60 // 5 URLs, cheerio (no JS rendering) — this is generous on its own; the
+    // old design's problem was never "5 URLs need >60s," it was bundling 15
+    // domains' worth of URLs behind ONE shared timeout.
+  )) as RawFetchedItem[];
+}
+
+// Runs `tasks` with at most `limit` in flight at once — a plain concurrency
+// pool, no new dependency. Apify allows up to 25 concurrent actor jobs on
+// this account; 6 stays well clear of that while still fetching a round's
+// domains in parallel instead of one shared serial-ish batch.
+async function withConcurrency<T>(items: T[], limit: number, run: (item: T) => Promise<void>) {
+  let cursor = 0;
+  async function worker() {
+    while (cursor < items.length) {
+      const item = items[cursor++];
+      await run(item);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+}
+
+// Step 2 — page fetch. Guesses the common About/Team/Leadership URL slugs per
+// domain (maxCrawlDepth 0 — no link-following, so 404s on guessed slugs are
+// cheap) and fetches each domain's 5 URLs as its OWN actor call, run with
+// bounded concurrency — not one actor call for the whole round's domains.
+// Real failure mode this replaces: one shared 75-URL batch behind a single
+// timeout meant a couple of slow/hanging domains could sink 70+ perfectly
+// fine URLs along with them (reproduced live — see project memory). Now a
+// slow domain only ever loses itself.
+const FETCH_CONCURRENCY = 6;
+
+export async function fetchCompanyPages(domains: string[]): Promise<Map<string, FetchedPage[]>> {
+  // Fail loud on real misconfiguration (e.g. missing token) before the
+  // per-domain try/catch below has a chance to swallow it as "this domain's
+  // site didn't load" — that per-domain tolerance is for individual site
+  // failures, not for "nothing can fetch anything."
+  if (!APIFY_TOKEN) throw new Error("APIFY_TOKEN is not set");
 
   const byDomain = new Map<string, FetchedPage[]>();
-  for (const item of items) {
-    const host = hostnameOf(item.url);
-    // Drop anything that didn't actually load — a 404's boilerplate nav/footer
-    // text is often >50 chars and would otherwise sail through to an LLM call
-    // that can only ever conclude "no content here."
-    if (!host || !item.text || item.text.trim().length < 50) continue;
-    if (item.crawl?.httpStatusCode && item.crawl.httpStatusCode !== 200) continue;
-    const siteName =
-      item.metadata?.openGraph?.find((og) => og.property === "og:site_name")?.content ?? null;
-    const list = byDomain.get(host) ?? [];
-    list.push({ domain: host, url: item.url, text: item.text, siteName });
-    byDomain.set(host, list);
-  }
+
+  await withConcurrency(domains, FETCH_CONCURRENCY, async (domain) => {
+    let items: RawFetchedItem[];
+    try {
+      items = await fetchOneDomain(domain);
+    } catch {
+      // This domain's site is slow/down/blocking — it just yields no pages
+      // (classify step will insert it as "no page fetched"), everyone else
+      // in the round is unaffected.
+      return;
+    }
+
+    for (const item of items) {
+      const host = hostnameOf(item.url);
+      // Drop anything that didn't actually load — a 404's boilerplate nav/
+      // footer text is often >50 chars and would otherwise sail through to
+      // an LLM call that can only ever conclude "no content here."
+      if (!host || !item.text || item.text.trim().length < 50) continue;
+      if (item.crawl?.httpStatusCode && item.crawl.httpStatusCode !== 200) continue;
+      const siteName =
+        item.metadata?.openGraph?.find((og) => og.property === "og:site_name")?.content ?? null;
+      const list = byDomain.get(host) ?? [];
+      list.push({ domain: host, url: item.url, text: item.text, siteName });
+      byDomain.set(host, list);
+    }
+  });
+
   return byDomain;
 }
 
