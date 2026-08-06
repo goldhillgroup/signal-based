@@ -1,10 +1,11 @@
 import type { Industry } from "../supabase/types";
 import { stateNameFor } from "./us-states";
 
-// Prefers APIFY_TOKEN_2 (Daniel's own account) when set — keeps test-run
-// cost off Jonathan's account during development. Unset APIFY_TOKEN_2 to
-// fall back to the primary APIFY_TOKEN.
-const APIFY_TOKEN = process.env.APIFY_TOKEN_2 || process.env.APIFY_TOKEN;
+// Prefers APIFY_TOKEN_3, then _2, then the primary APIFY_TOKEN — keeps
+// test-run cost off Jonathan's account during development. _2 ran dry
+// testing actor schemas (see .env.local); _3 is the current one with real
+// balance. Unset a var to fall through to the next one down this chain.
+const APIFY_TOKEN = process.env.APIFY_TOKEN_3 || process.env.APIFY_TOKEN_2 || process.env.APIFY_TOKEN;
 const APIFY_BASE = "https://api.apify.com/v2";
 
 // Vertical-specific Google Maps category searches — matches the two
@@ -53,6 +54,7 @@ export interface Candidate {
   domain: string;
   url: string;
   title: string;
+  channel: "maps" | "web_search" | "directory";
 }
 
 function hostnameOf(url: string): string | null {
@@ -123,7 +125,7 @@ async function discoverViaMaps(
 
   return items
     .filter((place) => place.website)
-    .map((place) => ({ domain: "", url: place.website!, title: place.title ?? "" }));
+    .map((place) => ({ domain: "", url: place.website!, title: place.title ?? "", channel: "maps" as const }));
 }
 
 // Vertical-specific succession-language phrasings — the point of this
@@ -182,7 +184,7 @@ async function discoverViaWebSearch(
     .flatMap((page) => page.organicResults ?? [])
     .filter((r) => !isListicleTitle(r.title))
     .slice(0, limit)
-    .map((r) => ({ domain: "", url: r.url, title: r.title ?? "" }));
+    .map((r) => ({ domain: "", url: r.url, title: r.title ?? "", channel: "web_search" as const }));
 }
 
 // Step 1 — discovery. Two channels run in parallel and get merged: Maps for
@@ -208,7 +210,7 @@ export async function discoverCandidates(params: {
   ]);
 
   const channelErrors: string[] = [];
-  const raw: { domain: string; url: string; title: string }[] = [];
+  const raw: Candidate[] = [];
   if (mapsResult.status === "fulfilled") raw.push(...mapsResult.value);
   else channelErrors.push(`Maps channel failed: ${mapsResult.reason?.message?.slice(0, 150) ?? mapsResult.reason}`);
   if (webResult.status === "fulfilled") raw.push(...webResult.value);
@@ -224,7 +226,7 @@ export async function discoverCandidates(params: {
     const host = hostnameOf(r.url);
     if (!host || isBlocked(host) || seen.has(host)) continue;
     seen.add(host);
-    candidates.push({ domain: host, url: r.url, title: r.title || host });
+    candidates.push({ domain: host, url: r.url, title: r.title || host, channel: r.channel });
     if (candidates.length >= limit) break;
   }
 

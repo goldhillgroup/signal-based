@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { runSearchPipeline } from "@/lib/pipeline/orchestrator";
 import { industryLabel } from "@/lib/pipeline/parse-query";
 import { stateNameFor } from "@/lib/pipeline/us-states";
-import type { Industry } from "@/lib/supabase/types";
+import type { Industry, SearchMode } from "@/lib/supabase/types";
 
 // Raise the ceiling where the deployment platform honors it (Vercel Pro+ with
 // Fluid compute goes up to 800s). A full run loops discover -> fetch ->
@@ -18,6 +18,7 @@ export const maxDuration = 300;
 const MIN_TARGET = 1;
 const MAX_TARGET = 200; // UI-level sanity cap — see MAX_SCAN_MULTIPLIER/ABSOLUTE_SCAN_CEILING in the orchestrator for the real cost ceiling
 const VALID_INDUSTRIES: Industry[] = ["landscaping", "home_builder"];
+const VALID_MODES: SearchMode[] = ["signal", "filter", "hybrid"];
 
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as {
@@ -25,6 +26,7 @@ export async function POST(req: Request) {
     state?: string;
     refinement?: string;
     targetSignals?: number;
+    mode?: string;
   };
 
   const industry = body.industry as Industry;
@@ -39,6 +41,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "state is required (2-letter code)" }, { status: 400 });
   }
   const refinement = (body.refinement ?? "").trim();
+
+  const mode = VALID_MODES.includes(body.mode as SearchMode) ? (body.mode as SearchMode) : "hybrid";
 
   const target = Math.min(
     Math.max(Math.round(body.targetSignals ?? 20), MIN_TARGET),
@@ -65,6 +69,7 @@ export async function POST(req: Request) {
       query,
       label,
       status: "running",
+      mode,
       target_signals: target,
       created_by: user.id,
     })
@@ -80,7 +85,7 @@ export async function POST(req: Request) {
 
   // Runs after this response is sent, within the extended function lifetime
   // (see maxDuration above) — the client polls the `searches` row for progress.
-  after(() => runSearchPipeline(search.id, industry, [state], target));
+  after(() => runSearchPipeline(search.id, industry, [state], target, mode));
 
   return NextResponse.json({ id: search.id, label: search.label });
 }

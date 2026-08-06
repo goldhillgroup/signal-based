@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useSearches } from "@/lib/searches-store";
 import { US_STATES } from "@/lib/pipeline/us-states";
 import { INDUSTRY_META } from "@/lib/signal-meta";
-import type { Industry } from "@/lib/supabase/types";
+import type { Industry, SearchMode } from "@/lib/supabase/types";
 import { FolderCard } from "./FolderCard";
 import { SearchProgress } from "./SearchProgress";
 import { ZapIcon } from "./icons";
@@ -17,11 +17,31 @@ const REFINEMENT_EXAMPLES = [
   "second generation taking over",
 ];
 
+const MODE_META: Record<SearchMode, { label: string; description: string; targetLabel: string }> = {
+  hybrid: {
+    label: "Hybrid",
+    description: "Every company that fits — succession signals ranked first, everyone else right behind.",
+    targetLabel: "Companies to find:",
+  },
+  signal: {
+    label: "Signal only",
+    description: "Only companies showing a real founder-to-next-gen succession signal.",
+    targetLabel: "Signals to find:",
+  },
+  filter: {
+    label: "Just filter",
+    description: "Every company in the vertical + state that fits the ICP — no signal required at all.",
+    targetLabel: "Companies to find:",
+  },
+};
+const MODE_ORDER: SearchMode[] = ["hybrid", "signal", "filter"];
+
 export function SearchHome() {
   const router = useRouter();
   const { folders, loading, createSearch } = useSearches();
   const [industry, setIndustry] = useState<Industry | null>(null);
   const [state, setState] = useState("");
+  const [mode, setMode] = useState<SearchMode>("hybrid");
   const [refinement, setRefinement] = useState("");
   const [target, setTarget] = useState(20);
   const [running, setRunning] = useState<{ id: string; label: string } | null>(null);
@@ -35,7 +55,7 @@ export function SearchHome() {
     setError("");
     setStarting(true);
     try {
-      const { id, label } = await createSearch({ industry, state, refinement, targetSignals: target });
+      const { id, label } = await createSearch({ industry, state, refinement, targetSignals: target, mode });
       setRunning({ id, label });
     } catch (e) {
       setError((e as Error).message || "Could not start that search.");
@@ -68,12 +88,33 @@ export function SearchHome() {
         </h1>
         <p className="mx-auto mt-2 max-w-lg text-sm leading-relaxed text-gh-ink-secondary">
           One vertical, one state at a time — Signal Radar keeps discovering and
-          classifying real local businesses until it has that many qualified
-          signals, or runs out of companies to check.
+          classifying real local businesses until it hits your target, or runs
+          out of companies to check.
         </p>
       </div>
 
       <div className="mx-auto mt-6 max-w-2xl rounded-2xl border border-gh-border bg-gh-surface p-5 shadow-sm">
+        <div className="mb-4">
+          <label className="mb-1.5 block text-xs font-semibold text-gh-ink-secondary">Mode</label>
+          <div className="grid grid-cols-3 gap-2">
+            {MODE_ORDER.map((key) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setMode(key)}
+                className={`rounded-lg border px-3 py-2.5 text-left text-sm font-semibold transition-colors ${
+                  mode === key
+                    ? "border-gh-navy bg-gh-navy text-white"
+                    : "border-gh-border bg-gh-surface-sunken text-gh-ink-secondary hover:border-gh-sky/40"
+                }`}
+              >
+                {MODE_META[key].label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-[11px] text-gh-ink-muted">{MODE_META[mode].description}</p>
+        </div>
+
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1.5 block text-xs font-semibold text-gh-ink-secondary">
@@ -144,7 +185,7 @@ export function SearchHome() {
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium text-gh-ink-muted">Signals to find:</span>
+          <span className="text-xs font-medium text-gh-ink-muted">{MODE_META[mode].targetLabel}</span>
           {TARGET_OPTIONS.map((n) => (
             <button
               key={n}

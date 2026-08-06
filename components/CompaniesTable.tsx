@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Company } from "@/lib/mock-companies";
-import { INDUSTRY_META } from "@/lib/signal-meta";
+import { INDUSTRY_META, FIT_ONLY_META } from "@/lib/signal-meta";
 import type { Industry } from "@/lib/supabase/types";
 import { formatRelativeDate } from "@/lib/stats";
 import {
@@ -14,19 +14,25 @@ import {
 } from "./badges";
 import { SearchIcon } from "./icons";
 
-type Tab = "all" | "qualified" | "verify" | "rejected";
+type Tab = "all" | "qualified" | "verify" | "fit_only" | "rejected";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "all", label: "All" },
   { key: "qualified", label: "Qualified" },
   { key: "verify", label: "Verify" },
+  { key: "fit_only", label: "Fit only" },
   { key: "rejected", label: "Rejected" },
 ];
 
+// A 'filter'/'hybrid' company that fit the ICP with no signal found is
+// still status: 'qualified' in the DB (it passed every gate) — confidence:
+// null is what actually distinguishes it from a real qualified/verify
+// signal match. See orchestrator.ts's finalHasSignal.
 function matchesTab(c: Company, tab: Tab) {
   if (tab === "all") return true;
-  if (tab === "qualified") return c.status === "qualified" && c.confidence !== "verify";
+  if (tab === "qualified") return c.status === "qualified" && (c.confidence === "high" || c.confidence === "medium");
   if (tab === "verify") return c.status === "qualified" && c.confidence === "verify";
+  if (tab === "fit_only") return c.status === "qualified" && c.confidence === null;
   if (tab === "rejected") return c.status === "rejected";
   return true;
 }
@@ -157,7 +163,16 @@ export function CompaniesTable({
                   ) : c.confidence ? (
                     <ConfidenceBadge confidence={c.confidence} />
                   ) : (
-                    <StatusBadge status="pending" />
+                    // status: 'qualified', confidence: null — a filter/hybrid
+                    // company accepted on ICP fit with no signal found. Not
+                    // "Pending" (that reads as still-processing); this is a
+                    // final, accepted result.
+                    <span
+                      className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold"
+                      style={{ color: FIT_ONLY_META.color, background: FIT_ONLY_META.bg }}
+                    >
+                      {FIT_ONLY_META.label}
+                    </span>
                   )}
                 </td>
                 <td className="px-4 py-3">

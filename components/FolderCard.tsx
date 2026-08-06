@@ -9,6 +9,15 @@ export function FolderCard({ folder }: { folder: SearchFolder }) {
   const router = useRouter();
   const isRunning = folder.status === "running";
   const isFailed = folder.status === "failed";
+  // Same mode-aware accounting as SearchProgress/orchestrator's
+  // countsTowardTarget() — 'filter'/'hybrid' runs mostly land in
+  // fitOnlyCount, not qualified/verify, so a shortfall check or total that
+  // ignores it would misreport an on-target filter/hybrid run as falling
+  // short.
+  const found =
+    folder.mode === "signal"
+      ? folder.qualifiedCount + folder.verifyCount
+      : folder.qualifiedCount + folder.verifyCount + folder.fitOnlyCount;
 
   return (
     <button
@@ -41,16 +50,19 @@ export function FolderCard({ folder }: { folder: SearchFolder }) {
           <>
             <StatChip value={folder.qualifiedCount} label="qualified" color="#0b7a0b" bg="#e2f6e2" />
             <StatChip value={folder.verifyCount} label="verify" color="#9a4a1f" bg="#fbe4d7" />
+            {folder.mode !== "signal" && (
+              <StatChip value={folder.fitOnlyCount} label="fit only" color="#3d5a80" bg="#e1e9f2" />
+            )}
             <StatChip value={folder.rejectedCount} label="rejected" color="#8892a0" bg="var(--gh-surface-sunken)" />
           </>
         )}
       </div>
 
-      {!isRunning && !isFailed && folder.qualifiedCount + folder.verifyCount < folder.targetSignals && (
+      {!isRunning && !isFailed && found < folder.targetSignals && (
         <p className="mt-2 text-[11px] text-gh-ink-muted">
           {folder.candidatesPoolExhausted
-            ? `Ran out of new companies to check — ${folder.qualifiedCount + folder.verifyCount} of ${folder.targetSignals} requested`
-            : `${folder.qualifiedCount + folder.verifyCount} of ${folder.targetSignals} requested`}
+            ? `Ran out of new companies to check — ${found} of ${folder.targetSignals} requested`
+            : `${found} of ${folder.targetSignals} requested`}
         </p>
       )}
     </button>

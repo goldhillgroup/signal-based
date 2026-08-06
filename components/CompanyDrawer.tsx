@@ -84,6 +84,8 @@ export function CompanyDrawer({
                 <InfoTile label="Confidence">
                   {company.confidence ? (
                     <ConfidenceBadge confidence={company.confidence} />
+                  ) : company.status === "qualified" ? (
+                    <span className="text-sm text-gh-ink-muted">No signal — fit-only match</span>
                   ) : (
                     <span className="text-sm text-gh-ink-muted">Not yet classified</span>
                   )}
@@ -144,7 +146,14 @@ export function CompanyDrawer({
                   </p>
                   <div className="space-y-2.5 rounded-lg border border-gh-border p-3.5 text-sm">
                     {company.founderName && (
-                      <Row k="Founder" v={`${company.founderName}${company.founderTitle ? ` — ${company.founderTitle}` : ""}`} />
+                      // Labeled "Founder" only alongside a real next-gen pairing (a
+                      // genuine succession story) — otherwise this is just whoever
+                      // the page names as the decision-maker (owner/CEO/GM/etc, see
+                      // openrouter.ts), so "Contact" reads accurately either way.
+                      <Row
+                        k={company.nextGenName ? "Founder" : "Contact"}
+                        v={`${company.founderName}${company.founderTitle ? ` — ${company.founderTitle}` : ""}`}
+                      />
                     )}
                     {company.nextGenName && (
                       <Row k="Next generation" v={`${company.nextGenName}${company.nextGenTitle ? ` — ${company.nextGenTitle}` : ""}`} />

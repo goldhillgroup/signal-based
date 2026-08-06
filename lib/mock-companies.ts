@@ -40,6 +40,11 @@ export interface Company {
   nextGenName: string | null;
   nextGenTitle: string | null;
   sourceUrl: string | null;
+  // Whether a succession signal was actually found — independent of the
+  // search's mode. In 'filter' mode this is often false on a perfectly good
+  // result (no signal was required); in 'hybrid' it's what results rank on.
+  hasSignal: boolean | null;
+  discoveryChannel: string | null;
   firstSeenAt: string;
   lastCrawledAt: string;
   evidence: Evidence | null;
@@ -72,6 +77,8 @@ export const MOCK_COMPANIES: Company[] = [
     nextGenName: "Casey Whittaker",
     nextGenTitle: "Operations Manager",
     sourceUrl: "https://whittakerlandscape.example.com/about",
+    hasSignal: true,
+    discoveryChannel: "web_search",
     firstSeenAt: "2026-08-01",
     lastCrawledAt: "2026-08-04",
     evidence: {
@@ -108,6 +115,8 @@ export const MOCK_COMPANIES: Company[] = [
     nextGenName: "Will Ashford",
     nextGenTitle: "VP of Construction",
     sourceUrl: "https://ashfordcustomhomes.example.com/our-team",
+    hasSignal: true,
+    discoveryChannel: "web_search",
     firstSeenAt: "2026-07-30",
     lastCrawledAt: "2026-08-04",
     evidence: {
@@ -143,6 +152,8 @@ export const MOCK_COMPANIES: Company[] = [
     nextGenName: "Marcus Corbin",
     nextGenTitle: "Project Manager",
     sourceUrl: "https://cornerstonefamilyhomes.example.com/about-us",
+    hasSignal: true,
+    discoveryChannel: "web_search",
     firstSeenAt: "2026-07-28",
     lastCrawledAt: "2026-08-03",
     evidence: {
@@ -179,6 +190,8 @@ export const MOCK_COMPANIES: Company[] = [
     nextGenName: "Sofia Reyes",
     nextGenTitle: "Account Manager",
     sourceUrl: "https://reyesgrounds.example.com/about",
+    hasSignal: true,
+    discoveryChannel: "web_search",
     firstSeenAt: "2026-07-27",
     lastCrawledAt: "2026-08-02",
     evidence: {
@@ -214,6 +227,8 @@ export const MOCK_COMPANIES: Company[] = [
     nextGenName: "Emma Thackeray-Voss",
     nextGenTitle: "Director of Operations",
     sourceUrl: "https://thackerayhomes.example.com/leadership",
+    hasSignal: true,
+    discoveryChannel: "web_search",
     firstSeenAt: "2026-07-25",
     lastCrawledAt: "2026-08-04",
     evidence: {
@@ -249,6 +264,8 @@ export const MOCK_COMPANIES: Company[] = [
     nextGenName: "Jamie Dutton",
     nextGenTitle: null,
     sourceUrl: "https://duttonlandscapedesign.example.com/team",
+    hasSignal: true,
+    discoveryChannel: "web_search",
     firstSeenAt: "2026-08-02",
     lastCrawledAt: "2026-08-04",
     evidence: {
@@ -285,6 +302,8 @@ export const MOCK_COMPANIES: Company[] = [
     nextGenName: "Tyler Reed",
     nextGenTitle: "Site Supervisor",
     sourceUrl: "https://larkspurconstruction.example.com/about",
+    hasSignal: true,
+    discoveryChannel: "web_search",
     firstSeenAt: "2026-07-31",
     lastCrawledAt: "2026-08-03",
     evidence: {
@@ -321,6 +340,8 @@ export const MOCK_COMPANIES: Company[] = [
     nextGenName: "Nate Bellmont",
     nextGenTitle: "General Manager",
     sourceUrl: "https://bellmontlandscapegroup.example.com/our-story",
+    hasSignal: true,
+    discoveryChannel: "web_search",
     firstSeenAt: "2026-07-22",
     lastCrawledAt: "2026-08-01",
     evidence: {
@@ -356,6 +377,8 @@ export const MOCK_COMPANIES: Company[] = [
     nextGenName: null,
     nextGenTitle: null,
     sourceUrl: "https://kesslerandsons.example.com/about",
+    hasSignal: true,
+    discoveryChannel: "web_search",
     firstSeenAt: "2026-07-20",
     lastCrawledAt: "2026-08-01",
     evidence: {
@@ -392,6 +415,8 @@ export const MOCK_COMPANIES: Company[] = [
     nextGenName: null,
     nextGenTitle: null,
     sourceUrl: "https://cascadeoutdoorliving.example.com/about",
+    hasSignal: true,
+    discoveryChannel: "web_search",
     firstSeenAt: "2026-07-18",
     lastCrawledAt: "2026-08-04",
     evidence: {
@@ -419,6 +444,8 @@ export const MOCK_COMPANIES: Company[] = [
     nextGenName: null,
     nextGenTitle: null,
     sourceUrl: "https://bramblewoodhomes.example.com/leadership",
+    hasSignal: true,
+    discoveryChannel: "web_search",
     firstSeenAt: "2026-07-19",
     lastCrawledAt: "2026-08-02",
     evidence: {
@@ -447,6 +474,8 @@ export const MOCK_COMPANIES: Company[] = [
     nextGenName: "Chris Harmon",
     nextGenTitle: "Crew Lead",
     sourceUrl: "https://harmonturftree.example.com/about",
+    hasSignal: true,
+    discoveryChannel: "web_search",
     firstSeenAt: "2026-07-15",
     lastCrawledAt: "2026-08-01",
     evidence: {
@@ -474,6 +503,8 @@ export const MOCK_COMPANIES: Company[] = [
     nextGenName: "Ben Fielding",
     nextGenTitle: "Estimator",
     sourceUrl: "https://fieldingcustombuilders.example.com/team",
+    hasSignal: true,
+    discoveryChannel: "web_search",
     firstSeenAt: "2026-07-21",
     lastCrawledAt: "2026-08-03",
     evidence: {
@@ -503,6 +534,8 @@ export const MOCK_COMPANIES: Company[] = [
     nextGenName: null,
     nextGenTitle: null,
     sourceUrl: "https://pinecrestgrounds.example.com/",
+    hasSignal: true,
+    discoveryChannel: "web_search",
     firstSeenAt: "2026-07-16",
     lastCrawledAt: "2026-08-02",
     evidence: {
@@ -530,6 +563,8 @@ export const MOCK_COMPANIES: Company[] = [
     nextGenName: null,
     nextGenTitle: null,
     sourceUrl: "https://northgatehomebuilders.example.com/about",
+    hasSignal: true,
+    discoveryChannel: "web_search",
     firstSeenAt: "2026-07-14",
     lastCrawledAt: "2026-07-30",
     evidence: {
@@ -557,6 +592,8 @@ export const MOCK_COMPANIES: Company[] = [
     nextGenName: null,
     nextGenTitle: null,
     sourceUrl: "https://silvanolandscapegroup.example.com/about",
+    hasSignal: true,
+    discoveryChannel: "web_search",
     firstSeenAt: "2026-07-13",
     lastCrawledAt: "2026-07-29",
     evidence: {
@@ -583,6 +620,8 @@ export const MOCK_COMPANIES: Company[] = [
     nextGenName: "Josh Vandermeer",
     nextGenTitle: "Project Coordinator",
     sourceUrl: "https://vandermeerconstruction.example.com/about",
+    hasSignal: true,
+    discoveryChannel: "web_search",
     firstSeenAt: "2026-07-12",
     lastCrawledAt: "2026-07-28",
     evidence: {
@@ -610,6 +649,8 @@ export const MOCK_COMPANIES: Company[] = [
     nextGenName: null,
     nextGenTitle: null,
     sourceUrl: "https://ridgelinelawncare.example.com/about",
+    hasSignal: true,
+    discoveryChannel: "web_search",
     firstSeenAt: "2026-08-04",
     lastCrawledAt: "2026-08-04",
     evidence: null,
@@ -632,6 +673,8 @@ export const MOCK_COMPANIES: Company[] = [
     nextGenName: null,
     nextGenTitle: null,
     sourceUrl: "https://marshfamilylandscaping.example.com/about",
+    hasSignal: true,
+    discoveryChannel: "web_search",
     firstSeenAt: "2026-08-04",
     lastCrawledAt: "2026-08-04",
     evidence: null,
@@ -654,6 +697,8 @@ export const MOCK_COMPANIES: Company[] = [
     nextGenName: "Olivia Fowler",
     nextGenTitle: "Head of Design",
     sourceUrl: "https://fowlerbuilders.example.com/about",
+    hasSignal: true,
+    discoveryChannel: "web_search",
     firstSeenAt: "2026-08-03",
     lastCrawledAt: "2026-08-04",
     evidence: {

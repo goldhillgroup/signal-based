@@ -18,6 +18,8 @@ import { createClient } from "./supabase/client";
 import type {
   SearchRow,
   SearchStatus,
+  SearchMode,
+  EnrichmentStatus,
   Industry,
   CompanyStatus,
   Confidence,
@@ -32,6 +34,9 @@ export interface SearchFolder {
   query: string;
   label: string;
   status: SearchStatus;
+  mode: SearchMode;
+  enrichmentStatus: EnrichmentStatus;
+  enrichmentError: string | null;
   errorMessage: string | null;
   createdAt: string;
   finishedAt: string | null;
@@ -42,6 +47,7 @@ export interface SearchFolder {
   companiesScanned: number;
   qualifiedCount: number;
   verifyCount: number;
+  fitOnlyCount: number;
   rejectedCount: number;
   contactsFound: number;
   contactsVerified: number;
@@ -53,6 +59,9 @@ function mapSearchRow(row: SearchRow): SearchFolder {
     query: row.query,
     label: row.label,
     status: row.status,
+    mode: row.mode,
+    enrichmentStatus: row.enrichment_status,
+    enrichmentError: row.enrichment_error,
     errorMessage: row.error_message,
     createdAt: row.created_at,
     finishedAt: row.finished_at,
@@ -65,6 +74,7 @@ function mapSearchRow(row: SearchRow): SearchFolder {
     contactsVerified: row.contacts_verified,
     qualifiedCount: row.qualified_count,
     verifyCount: row.verify_count,
+    fitOnlyCount: row.fit_only_count,
     rejectedCount: row.rejected_count,
   };
 }
@@ -88,6 +98,8 @@ interface CompanyJoinRow {
   next_gen_name: string | null;
   next_gen_title: string | null;
   source_url: string | null;
+  has_signal: boolean | null;
+  discovery_channel: string | null;
   first_seen_at: string;
   last_crawled_at: string;
   signal_evidence: Array<{
@@ -126,6 +138,8 @@ function mapCompanyRow(row: CompanyJoinRow): Company {
     nextGenName: row.next_gen_name,
     nextGenTitle: row.next_gen_title,
     sourceUrl: row.source_url,
+    hasSignal: row.has_signal,
+    discoveryChannel: row.discovery_channel,
     firstSeenAt: row.first_seen_at,
     lastCrawledAt: row.last_crawled_at,
     evidence: evidence
@@ -156,12 +170,20 @@ interface SearchesContextValue {
   getFolder: (id: string) => SearchFolder | undefined;
   fetchFolder: (id: string) => Promise<SearchFolder | null>;
   fetchCompanies: (id: string) => Promise<Company[]>;
+  // Every lead across every search, combined — "one folder of all of the
+  // leads" rather than needing to open each search individually to see
+  // what's in it. Same single-tenant model as the rest of the app (RLS is
+  // "any authenticated user sees everything"), so this is genuinely all of
+  // Jonathan's leads, not scoped to one search_id.
+  fetchAllCompanies: () => Promise<Company[]>;
   createSearch: (params: {
     industry: Industry;
     state: string;
     refinement?: string;
     targetSignals: number;
+    mode?: SearchMode;
   }) => Promise<{ id: string; label: string }>;
+  startEnrichment: (searchId: string) => Promise<void>;
 }
 
 const SearchesContext = createContext<SearchesContextValue | null>(null);
@@ -194,6 +216,16 @@ export function SearchesProvider({ children }: { children: ReactNode }) {
     [supabase]
   );
 
+  // Signal-bearing companies first, same pattern used on the Ofer Lieberson
+  // project: everyone who fits the ICP is in the list, but the real dated
+  // triggers surface at the top rather than being buried
+  // alphabetically/chronologically among plain fit-only results. A no-op
+  // ordering-wise for 'signal' mode, where every qualified row has a signal
+  // by definition.
+  function bySignalFirst(companies: Company[]): Company[] {
+    return [...companies].sort((a, b) => Number(b.hasSignal) - Number(a.hasSignal));
+  }
+
   const fetchCompanies = useCallback(
     async (id: string): Promise<Company[]> => {
       const { data, error } = await supabase
@@ -202,10 +234,24 @@ export function SearchesProvider({ children }: { children: ReactNode }) {
         .eq("search_id", id)
         .order("last_crawled_at", { ascending: false });
       if (error || !data) return [];
-      return (data as unknown as CompanyJoinRow[]).map(mapCompanyRow);
+      return bySignalFirst((data as unknown as CompanyJoinRow[]).map(mapCompanyRow));
     },
     [supabase]
   );
+
+  const fetchAllCompanies = useCallback(async (): Promise<Company[]> => {
+    // Only accepted leads (status: 'qualified' — covers qualified/verify/
+    // fit-only, see orchestrator.ts) belong in the combined view; a
+    // rejected candidate from search A shouldn't clutter "all of Jonathan's
+    // leads" just because it happened to get scanned.
+    const { data, error } = await supabase
+      .from("companies")
+      .select("*, signal_evidence(*), contacts(*)")
+      .eq("status", "qualified")
+      .order("last_crawled_at", { ascending: false });
+    if (error || !data) return [];
+    return bySignalFirst((data as unknown as CompanyJoinRow[]).map(mapCompanyRow));
+  }, [supabase]);
 
   const createSearch = useCallback(
     async (params: {
@@ -213,6 +259,7 @@ export function SearchesProvider({ children }: { children: ReactNode }) {
       state: string;
       refinement?: string;
       targetSignals: number;
+      mode?: SearchMode;
     }) => {
       const res = await fetch("/api/search", {
         method: "POST",
@@ -230,9 +277,27 @@ export function SearchesProvider({ children }: { children: ReactNode }) {
     [refreshFolders]
   );
 
+  const startEnrichment = useCallback(async (searchId: string) => {
+    const res = await fetch(`/api/search/${searchId}/enrich`, { method: "POST" });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body?.error ?? "Enrichment failed to start");
+    }
+  }, []);
+
   const value = useMemo<SearchesContextValue>(
-    () => ({ folders, loading, refreshFolders, getFolder, fetchFolder, fetchCompanies, createSearch }),
-    [folders, loading, refreshFolders, getFolder, fetchFolder, fetchCompanies, createSearch]
+    () => ({
+      folders,
+      loading,
+      refreshFolders,
+      getFolder,
+      fetchFolder,
+      fetchCompanies,
+      fetchAllCompanies,
+      createSearch,
+      startEnrichment,
+    }),
+    [folders, loading, refreshFolders, getFolder, fetchFolder, fetchCompanies, fetchAllCompanies, createSearch, startEnrichment]
   );
 
   return <SearchesContext.Provider value={value}>{children}</SearchesContext.Provider>;

@@ -21,6 +21,19 @@ export type VerificationStatus =
   | "unknown";
 export type CrawlRunStatus = "running" | "complete" | "failed";
 export type SearchStatus = "running" | "complete" | "failed";
+// Tracks the manually-triggered enrichment step independently of
+// SearchStatus (which only ever describes discovery/classification) — see
+// lib/pipeline/orchestrator.ts's enrichContacts().
+export type EnrichmentStatus = "idle" | "running" | "complete" | "failed";
+// 'signal' — a company only counts if it shows a real succession signal
+//   (current/original behavior).
+// 'filter' — category + region + size + ownership fit is enough, no signal
+//   required. "Get me landscapers in Texas" with nothing else.
+// 'hybrid' — same acceptance bar as 'filter' (signal not required to
+//   qualify), but every result is tagged has_signal and ranked
+//   signal-bearing-first — everyone who fits the ICP, with the real
+//   triggers surfaced at the top.
+export type SearchMode = "signal" | "filter" | "hybrid";
 
 export interface Database {
   public: {
@@ -44,6 +57,8 @@ export interface Database {
           next_gen_name: string | null;
           next_gen_title: string | null;
           source_url: string | null;
+          has_signal: boolean | null;
+          discovery_channel: string | null;
           first_seen_at: string;
           last_crawled_at: string;
           created_at: string;
@@ -118,7 +133,10 @@ export interface Database {
           query: string;
           label: string;
           status: SearchStatus;
+          mode: SearchMode;
           error_message: string | null;
+          enrichment_status: EnrichmentStatus;
+          enrichment_error: string | null;
           target_signals: number;
           candidates_pool_exhausted: boolean;
           candidates_found: number;
@@ -126,6 +144,7 @@ export interface Database {
           companies_scanned: number;
           qualified_count: number;
           verify_count: number;
+          fit_only_count: number;
           rejected_count: number;
           contacts_found: number;
           contacts_verified: number;

@@ -12,16 +12,30 @@ interface Props {
 }
 
 // Round-based accumulator (see lib/pipeline/orchestrator.ts) — discover ->
-// fetch -> classify repeats in batches until the target signal count is hit,
-// so a fixed 4-step checklist doesn't fit. Instead: a live ratio toward the
+// fetch -> classify repeats in batches until the target count is hit, so a
+// fixed 4-step checklist doesn't fit. Instead: a live ratio toward the
 // target, plus one status line for whatever the current round is doing.
+//
+// What counts as "found" depends on mode, same as the orchestrator's own
+// countsTowardTarget(): 'signal' only counts qualified+verify (a plain
+// ICP-fit company isn't the point of that mode); 'filter'/'hybrid' count
+// fitOnly too, since that's most of what those modes actually accept. Get
+// this wrong and a filter-mode run looks permanently stuck at 0% while it's
+// successfully finding company after company in the background.
+function foundCount(folder: SearchFolder): number {
+  const signalFound = folder.qualifiedCount + folder.verifyCount;
+  return folder.mode === "signal" ? signalFound : signalFound + folder.fitOnlyCount;
+}
+
 function currentActivity(folder: SearchFolder): string {
-  const classified = folder.qualifiedCount + folder.verifyCount + folder.rejectedCount;
+  const classified = folder.qualifiedCount + folder.verifyCount + folder.fitOnlyCount + folder.rejectedCount;
   if (folder.pagesFetched < folder.companiesScanned) {
     return `Fetching leadership pages — ${folder.pagesFetched}/${folder.companiesScanned}`;
   }
   if (classified < folder.companiesScanned) {
-    return `Classifying — ${folder.qualifiedCount} qualified · ${folder.verifyCount} verify · ${folder.rejectedCount} rejected`;
+    return folder.mode === "signal"
+      ? `Classifying — ${folder.qualifiedCount} qualified · ${folder.verifyCount} verify · ${folder.rejectedCount} rejected`
+      : `Classifying — ${folder.qualifiedCount + folder.verifyCount + folder.fitOnlyCount} accepted (${folder.qualifiedCount + folder.verifyCount} with a signal) · ${folder.rejectedCount} rejected`;
   }
   return "Looking for more candidates…";
 }
@@ -67,8 +81,9 @@ export function SearchProgress({ searchId, query, onComplete, onError }: Props) 
     return null;
   }
 
-  const signalsFound = folder.qualifiedCount + folder.verifyCount;
-  const pct = Math.min(100, Math.round((signalsFound / Math.max(folder.targetSignals, 1)) * 100));
+  const found = foundCount(folder);
+  const pct = Math.min(100, Math.round((found / Math.max(folder.targetSignals, 1)) * 100));
+  const unit = folder.mode === "signal" ? "signals" : "companies";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-gh-navy-3/50 backdrop-blur-sm">
@@ -99,9 +114,9 @@ export function SearchProgress({ searchId, query, onComplete, onError }: Props) 
         <div className="mt-6">
           <div className="flex items-baseline justify-center gap-1.5">
             <span className="tabular font-display text-3xl font-semibold text-gh-ink">
-              {signalsFound}
+              {found}
             </span>
-            <span className="text-sm text-gh-ink-muted">/ {folder.targetSignals} signals</span>
+            <span className="text-sm text-gh-ink-muted">/ {folder.targetSignals} {unit}</span>
           </div>
           <div className="mx-auto mt-3 h-2 max-w-[240px] overflow-hidden rounded-full bg-gh-surface-sunken">
             <div

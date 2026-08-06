@@ -1,14 +1,18 @@
 import { createServiceRoleClient } from "../supabase/server";
 import { discoverCandidates, fetchCompanyPages, pickBestPage } from "./apify";
 import { classifySignal, disprovePass } from "./openrouter";
-import type { Industry, SearchRow } from "../supabase/types";
+import { findContact } from "./anymailfinder";
+import { verifyEmail } from "./millionverifier";
+import type { Industry, SearchMode, SearchRow } from "../supabase/types";
 
-// Contact enrichment (Anymailfinder + MillionVerifier) is built and tested
-// (lib/pipeline/anymailfinder.ts, millionverifier.ts) but deliberately NOT
-// called here — per instruction 2026-08-05: prove the signal logic first on
-// a real target count, hold off on enrichment spend until that's dialed in.
-// Re-enable by importing findContact/verifyEmail and adding the block back
-// where QUALIFIED signals are inserted below.
+// Contact enrichment (Anymailfinder + MillionVerifier) lives in
+// enrichContacts() at the bottom of this file, NOT inline in the discovery
+// loop below. Two-step flow (2026-08-06, for testing): discovery +
+// classification runs and shows results on its own; enrichment is a
+// separate, manually-triggered pass over whatever that run accepted — see
+// app/api/search/[id]/enrich/route.ts. It was briefly wired inline for one
+// commit; pulled back out per direct instruction to keep the two steps
+// testable independently rather than paying for enrichment on every search.
 
 // The target is a SIGNAL count, not a raw candidate count: "give me 100
 // signals" means keep discovering + classifying in rounds, accumulating
@@ -64,7 +68,8 @@ export async function runSearchPipeline(
   searchId: string,
   industry: Industry,
   states: string[],
-  targetSignals: number
+  targetSignals: number,
+  mode: SearchMode = "signal"
 ) {
   const supabase = createServiceRoleClient();
 
@@ -73,13 +78,25 @@ export async function runSearchPipeline(
 
     const seenDomains = new Set<string>();
     let totalScanned = 0;
-    let qualified = 0;
-    let verify = 0;
+    let qualified = 0; // signal found, confidence high/medium (or fit-only accepted in filter/hybrid, no signal)
+    let verify = 0; // signal found, confidence verify
+    let fitOnly = 0; // filter/hybrid only: accepted on ICP fit, no signal found
+    let accepted = 0; // qualified + verify + fitOnly — the denominator filter/hybrid targets against
     let rejected = 0;
+
+    // What counts toward the target differs by mode:
+    //  - 'signal': only companies with a real, confirmed succession signal
+    //    (qualified + verify) count — a plain ICP-fit company doesn't move
+    //    the needle. Unchanged from the original behavior.
+    //  - 'filter' / 'hybrid': ICP fit alone is enough to accept a company, so
+    //    the target means "how many companies," full stop — accepted counts
+    //    every non-rejected company regardless of whether it happened to
+    //    show a signal.
+    const countsTowardTarget = () => (mode === "signal" ? qualified + verify : accepted);
     let round = 0;
     let stoppedEarlyReason: string | null = null;
 
-    roundLoop: while (qualified + verify < targetSignals && totalScanned < scanCeiling) {
+    roundLoop: while (countsTowardTarget() < targetSignals && totalScanned < scanCeiling) {
       round++;
       const roundLimit = Math.min(ROUND_SIZE, scanCeiling - totalScanned);
 
@@ -200,15 +217,30 @@ export async function runSearchPipeline(
           continue;
         }
 
-        let finalQualifies = classification.qualifies;
+        // What the classifier actually found, independent of what this
+        // search's mode requires — 'signal' mode gates on it below; 'filter'
+        // and 'hybrid' don't, but still capture it (hybrid ranks on it,
+        // filter just records it as a bonus fact).
+        const hasSignal = classification.qualifies;
+
+        // ICP-fit acceptance: 'signal' mode requires a real signal on top of
+        // category fit (unchanged original behavior); 'filter'/'hybrid' only
+        // need category fit, already confirmed by the industry !== "other"
+        // check above — a plain landscaping company with no succession
+        // event is a perfectly good result in those two modes.
+        let finalQualifies = mode === "signal" ? hasSignal : true;
         let finalConfidence = classification.confidence;
         let rejectionReason = classification.rejectionReason;
         let disproveNotes: string | null = null;
+        // Whether the signal tag survives the disprove pass. Only matters
+        // when hasSignal is true to begin with; a filter/hybrid company
+        // accepted purely on category fit never had a signal claim to lose.
+        let signalStands = hasSignal;
 
-        // Size + current-ownership gates — independent of whether the
-        // succession signal itself is real (see openrouter.ts: a genuine
-        // signal can still get cut on either). Checked before the disprove
-        // pass since neither needs signal-authenticity scrutiny.
+        // Size + current-ownership gates apply in every mode — these are
+        // ICP-definition checks (revenue band, still family-run), not
+        // signal-authenticity checks, so they cut a filter/hybrid "just
+        // category fit" acceptance exactly the same as a signal-mode one.
         if (finalQualifies && !classification.stillFamilyOwned) {
           finalQualifies = false;
           rejectionReason =
@@ -220,27 +252,48 @@ export async function runSearchPipeline(
           finalQualifies = false;
           rejectionReason =
             "Too big — above the target band, a regional or national-scale operator, not an owner-led family business mid-handoff.";
-        } else if (finalQualifies) {
+        } else if (finalQualifies && hasSignal) {
+          // Only worth running the disprove pass when there's an actual
+          // signal claim to check — a filter/hybrid company accepted purely
+          // on category fit has nothing for it to disprove.
           try {
             const disprove = await disprovePass(companyName, classification, page.text);
             disproveNotes = disprove.notes;
             if (!disprove.holds) {
-              finalQualifies = false;
-              rejectionReason = disprove.revisedRejectionReason ?? "Did not hold up to the disprove pass";
+              signalStands = false;
+              if (mode === "signal") {
+                // 'signal' mode has nothing left to accept it on — the
+                // whole point of the row was the signal, and it just failed.
+                finalQualifies = false;
+                rejectionReason = disprove.revisedRejectionReason ?? "Did not hold up to the disprove pass";
+              }
+              // filter/hybrid: the signal claim didn't hold up, but the
+              // company still fits the ICP on category/size/ownership alone
+              // — keep it as a fit-only result rather than rejecting a
+              // perfectly good company over a signal it never needed.
             } else {
               finalConfidence = disprove.revisedConfidence ?? classification.confidence;
             }
           } catch (e) {
             disproveNotes = `Disprove pass failed to run: ${(e as Error).message}`;
+            // Couldn't verify the claim either way — don't let an unverified
+            // signal ride into 'qualified'/'verify'; fall back to treating
+            // it as fit-only in filter/hybrid, and to the original
+            // classifier confidence (unchanged) in signal mode as before.
+            if (mode !== "signal") signalStands = false;
           }
         }
+
+        const finalHasSignal = hasSignal && signalStands;
 
         const { data: inserted, error: insertErr } = await supabase
           .from("companies")
           .insert({
             ...withName,
             status: finalQualifies ? "qualified" : "rejected",
-            confidence: finalQualifies ? finalConfidence : null,
+            confidence: finalQualifies && finalHasSignal ? finalConfidence : null,
+            has_signal: finalQualifies ? finalHasSignal : null,
+            discovery_channel: candidate.channel ?? null,
             rejection_reason: finalQualifies ? null : rejectionReason,
             revenue_band: classification.revenueEstimate,
             founder_name: classification.founderName,
@@ -257,7 +310,7 @@ export async function runSearchPipeline(
           continue;
         }
 
-        if (classification.quote) {
+        if (classification.quote && finalHasSignal) {
           await supabase.from("signal_evidence").insert({
             company_id: inserted.id,
             quote: classification.quote,
@@ -273,13 +326,28 @@ export async function runSearchPipeline(
           continue;
         }
 
-        if (finalConfidence === "verify") verify++;
-        else qualified++;
-        await bump(supabase, searchId, { qualified_count: qualified, verify_count: verify });
+        if (finalHasSignal) {
+          if (finalConfidence === "verify") verify++;
+          else qualified++;
+        } else {
+          fitOnly++;
+        }
+        accepted = qualified + verify + fitOnly;
+        await bump(supabase, searchId, {
+          qualified_count: qualified,
+          verify_count: verify,
+          fit_only_count: fitOnly,
+        });
+
+        // Contact enrichment (Anymailfinder + MillionVerifier) is a
+        // separate, manually-triggered step now — see enrichContacts()
+        // below and app/api/search/[id]/enrich/route.ts. Discovery just
+        // stores who to look up (next_gen_name/founder_name, already on
+        // this row) and stops here.
 
         // Target hit mid-round — the rest of this batch was already
         // discovered/fetched (sunk cost), but skip further classify spend.
-        if (qualified + verify >= targetSignals) break roundLoop;
+        if (countsTowardTarget() >= targetSignals) break roundLoop;
       }
 
       if (exhausted) {
@@ -303,6 +371,88 @@ export async function runSearchPipeline(
       status: "failed",
       error_message: (e as Error).message?.slice(0, 500) ?? "Unknown error",
       finished_at: new Date().toISOString(),
+    });
+  }
+}
+
+// Step 2 of the two-step flow — a manually-triggered pass over whatever a
+// completed search accepted (status: 'qualified', any mode/tier: qualified,
+// verify, or fit-only). Runs the same findContact/verifyEmail logic that
+// used to be inline in the discovery loop above, just decoupled so
+// enrichment spend only happens when someone actually clicks the button —
+// see app/api/search/[id]/enrich/route.ts.
+//
+// Safe to re-run: only enriches companies from this search that don't
+// already have a contacts row, so a retry after a partial failure (or just
+// running it again later) never re-queries someone already looked up.
+export async function enrichContacts(searchId: string) {
+  const supabase = createServiceRoleClient();
+
+  try {
+    const { data: search } = await supabase
+      .from("searches")
+      .select("contacts_found, contacts_verified")
+      .eq("id", searchId)
+      .single();
+    let contactsFound = search?.contacts_found ?? 0;
+    let contactsVerified = search?.contacts_verified ?? 0;
+
+    const { data: companies, error: companiesErr } = await supabase
+      .from("companies")
+      .select("id, domain, next_gen_name, next_gen_title, founder_name, founder_title")
+      .eq("search_id", searchId)
+      .eq("status", "qualified");
+    if (companiesErr) throw companiesErr;
+
+    const { data: existingContacts } = await supabase
+      .from("contacts")
+      .select("company_id")
+      .in("company_id", (companies ?? []).map((c) => c.id));
+    const alreadyEnriched = new Set((existingContacts ?? []).map((c) => c.company_id));
+
+    const toEnrich = (companies ?? []).filter((c) => !alreadyEnriched.has(c.id));
+
+    for (const company of toEnrich) {
+      try {
+        const targetName = company.next_gen_name ?? company.founder_name ?? null;
+        const contact = await findContact(company.domain, targetName);
+        if (contact.found && contact.email) {
+          const verification = await verifyEmail(contact.email).catch(() => "unknown" as const);
+          await supabase.from("contacts").insert({
+            company_id: company.id,
+            name: contact.name,
+            name_inferred: contact.nameInferred,
+            title: contact.nameInferred ? null : company.next_gen_title ?? company.founder_title,
+            email: contact.email,
+            find_status: "found",
+            find_source: "anymailfinder",
+            verification_status: verification,
+            verification_source: "millionverifier",
+            verified_at: new Date().toISOString(),
+          });
+          contactsFound++;
+          if (verification === "valid") contactsVerified++;
+        } else {
+          await supabase.from("contacts").insert({
+            company_id: company.id,
+            find_status: "not_found",
+            find_source: "anymailfinder",
+          });
+        }
+      } catch (e) {
+        // One company's vendor hiccup doesn't stop the rest of the batch —
+        // it just stays unenriched and picks up on the next run (no
+        // contacts row was inserted, so alreadyEnriched won't skip it).
+        console.warn(`Search ${searchId}: contact enrichment failed for ${company.domain}: ${(e as Error).message}`);
+      }
+      await bump(supabase, searchId, { contacts_found: contactsFound, contacts_verified: contactsVerified });
+    }
+
+    await bump(supabase, searchId, { enrichment_status: "complete" });
+  } catch (e) {
+    await bump(supabase, searchId, {
+      enrichment_status: "failed",
+      enrichment_error: (e as Error).message?.slice(0, 500) ?? "Unknown error",
     });
   }
 }

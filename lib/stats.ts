@@ -1,14 +1,22 @@
 import { Company } from "./mock-companies";
 import { Confidence } from "./supabase/types";
 
+// A 'filter'/'hybrid' company accepted on ICP fit alone (no signal found) is
+// still status: 'qualified' in the DB (see orchestrator.ts) — confidence:
+// null is what actually distinguishes it. Counted separately here (fitOnly)
+// rather than folded into `qualified`, which now only ever means "a real
+// signal at high/medium confidence" — same distinction CompaniesTable and
+// FolderCard already make.
 export function getSummaryStats(companies: Company[]) {
   const total = companies.length;
   const qualified = companies.filter(
-    (c) => c.status === "qualified" && c.confidence !== "verify"
+    (c) => c.status === "qualified" && (c.confidence === "high" || c.confidence === "medium")
   ).length;
   const verify = companies.filter(
     (c) => c.status === "qualified" && c.confidence === "verify"
   ).length;
+  const fitOnly = companies.filter((c) => c.status === "qualified" && c.confidence === null).length;
+  const accepted = qualified + verify + fitOnly;
   const rejected = companies.filter((c) => c.status === "rejected").length;
   const pending = companies.filter((c) => c.status === "pending").length;
   const contactsFound = companies.filter((c) => c.contact?.findStatus === "found").length;
@@ -16,7 +24,7 @@ export function getSummaryStats(companies: Company[]) {
     (c) => c.contact?.verificationStatus === "valid"
   ).length;
 
-  return { total, qualified, verify, rejected, pending, contactsFound, contactsVerified };
+  return { total, qualified, verify, fitOnly, accepted, rejected, pending, contactsFound, contactsVerified };
 }
 
 export function getIndustryBreakdown(companies: Company[]) {
