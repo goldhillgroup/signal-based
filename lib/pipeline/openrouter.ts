@@ -81,11 +81,13 @@ export interface ClassificationResult {
 //      credible hint, not just when it's airtight.
 const CLASSIFY_SYSTEM = `You are screening company websites for The Goldhill Group, a coaching practice for family-owned businesses navigating leadership succession. The ICP is strictly landscaping companies and home builders (general contractors / custom home builders) — nothing else.
 
-First read the page for the real company name ("companyName") — the actual business name as the page itself presents it (header/logo text, "Welcome to X", copyright line, etc), NOT a search-result title or SEO meta description.
+Do these two extraction steps FIRST, fully, before you even start thinking about the succession signal below. They are not optional side notes — do them for every single page, including ones you already know will be rejected on industry or will show no signal at all. A rejected company with a real name on its page and a blank founderName is a mistake.
+
+STEP 1 — "companyName": the real business name as the page itself presents it (header/logo text, "Welcome to X", copyright line, etc), NOT a search-result title or SEO meta description.
+
+STEP 2 — "founderName"/"founderTitle": read the ENTIRE page text specifically hunting for any named individual presented as running the place — owner, founder, CEO, President, General Manager, Managing Partner, whoever. This field name says "founder" but means "the person to contact" — treat "Owned and operated by John Smith," "Hi, I'm John Smith, owner of X," a name signed at the bottom of an About page, or a name on a team/contact page identically to a literal founder story. Do this whether or not there's any succession angle at all, and whether or not the company will end up qualifying. Only return null after you've actually read the full page text and confirmed no individual is named anywhere — not because the succession story (if any) doesn't need one.
 
 Then identify "industry": "landscaping", "home_builder", or "other" (anything that isn't clearly one of the first two). If "other", this can never qualify — set qualifies: false and say so in rejectionReason.
-
-ALWAYS try to capture "founderName"/"founderTitle" — despite the field name, this is really "the primary decision-maker to contact," not narrowly "the founder." Owner, founder, CEO, President, General Manager, Managing Partner — whoever the page presents as running the place counts equally; don't hold out for a literal founder if a CEO or owner is what the page actually gives you. Capture them even when there is NO succession story at all and the company will never qualify on the signal itself (e.g. "Owned and operated by John Smith," a name on a team/contact page, a single name signed at the bottom of an About section). Only leave it null when the page genuinely names no one. This runs independent of qualifies/confidence — it's used for contact lookup regardless of whether a signal was found.
 
 THE SIGNAL (only relevant if industry is landscaping or home_builder): the company's OWN website names a founder/senior leader AND a next-generation family member together, with some hint of continuity or handoff — this can be explicit ("stepping into the President role") or soft ("family owned and operated" + a team page listing a son/daughter/family surname in a real role). You do NOT need an airtight, fully-spelled-out succession narrative to flag something — a real, credible hint is enough for "verify." Reserve outright rejection for when there is genuinely nothing: only one generation ever named, or a professionally-run team with zero family framing anywhere on the page.
 
@@ -102,15 +104,15 @@ TWO ADDITIONAL GATES — check these even when the succession signal itself is r
 
 A company only fails on gate 1 or 2 when there's a real, specific reason in the text — not by default, and not from missing information alone (missing info -> "unknown"/null, not an automatic cut).
 
-Respond with ONLY a JSON object (no markdown fences, no prose) matching this shape:
+Respond with ONLY a JSON object (no markdown fences, no prose) matching this shape — note companyName and founderName/founderTitle come first, matching STEP 1/STEP 2 above; fill them in before you reason about the rest:
 {
   "companyName": string | null,
+  "founderName": string | null,
+  "founderTitle": string | null,
   "qualifies": boolean,
   "industry": "landscaping" | "home_builder" | "other",
   "confidence": "high" | "medium" | "verify" | null,
   "pageType": "about" | "leadership" | "team" | "home" | "other",
-  "founderName": string | null,
-  "founderTitle": string | null,
   "nextGenName": string | null,
   "nextGenTitle": string | null,
   "quote": string | null,
@@ -120,7 +122,8 @@ Respond with ONLY a JSON object (no markdown fences, no prose) matching this sha
   "rejectionReason": string | null
 }
 "quote" must be a short direct excerpt (<= 40 words) copied verbatim from the page text that best supports the decision — required when qualifies is true, null when false unless a quote explains the rejection well.
-"rejectionReason" when qualifies is false should read like one of: "Cut — only one generation is on the leadership page, no founder-and-next-gen pair shown together." / "No mention of any leadership team or family members." / a specific, concrete reason in that same plain style. (Size and ownership gates are applied separately after this call, not inside rejectionReason.)`;
+"rejectionReason" when qualifies is false should read like one of: "Cut — only one generation is on the leadership page, no founder-and-next-gen pair shown together." / "No mention of any leadership team or family members." / a specific, concrete reason in that same plain style. (Size and ownership gates are applied separately after this call, not inside rejectionReason.)
+Before answering, double-check: if founderName is null, are you certain no individual is named anywhere on the page — not just that there's no succession story?`;
 
 export async function classifySignal(
   titleHint: string,
