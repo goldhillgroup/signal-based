@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { RadarIcon, FolderIcon } from "./icons";
+import { RadarIcon, FolderIcon, SettingsIcon } from "./icons";
 import { SignOutButton } from "./SignOutButton";
 
 // Two real destinations — "Crawl Runs" and "Reports" were placeholders from
@@ -23,6 +23,7 @@ import { SignOutButton } from "./SignOutButton";
 const NAV_ITEMS = [
   { label: "Signal Radar", icon: RadarIcon, href: "/dashboard" },
   { label: "All Leads", icon: FolderIcon, href: "/dashboard/all-leads" },
+  { label: "Settings", icon: SettingsIcon, href: "/dashboard/settings" },
 ];
 
 export function Sidebar({ userEmail }: { userEmail: string | null }) {

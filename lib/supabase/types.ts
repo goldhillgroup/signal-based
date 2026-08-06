@@ -159,6 +159,22 @@ export interface Database {
         Update: Partial<Database["public"]["Tables"]["searches"]["Row"]>;
         Relationships: [];
       };
+      // Service-role only — see supabase/migrations/20260806010000_app_settings.sql.
+      // No RLS policies at all, so this table is unreachable from the
+      // browser's Supabase client even for a logged-in user.
+      app_settings: {
+        Row: {
+          key: string;
+          value: string;
+          updated_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["app_settings"]["Row"]> & {
+          key: string;
+          value: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["app_settings"]["Row"]>;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

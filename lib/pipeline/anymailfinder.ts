@@ -1,5 +1,14 @@
-const ANYMAILFINDER_API_KEY = process.env.ANYMAILFINDER_API_KEY;
+import { resolveSetting } from "../settings";
+
 const BASE = "https://api.anymailfinder.com/v5.0";
+
+// Editable from /dashboard/settings (DB value wins, falls through to the
+// env var) — see lib/settings.ts.
+async function getApiKey(): Promise<string> {
+  const key = await resolveSetting("ANYMAILFINDER_API_KEY", process.env.ANYMAILFINDER_API_KEY);
+  if (!key) throw new Error("ANYMAILFINDER_API_KEY is not set");
+  return key;
+}
 
 export interface ContactFindResult {
   found: boolean;
@@ -18,11 +27,11 @@ function inferNameFromEmail(email: string): string | null {
 }
 
 async function post(path: string, body: Record<string, unknown>) {
-  if (!ANYMAILFINDER_API_KEY) throw new Error("ANYMAILFINDER_API_KEY is not set");
+  const apiKey = await getApiKey();
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${ANYMAILFINDER_API_KEY}`,
+      Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),

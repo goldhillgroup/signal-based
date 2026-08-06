@@ -1,11 +1,22 @@
 import type { Industry } from "../supabase/types";
 import { stateNameFor } from "./us-states";
+import { resolveSetting } from "../settings";
 
 // Prefers APIFY_TOKEN_3, then _2, then the primary APIFY_TOKEN — keeps
 // test-run cost off Jonathan's account during development. _2 ran dry
 // testing actor schemas (see .env.local); _3 is the current one with real
-// balance. Unset a var to fall through to the next one down this chain.
-const APIFY_TOKEN = process.env.APIFY_TOKEN_3 || process.env.APIFY_TOKEN_2 || process.env.APIFY_TOKEN;
+// balance. Editable from /dashboard/settings (DB value wins); each falls
+// through to its own env var when unset in Settings — see lib/settings.ts.
+async function getApifyToken(): Promise<string> {
+  const [t3, t2, t1] = await Promise.all([
+    resolveSetting("APIFY_TOKEN_3", process.env.APIFY_TOKEN_3),
+    resolveSetting("APIFY_TOKEN_2", process.env.APIFY_TOKEN_2),
+    resolveSetting("APIFY_TOKEN", process.env.APIFY_TOKEN),
+  ]);
+  const token = t3 || t2 || t1;
+  if (!token) throw new Error("APIFY_TOKEN is not set");
+  return token;
+}
 const APIFY_BASE = "https://api.apify.com/v2";
 
 // Vertical-specific Google Maps category searches — matches the two
@@ -70,9 +81,9 @@ function isBlocked(host: string): boolean {
 }
 
 async function runActorSync(actorId: string, input: Record<string, unknown>, timeoutSecs = 120) {
-  if (!APIFY_TOKEN) throw new Error("APIFY_TOKEN is not set");
+  const token = await getApifyToken();
   const res = await fetch(
-    `${APIFY_BASE}/acts/${actorId}/run-sync-get-dataset-items?token=${APIFY_TOKEN}&timeout=${timeoutSecs}`,
+    `${APIFY_BASE}/acts/${actorId}/run-sync-get-dataset-items?token=${token}&timeout=${timeoutSecs}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -310,7 +321,7 @@ export async function fetchCompanyPages(domains: string[]): Promise<Map<string, 
   // per-domain try/catch below has a chance to swallow it as "this domain's
   // site didn't load" — that per-domain tolerance is for individual site
   // failures, not for "nothing can fetch anything."
-  if (!APIFY_TOKEN) throw new Error("APIFY_TOKEN is not set");
+  await getApifyToken();
 
   const byDomain = new Map<string, FetchedPage[]>();
 

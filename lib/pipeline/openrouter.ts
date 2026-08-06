@@ -1,4 +1,5 @@
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+import { resolveSetting } from "../settings";
+
 const MODEL = "anthropic/claude-sonnet-5";
 
 // The scope's ICP revenue band — hardcoded for now since it's core criteria,
@@ -6,16 +7,24 @@ const MODEL = "anthropic/claude-sonnet-5";
 // vertical/state if that ever changes.
 const TARGET_REVENUE_BAND = "$3M-$15M";
 
+// Editable from /dashboard/settings (DB value wins, falls through to the
+// env var) — see lib/settings.ts.
+async function getOpenRouterKey(): Promise<string> {
+  const key = await resolveSetting("OPENROUTER_API_KEY", process.env.OPENROUTER_API_KEY);
+  if (!key) throw new Error("OPENROUTER_API_KEY is not set");
+  return key;
+}
+
 // 800 was enough for the original 8-field schema; the revenueEstimate/
 // sizeFit/stillFamilyOwned fields added on top of it pushed real responses
 // past that and truncated mid-JSON (a real failure seen live, not a
 // theoretical one) — 1200 leaves real headroom.
 async function chat(messages: { role: string; content: string }[], maxTokens = 1200): Promise<string> {
-  if (!OPENROUTER_API_KEY) throw new Error("OPENROUTER_API_KEY is not set");
+  const apiKey = await getOpenRouterKey();
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+      Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
