@@ -1,6 +1,8 @@
 import type { Industry } from "../supabase/types";
 import { stateNameFor } from "./us-states";
-import { chat, extractJson } from "./openrouter";
+import { chat, extractJson, getExtractModel } from "./openrouter";
+import { tavilySearch } from "./tavily";
+import { firecrawlScrape } from "./firecrawl";
 import { hostnameOf, isBlocked, fetchSingleUrl, type Candidate } from "./apify";
 import { createServiceRoleClient } from "../supabase/server";
 
@@ -52,8 +54,8 @@ async function freeFetchText(url: string): Promise<string | null> {
   }
 }
 
-const CLAUDE_ONLINE_MODEL = "anthropic/claude-sonnet-5:online";
-const CLAUDE_MODEL = "anthropic/claude-sonnet-5"; // no :online — reading text already in hand, no search needed
+// NOTE: the ":online" variant is deliberately gone — see searchOneAngle for
+// why (it billed search as LLM tokens and dominated a whole day's spend).
 
 // Angles cover each vertical's whole trade family — the green trades include
 // tree care and irrigation, which have their own trade associations (TCIA,
@@ -84,27 +86,65 @@ interface DirectoryResult {
   companies: { name: string; website: string }[];
 }
 
-// Expensive path — a real web-search call to FIND the directory (only runs
-// on a cache miss, or when a cache hit's page came back empty).
+// Discovery path — find WHICH page lists these companies, then read it.
+//
+// Rewritten off OpenRouter's ":online" (2026-08-07). That version bundled
+// search into the model call, so every fetched result landed in the prompt at
+// full size; reconstructed from one day's spend it ran ~$0.50/call and
+// accounted for roughly $26 of a $30 OpenRouter balance, versus ~$2 for all
+// the real classification work. Now: Tavily finds the page (~$0.008, priced as
+// search), a layered fetch reads it for free where possible, and a plain
+// non-search model call does the extraction. Search and reasoning are billed
+// separately again.
 async function searchOneAngle(angle: string, stateName: string): Promise<DirectoryResult> {
-  const prompt = `Search the web for ${angle} in ${stateName}, USA.
+  const results = await tavilySearch(`${angle} in ${stateName}, USA`, { maxResults: 6 });
+  if (results.length === 0) return { sourceUrl: null, companies: [] };
 
-Read the actual directory/listing page(s) you find and extract REAL company names with their OWN website URLs — not the directory's own page, not a social media profile, not a review site. Only include a company if its name and website came directly from a real directory/listing page in your search results. Never invent a company or use one you merely recall without a direct source found just now.
+  // Try candidates in rank order and keep the first that actually yields
+  // companies — the top hit is often an association's marketing page rather
+  // than its member list.
+  for (const r of results.slice(0, 4)) {
+    if (isBlockedDirectoryHost(r.url)) continue;
 
-Also report the single BEST directory/listing page URL you used as "sourceUrl" — the actual page you read the companies from, so it can be revisited directly later without searching again.
+    const pageText = await readDirectoryPage(r.url, r.content);
+    if (!pageText) continue;
 
-Respond with ONLY a JSON object (no markdown fences, no prose): {"sourceUrl": string | null, "companies": [{"name": string, "website": string}]} — up to 15 companies. If you can't find a real directory for this, return {"sourceUrl": null, "companies": []}.`;
-
-  try {
-    const raw = await chat([{ role: "user", content: prompt }], 1200, CLAUDE_ONLINE_MODEL);
-    const parsed = extractJson<DirectoryResult>(raw);
-    return {
-      sourceUrl: parsed.sourceUrl ?? null,
-      companies: Array.isArray(parsed.companies) ? parsed.companies : [],
-    };
-  } catch {
-    return { sourceUrl: null, companies: [] };
+    const companies = await extractFromKnownPage(pageText, angle, stateName);
+    if (companies.length > 0) {
+      return { sourceUrl: r.url, companies };
+    }
   }
+  return { sourceUrl: null, companies: [] };
+}
+
+// Reads a directory page through the cheapest layer that works:
+//   1. free plain fetch          — costs nothing, handles server-rendered pages
+//   2. Tavily's own extracted content — already paid for by the search
+//   3. Firecrawl                 — renders JS-gated / bot-blocked pages
+// This ordering is the "freedom" property: no single vendor can block a
+// lookup, and the expensive layer only runs when the free ones genuinely
+// cannot see the content.
+async function readDirectoryPage(url: string, tavilyContent?: string): Promise<string | null> {
+  const free = await freeFetchText(url);
+  if (free && free.length > 1500) return free;
+
+  // Tavily returns a content snippet with every result — small, but free at
+  // this point since the search is already paid for.
+  if (tavilyContent && tavilyContent.length > 800) return tavilyContent;
+
+  // Last resort: the only layer that renders JS. Measured on
+  // members.georgiaarborist.org — free fetch 2,273 chars of nav chrome,
+  // Firecrawl 34,844 chars including the actual member list.
+  const rendered = await firecrawlScrape(url);
+  if (rendered) return rendered;
+
+  return free ?? tavilyContent ?? null;
+}
+
+// Aggregators and review sites that turn up in directory searches but never
+// list a company's own site usefully.
+function isBlockedDirectoryHost(url: string): boolean {
+  return /yelp\.|angi\.|thumbtack\.|houzz\.|facebook\.|linkedin\.|bbb\.org|yellowpages\./i.test(url);
 }
 
 // Cheap path — the directory URL is already known; just read it and extract,
@@ -126,7 +166,7 @@ ${pageText.slice(0, 6000)}
 """`;
 
   try {
-    const raw = await chat([{ role: "user", content: prompt }], 1000, CLAUDE_MODEL);
+    const raw = await chat([{ role: "user", content: prompt }], 1000, await getExtractModel());
     const parsed = extractJson<{ companies: { name: string; website: string }[] }>(raw);
     return Array.isArray(parsed.companies) ? parsed.companies : [];
   } catch {

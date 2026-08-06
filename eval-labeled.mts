@@ -21,6 +21,14 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { classifySignal, disprovePass } from "./lib/pipeline/openrouter";
+
+// Model under test. Set CLASSIFY_MODEL in the env to score a candidate
+// model against the labeled set before promoting it in production:
+//   CLASSIFY_MODEL=anthropic/claude-haiku-4.5 npx tsx --env-file=.env.local ./eval-labeled.mts A
+// Compare the two runs on the 26 no_founder_and_nextgen cuts and on
+// QUALIFIED recall — those two numbers decide whether the cheaper model is
+// actually safe, rather than assuming it is.
+const MODEL_UNDER_TEST = process.env.CLASSIFY_MODEL ?? "anthropic/claude-sonnet-5 (default)";
 import { fetchCompanyPages, pickBestPage } from "./lib/pipeline/apify";
 
 type Row = {
@@ -37,6 +45,7 @@ type Row = {
 };
 
 const rows: Row[] = JSON.parse(readFileSync("./labeled72.json", "utf8"));
+console.error(`model under test: ${MODEL_UNDER_TEST}`);
 const mode = (process.argv[2] ?? "A").toUpperCase();
 
 // Plain free fetch — mirrors the pipeline's own free path so MODE A tests the
@@ -232,6 +241,7 @@ if (mode.includes("B")) {
   report(out.B, "B — full pipeline");
 }
 
-writeFileSync("./eval-results.json", JSON.stringify(out, null, 1));
-console.log("\nwrote eval-results.json");
+const stamp = MODEL_UNDER_TEST.replace(/[^a-z0-9.-]/gi, "_");
+writeFileSync(`./eval-results.${stamp}.json`, JSON.stringify({ model: MODEL_UNDER_TEST, ...out }, null, 1));
+console.log(`\nwrote eval-results.${stamp}.json  (model: ${MODEL_UNDER_TEST})`);
 process.exit(0);

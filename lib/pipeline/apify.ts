@@ -6,6 +6,7 @@ import { resolveSetting } from "../settings";
 // only inside function bodies at call time, never at module-evaluation time,
 // so neither module needs the other to be fully initialized when it loads.
 import { discoverViaDirectories } from "./directory-discovery";
+import { firecrawlScrape } from "./firecrawl";
 
 // Prefers APIFY_TOKEN_4, then _3, _2, then the primary APIFY_TOKEN — keeps
 // test-run cost off Jonathan's account during development. _2 ran dry
@@ -572,20 +573,37 @@ export async function fetchCompanyPages(domains: string[]): Promise<Map<string, 
   const byDomain = new Map<string, FetchedPage[]>();
 
   await withConcurrency(domains, FETCH_CONCURRENCY, async (domain) => {
-    // Free path first — costs nothing and handles the plain-HTML majority.
+    // LAYER 1 — free plain fetch. Costs nothing and handles the plain-HTML
+    // majority: two consecutive live runs got 15/15 and 24/24 this way.
     const free = await freeFetchDomain(domain);
     if (free) {
       byDomain.set(domain, free);
       return;
     }
 
+    // LAYER 2 — Firecrawl. Renders the JS-gated / bot-blocked minority that
+    // layer 1 structurally cannot read. Tried BEFORE Apify because it's a
+    // plain REST call with no actor-run semantics, no per-actor timeout
+    // tuning, and no shared budget cap that can wedge the whole pipeline.
+    const rendered = await firecrawlScrape(`https://${domain}/about`).catch(() => null);
+    const renderedHome = rendered ?? (await firecrawlScrape(`https://${domain}`).catch(() => null));
+    if (renderedHome) {
+      byDomain.set(domain, [
+        { domain, url: `https://${domain}`, text: renderedHome, siteName: null },
+      ]);
+      return;
+    }
+
+    // LAYER 3 — Apify's rendering crawler. Last resort: it's the layer most
+    // likely to be unavailable (budget cap, actor timeout), which is exactly
+    // why it's no longer the only fallback.
     let items: RawFetchedItem[];
     try {
       items = await fetchOneDomain(domain);
     } catch {
-      // This domain's site is slow/down/blocking — it just yields no pages
-      // (classify step will insert it as "no page fetched"), everyone else
-      // in the round is unaffected.
+      // Every layer failed for this domain — it just yields no pages (classify
+      // records it as "no page fetched"); everyone else in the round is
+      // unaffected.
       return;
     }
 

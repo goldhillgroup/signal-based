@@ -53,4 +53,11 @@ export const SETTINGS_KEYS = [
   { key: "OPENROUTER_API_KEY", label: "OpenRouter", envFallback: "OPENROUTER_API_KEY" },
   { key: "ANYMAILFINDER_API_KEY", label: "Anymailfinder", envFallback: "ANYMAILFINDER_API_KEY" },
   { key: "MILLIONVERIFIER_API_KEY", label: "MillionVerifier", envFallback: "MILLIONVERIFIER_API_KEY" },
+  { key: "TAVILY_API_KEY", label: "Tavily (directory search)", envFallback: "TAVILY_API_KEY" },
+  { key: "FIRECRAWL_API_KEY", label: "Firecrawl (JS-rendered page fallback)", envFallback: "FIRECRAWL_API_KEY" },
+  // Model IDs, not secrets — same mechanism so they're switchable without a
+  // redeploy. Flip CLASSIFY_MODEL to anthropic/claude-haiku-4.5 once the
+  // 72-company benchmark proves it holds.
+  { key: "CLASSIFY_MODEL", label: "Model — classify + disprove", envFallback: "CLASSIFY_MODEL" },
+  { key: "EXTRACT_MODEL", label: "Model — directory extraction", envFallback: "EXTRACT_MODEL" },
 ] as const;
