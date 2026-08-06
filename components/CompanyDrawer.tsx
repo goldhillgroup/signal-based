@@ -13,6 +13,14 @@ import {
 import { XIcon, BuildingIcon } from "./icons";
 import { formatRelativeDate } from "@/lib/stats";
 
+// Which discovery channel surfaced this company — see lib/pipeline/apify.ts's
+// discoverCandidates() and lib/pipeline/directory-discovery.ts.
+const CHANNEL_LABELS: Record<string, string> = {
+  directory: "Industry directory / licensing board",
+  web_search: "Web search (succession phrasing)",
+  maps: "Google Maps (category listing)",
+};
+
 export function CompanyDrawer({
   company,
   onClose,
@@ -165,6 +173,9 @@ export function CompanyDrawer({
                         {company.domain}
                       </span>
                     </div>
+                    {company.discoveryChannel && (
+                      <Row k="Found via" v={CHANNEL_LABELS[company.discoveryChannel] ?? company.discoveryChannel} />
+                    )}
                   </div>
                 </div>
               )}

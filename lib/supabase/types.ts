@@ -175,6 +175,27 @@ export interface Database {
         Update: Partial<Database["public"]["Tables"]["app_settings"]["Row"]>;
         Relationships: [];
       };
+      // Directory-source cache — see supabase/migrations/20260806020000_directory_sources.sql.
+      directory_sources: {
+        Row: {
+          id: string;
+          industry: string;
+          state: string;
+          angle: string;
+          source_url: string;
+          hit_count: number;
+          discovered_at: string;
+          last_used_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["directory_sources"]["Row"]> & {
+          industry: string;
+          state: string;
+          angle: string;
+          source_url: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["directory_sources"]["Row"]>;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

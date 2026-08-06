@@ -1,6 +1,11 @@
 import type { Industry } from "../supabase/types";
 import { stateNameFor } from "./us-states";
 import { resolveSetting } from "../settings";
+// Circular by module graph (directory-discovery imports hostnameOf/isBlocked/
+// fetchSingleUrl from here), but safe: every binding on both sides is used
+// only inside function bodies at call time, never at module-evaluation time,
+// so neither module needs the other to be fully initialized when it loads.
+import { discoverViaDirectories } from "./directory-discovery";
 
 // Prefers APIFY_TOKEN_4, then _3, _2, then the primary APIFY_TOKEN — keeps
 // test-run cost off Jonathan's account during development. _2 ran dry
@@ -100,7 +105,7 @@ export interface Candidate {
   channel: "maps" | "web_search" | "directory";
 }
 
-function hostnameOf(url: string): string | null {
+export function hostnameOf(url: string): string | null {
   try {
     return new URL(url).hostname.replace(/^www\./, "");
   } catch {
@@ -108,7 +113,7 @@ function hostnameOf(url: string): string | null {
   }
 }
 
-function isBlocked(host: string): boolean {
+export function isBlocked(host: string): boolean {
   return BLOCKED_HOSTS.some((b) => host === b || host.endsWith(`.${b}`));
 }
 
@@ -231,12 +236,18 @@ async function discoverViaWebSearch(
     .map((r) => ({ domain: "", url: r.url, title: r.title ?? "", channel: "web_search" as const }));
 }
 
-// Step 1 — discovery. Two channels run in parallel and get merged: Maps for
-// broad, low-noise category coverage, targeted web search for succession-
-// specific precision. Promise.allSettled — one channel timing out or erroring
-// must not take the other's real results down with it (a real Maps timeout
-// happened live during testing; a round should degrade to "web search results
-// only" rather than fail outright over an unrelated channel's hiccup).
+// Step 1 — discovery. THREE channels run in parallel and get merged:
+//   - directory (lib/pipeline/directory-discovery.ts) — highest-yield per the
+//     Ofer Lieberson lesson, Claude+OpenRouter not Apify, gets cheaper over
+//     time via the directory_sources cache. Listed FIRST so its candidates
+//     win the `limit` cut when channels overlap.
+//   - web search — succession-specific phrasing, precision play.
+//   - Maps — broad category coverage, but the most Apify-expensive; kept as
+//     the volume backstop rather than the primary source now.
+// Promise.allSettled — one channel timing out or erroring must not take the
+// others' real results down with it (a real Maps timeout happened live during
+// testing; a round should degrade to the surviving channels' results rather
+// than fail outright over an unrelated channel's hiccup).
 export async function discoverCandidates(params: {
   industry: Industry | null;
   states: string[];
@@ -248,19 +259,26 @@ export async function discoverCandidates(params: {
 }): Promise<{ candidates: Candidate[]; exhausted: boolean; channelErrors: string[] }> {
   const { industry, states, limit, round = 1, excludeDomains } = params;
 
-  const [mapsResult, webResult] = await Promise.allSettled([
-    discoverViaMaps(industry, states, limit, round),
+  const [dirResult, webResult, mapsResult] = await Promise.allSettled([
+    discoverViaDirectories(industry, states, limit),
     discoverViaWebSearch(industry, states, limit),
+    discoverViaMaps(industry, states, limit, round),
   ]);
 
   const channelErrors: string[] = [];
   const raw: Candidate[] = [];
-  if (mapsResult.status === "fulfilled") raw.push(...mapsResult.value);
-  else channelErrors.push(`Maps channel failed: ${mapsResult.reason?.message?.slice(0, 150) ?? mapsResult.reason}`);
+  if (dirResult.status === "fulfilled") raw.push(...dirResult.value);
+  else channelErrors.push(`Directory channel failed: ${dirResult.reason?.message?.slice(0, 150) ?? dirResult.reason}`);
   if (webResult.status === "fulfilled") raw.push(...webResult.value);
   else channelErrors.push(`Web search channel failed: ${webResult.reason?.message?.slice(0, 150) ?? webResult.reason}`);
+  if (mapsResult.status === "fulfilled") raw.push(...mapsResult.value);
+  else channelErrors.push(`Maps channel failed: ${mapsResult.reason?.message?.slice(0, 150) ?? mapsResult.reason}`);
 
-  if (mapsResult.status === "rejected" && webResult.status === "rejected") {
+  if (
+    dirResult.status === "rejected" &&
+    webResult.status === "rejected" &&
+    mapsResult.status === "rejected"
+  ) {
     throw new Error(channelErrors.join(" | "));
   }
 
@@ -275,7 +293,7 @@ export async function discoverCandidates(params: {
   }
 
   // "Exhausted" — this round surfaced fewer fresh domains than asked for,
-  // meaning both channels combined have nothing left to give for this
+  // meaning all three channels combined have nothing left to give for this
   // category+state; the caller should stop looping rather than
   // re-requesting a near-empty result set.
   const exhausted = candidates.length < limit;
@@ -287,6 +305,35 @@ export interface FetchedPage {
   url: string;
   text: string;
   siteName: string | null; // og:site_name — the cleanest source for the real company name
+}
+
+// Fetches one arbitrary, already-known URL (not a company's guessed
+// About-page slugs — a specific directory/listing page). Used by
+// directory-discovery.ts's cache-hit path: once a directory URL is known,
+// re-fetching it directly is cheap (this) vs. the expensive web-search call
+// that found it the first time.
+export async function fetchSingleUrl(url: string): Promise<string | null> {
+  let items: RawFetchedItem[];
+  try {
+    items = (await runActorSync(
+      "apify~website-content-crawler",
+      {
+        startUrls: [{ url }],
+        crawlerType: "cheerio",
+        maxCrawlDepth: 0,
+        maxCrawlPages: 1,
+        maxRequestRetries: 1,
+        saveMarkdown: false,
+      },
+      45
+    )) as RawFetchedItem[];
+  } catch {
+    return null;
+  }
+  const item = items[0];
+  if (!item?.text || item.text.trim().length < 50) return null;
+  if (item.crawl?.httpStatusCode && item.crawl.httpStatusCode !== 200) return null;
+  return item.text;
 }
 
 // Trimmed to the 5 slugs that actually accounted for every real hit across

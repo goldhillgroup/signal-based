@@ -9,7 +9,7 @@ const TARGET_REVENUE_BAND = "$3M-$15M";
 
 // Editable from /dashboard/settings (DB value wins, falls through to the
 // env var) — see lib/settings.ts.
-async function getOpenRouterKey(): Promise<string> {
+export async function getOpenRouterKey(): Promise<string> {
   const key = await resolveSetting("OPENROUTER_API_KEY", process.env.OPENROUTER_API_KEY);
   if (!key) throw new Error("OPENROUTER_API_KEY is not set");
   return key;
@@ -19,7 +19,14 @@ async function getOpenRouterKey(): Promise<string> {
 // sizeFit/stillFamilyOwned fields added on top of it pushed real responses
 // past that and truncated mid-JSON (a real failure seen live, not a
 // theoretical one) — 1200 leaves real headroom.
-async function chat(messages: { role: string; content: string }[], maxTokens = 1200): Promise<string> {
+// model is overridable — directory-discovery.ts uses this same helper with
+// perplexity/sonar (a real web-search model, ~10x cheaper per token than
+// Sonnet, see project memory) instead of the default classify/disprove model.
+export async function chat(
+  messages: { role: string; content: string }[],
+  maxTokens = 1200,
+  model: string = MODEL
+): Promise<string> {
   const apiKey = await getOpenRouterKey();
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
@@ -28,7 +35,7 @@ async function chat(messages: { role: string; content: string }[], maxTokens = 1
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: MODEL,
+      model,
       response_format: { type: "json_object" },
       messages,
       max_tokens: maxTokens,
@@ -45,7 +52,7 @@ async function chat(messages: { role: string; content: string }[], maxTokens = 1
 // Claude via OpenRouter still wraps JSON in ```json fences fairly often even
 // with response_format: json_object — strip markdown before parsing, and
 // fall back to grabbing the first {...} block if that still fails.
-function extractJson<T>(raw: string): T {
+export function extractJson<T>(raw: string): T {
   const stripped = raw.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
   try {
     return JSON.parse(stripped) as T;
