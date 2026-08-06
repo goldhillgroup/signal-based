@@ -247,17 +247,22 @@ export async function runSearchPipeline(
         // ICP-definition checks (revenue band, still family-run), not
         // signal-authenticity checks, so they cut a filter/hybrid "just
         // category fit" acceptance exactly the same as a signal-mode one.
+        // SIZE IS NO LONGER A GATE (2026-08-06, per instruction "start broad,
+        // don't limit him"). sizeFit/revenueEstimate are still captured on
+        // every row and shown in the UI so the band can be eyeballed or
+        // filtered after the fact — but a company is no longer REJECTED for
+        // reading too small or too big. Rationale: revenue is being estimated
+        // from soft textual proxies (years in business, crew size, service
+        // area), not real financials, so cutting on it was throwing away
+        // real companies on a guess. Note this deliberately diverges from the
+        // delivered proof, which did cut "Too small"/"Too big" — so expect to
+        // see companies outside $3-15M in results until Jonathan confirms the
+        // band he actually wants. Re-enable by restoring the two branches
+        // below (git history: this commit) once that's settled.
         if (finalQualifies && !classification.stillFamilyOwned) {
           finalQualifies = false;
           rejectionReason =
             "No longer family-owned — acquired/consolidated, current leadership shows no family members.";
-        } else if (finalQualifies && classification.sizeFit === "too_small") {
-          finalQualifies = false;
-          rejectionReason = "Too small — below the target revenue band, too small to be the owner-led business coached.";
-        } else if (finalQualifies && classification.sizeFit === "too_big") {
-          finalQualifies = false;
-          rejectionReason =
-            "Too big — above the target band, a regional or national-scale operator, not an owner-led family business mid-handoff.";
         } else if (finalQualifies && hasSignal) {
           // Only worth running the disprove pass when there's an actual
           // signal claim to check — a filter/hybrid company accepted purely
