@@ -23,6 +23,30 @@ const ROUND_SIZE = 15;
 const MAX_SCAN_MULTIPLIER = 6; // never scan more than target * this
 const ABSOLUTE_SCAN_CEILING = 240; // hard stop regardless of target — cost/time sanity
 
+// How many companies are classified at once. Each one is 1-2 OpenRouter calls
+// (classify, plus disprove when there's a signal to check), so this is bounded
+// by politeness to that API rather than by anything local. 5 turns a measured
+// ~14.6s-per-company serial pass into roughly 3s per company.
+const CLASSIFY_CONCURRENCY = 5;
+
+// Plain worker pool — same shape as the one in apify.ts, kept local so the two
+// call sites can be tuned independently (page fetching and LLM classification
+// have very different rate-limit profiles).
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  run: (item: T) => Promise<void>
+) {
+  let cursor = 0;
+  async function worker() {
+    while (cursor < items.length) {
+      const item = items[cursor++];
+      await run(item);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+}
+
 type Supa = ReturnType<typeof createServiceRoleClient>;
 
 async function bump(supabase: Supa, searchId: string, patch: Partial<SearchRow>) {
@@ -162,8 +186,21 @@ export async function runSearchPipeline(
       }
       await bump(supabase, searchId, { pages_fetched: totalScanned });
 
-      // ── 3. Classify -> disprove, one candidate at a time ─────────────────
-      for (const candidate of candidates) {
+      // ── 3. Classify -> disprove, CLASSIFY_CONCURRENCY at a time ──────────
+      // Each candidate is fully independent (its own page, its own LLM calls,
+      // its own row), so this was pure wasted wall-clock when serial: a real
+      // 25-company run measured 364s -> ~14.6s per company, essentially all of
+      // it waiting on one classify+disprove pair at a time.
+      // Counter mutations below are safe without locking: Node is
+      // single-threaded, so `qualified++` and friends can't interleave
+      // mid-statement — only whole statements between awaits interleave.
+      let targetHit = false;
+      await runWithConcurrency(candidates, CLASSIFY_CONCURRENCY, async (candidate) => {
+        // Target already reached by an in-flight sibling — skip the remaining
+        // classify spend. (With concurrency N, up to N-1 extra companies can
+        // finish past the target; their results are kept, never discarded.)
+        if (targetHit) return;
+
         const page = pickBestPage(pagesByDomain.get(candidate.domain) ?? []);
 
         const base = {
@@ -185,7 +222,7 @@ export async function runSearchPipeline(
           });
           rejected++;
           await bump(supabase, searchId, { rejected_count: rejected });
-          continue;
+          return;
         }
 
         let classification;
@@ -201,7 +238,7 @@ export async function runSearchPipeline(
           });
           rejected++;
           await bump(supabase, searchId, { rejected_count: rejected });
-          continue;
+          return;
         }
 
         // Best available source, in trust order: the page's own og:site_name
@@ -226,7 +263,7 @@ export async function runSearchPipeline(
           });
           rejected++;
           await bump(supabase, searchId, { rejected_count: rejected });
-          continue;
+          return;
         }
 
         // What the classifier actually found, independent of what this
@@ -340,7 +377,7 @@ export async function runSearchPipeline(
         if (insertErr || !inserted) {
           rejected++;
           await bump(supabase, searchId, { rejected_count: rejected });
-          continue;
+          return;
         }
 
         if (classification.quote && finalHasSignal) {
@@ -356,7 +393,7 @@ export async function runSearchPipeline(
         if (!finalQualifies) {
           rejected++;
           await bump(supabase, searchId, { rejected_count: rejected });
-          continue;
+          return;
         }
 
         if (finalHasSignal) {
@@ -380,8 +417,10 @@ export async function runSearchPipeline(
 
         // Target hit mid-round — the rest of this batch was already
         // discovered/fetched (sunk cost), but skip further classify spend.
-        if (countsTowardTarget() >= targetSignals) break roundLoop;
-      }
+        if (countsTowardTarget() >= targetSignals) targetHit = true;
+      });
+
+      if (targetHit) break roundLoop;
 
       if (exhausted) {
         await bump(supabase, searchId, { candidates_pool_exhausted: true });
