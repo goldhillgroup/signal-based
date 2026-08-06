@@ -25,6 +25,33 @@ import { createServiceRoleClient } from "../supabase/server";
 // paying the expensive web-search call again. A cache hit that turns up
 // nothing (dead link, page restructured) self-heals: the stale row gets
 // deleted and that angle falls back to a fresh expensive search.
+// Plain fetch for a known directory URL — costs nothing. Mirrors the free
+// path in apify.ts's fetchCompanyPages; kept local to avoid widening that
+// module's exported surface for one caller.
+async function freeFetchText(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36",
+      },
+      redirect: "follow",
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return null;
+    const text = (await res.text())
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    return text.length < 300 ? null : text;
+  } catch {
+    return null;
+  }
+}
+
 const CLAUDE_ONLINE_MODEL = "anthropic/claude-sonnet-5:online";
 const CLAUDE_MODEL = "anthropic/claude-sonnet-5"; // no :online — reading text already in hand, no search needed
 
@@ -125,7 +152,17 @@ async function resolveAngle(
     .maybeSingle();
 
   if (cached) {
-    const pageText = await fetchSingleUrl(cached.source_url);
+    // FREE fetch first, Apify only as fallback. This used to go straight to
+    // Apify, which turned a capped/failing Apify account into a compounding
+    // OpenRouter bill: fetch fails -> row deleted -> expensive :online search
+    // re-runs -> every single round, forever.
+    let pageText = await freeFetchText(cached.source_url);
+    let fetchFailed = false;
+    if (!pageText) {
+      pageText = await fetchSingleUrl(cached.source_url);
+      if (!pageText) fetchFailed = true;
+    }
+
     if (pageText) {
       const companies = await extractFromKnownPage(pageText, angle, stateName);
       if (companies.length > 0) {
@@ -136,9 +173,19 @@ async function resolveAngle(
         return companies;
       }
     }
-    // Cache hit produced nothing (dead link, restructured page) — self-heal:
-    // drop the stale row and fall through to a fresh expensive search below.
-    await supabase.from("directory_sources").delete().eq("id", cached.id);
+
+    // Only evict when the page ACTUALLY LOADED and yielded nothing — that
+    // means it's genuinely dead or restructured. A fetch failure is transient
+    // (budget cap, timeout, network, bot-block) and must NOT throw away a
+    // known-good source; conflating the two is what made this expensive.
+    if (!fetchFailed) {
+      await supabase.from("directory_sources").delete().eq("id", cached.id);
+    } else {
+      // Couldn't check it this round — leave the row alone and skip the
+      // expensive re-search, rather than paying to rediscover what we already
+      // have on file.
+      return [];
+    }
   }
 
   const { sourceUrl, companies } = await searchOneAngle(angle, stateName);
