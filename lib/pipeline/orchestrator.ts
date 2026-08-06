@@ -92,13 +92,20 @@ export async function runSearchPipeline(
       let candidates, exhausted;
       try {
         // ── 1. Discover this round's batch (excludes every domain seen so far) ──
-        ({ candidates, exhausted } = await discoverCandidates({
+        let channelErrors: string[];
+        ({ candidates, exhausted, channelErrors } = await discoverCandidates({
           industry,
           states,
           limit: roundLimit,
           round,
           excludeDomains: seenDomains,
         }));
+        // One channel degrading (e.g. Maps times out) isn't fatal — the other
+        // channel's results still came through (see apify.ts's
+        // Promise.allSettled). Only note it; the round keeps going.
+        if (channelErrors.length > 0) {
+          console.warn(`Search ${searchId} round ${round}: ${channelErrors.join(" | ")}`);
+        }
       } catch (e) {
         stoppedEarlyReason = `Stopped after round ${round}: discovery failed (${(e as Error).message.slice(0, 200)})`;
         break;

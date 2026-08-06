@@ -81,27 +81,26 @@ async function runActorSync(actorId: string, input: Record<string, unknown>, tim
   return res.json();
 }
 
-// Step 1 — discovery. Google Maps Scraper (compass/crawler-google-places),
-// searched by vertical-specific category terms against ONE state (the actor
-// only takes one location per run, which conveniently matches the scope's
-// "one vertical, one geography" boundary anyway). Replaced an earlier
-// Google-web-search-based approach — real A/B tested: web search surfaced
-// ~50% noise (directories, "best of" listicles, trade publications) that
-// had to be filtered or wasted a classify call; Maps results are inherently
-// real local businesses in the right category, zero noise, and cheaper
-// per-candidate ($0.007 + $0.004/place vs. multiple google-search-scraper
-// SERP pages). See project memory for the comparison.
-export async function discoverCandidates(params: {
-  industry: Industry | null;
-  states: string[];
-  limit: number;
-  round?: number; // 1-indexed — later rounds ask Maps for more places per
-  // term so a repeat call surfaces businesses beyond what earlier rounds
-  // already returned, rather than re-fetching the same top-ranked set.
-  excludeDomains?: Set<string>;
-}): Promise<{ candidates: Candidate[]; exhausted: boolean }> {
-  const { industry, states, limit, round = 1, excludeDomains } = params;
+// "Best landscaping companies in X," "Top 10 home builders" — directory/
+// roundup articles that show up in web search results alongside real company
+// sites. Never the company's own site, so filter on title before a single
+// Apify or OpenRouter call is spent on one.
+function isListicleTitle(title: string | undefined): boolean {
+  if (!title) return false;
+  return /\b(best|top\s*\d+|\d+\s*best|reviews?)\b/i.test(title);
+}
 
+// Channel A — Google Maps Scraper (compass/crawler-google-places), searched
+// by vertical category terms against one state. Broad, cheap, near-zero
+// noise (every result is a real local business in the right category) —
+// but undifferentiated: it has no idea what a succession signal is, so it
+// surfaces the whole category, not the companies actually likely to show one.
+async function discoverViaMaps(
+  industry: Industry | null,
+  states: string[],
+  limit: number,
+  round: number
+): Promise<Candidate[]> {
   const searchTerms = searchTermsFor(industry);
   const locationQuery = states.length > 0 ? `${stateNameFor(states[0])}, USA` : "United States";
   const perTerm = Math.min(20 * round, 120);
@@ -119,22 +118,119 @@ export async function discoverCandidates(params: {
     timeoutSecs
   )) as Array<{ title?: string; website?: string | null; categoryName?: string }>;
 
+  return items
+    .filter((place) => place.website)
+    .map((place) => ({ domain: "", url: place.website!, title: place.title ?? "" }));
+}
+
+// Vertical-specific succession-language phrasings — the point of this
+// channel isn't category coverage (Maps already has that), it's precision:
+// surfacing companies whose own site or local press already uses the
+// language of a real handoff, which a generic category listing can't do.
+const SUCCESSION_QUERY_TERMS: Record<Industry, string[]> = {
+  landscaping: [
+    '"second generation" family owned landscaping company',
+    '"family owned" landscaping company "joined the business"',
+    'father son landscaping company "family business"',
+  ],
+  home_builder: [
+    '"second generation" family owned home builder',
+    '"family owned" custom home builder "joined the business"',
+    'father son home builder "family business"',
+  ],
+};
+
+function successionTermsFor(industry: Industry | null): string[] {
+  if (industry) return SUCCESSION_QUERY_TERMS[industry];
+  return [...SUCCESSION_QUERY_TERMS.landscaping, ...SUCCESSION_QUERY_TERMS.home_builder];
+}
+
+// Channel B — targeted web search (apify/google-search-scraper) for
+// succession-specific phrasing. Lower yield than Maps (this is raw web
+// search, not a curated business index — listicles/directories/trade press
+// show up alongside real hits) but catches companies a generic category
+// search would never surface: local news features, "family business of the
+// year" pieces, a company's own press page. isListicleTitle + BLOCKED_HOSTS
+// filter the obvious noise; the classifier's own "not actually a company"
+// check (see project memory) catches the rest at ~$0.01-0.02/candidate.
+async function discoverViaWebSearch(
+  industry: Industry | null,
+  states: string[],
+  limit: number
+): Promise<Candidate[]> {
+  const stateName = states.length > 0 ? stateNameFor(states[0]) : "";
+  const queries = successionTermsFor(industry)
+    .map((q) => `${q} ${stateName}`.trim())
+    .join("\n");
+
+  const items = (await runActorSync(
+    "apify~google-search-scraper",
+    {
+      queries,
+      resultsPerPage: 100,
+      maxPagesPerQuery: 1,
+      countryCode: "us",
+      languageCode: "en",
+    },
+    90
+  )) as Array<{ organicResults?: Array<{ url: string; title: string }> }>;
+
+  return items
+    .flatMap((page) => page.organicResults ?? [])
+    .filter((r) => !isListicleTitle(r.title))
+    .slice(0, limit)
+    .map((r) => ({ domain: "", url: r.url, title: r.title ?? "" }));
+}
+
+// Step 1 — discovery. Two channels run in parallel and get merged: Maps for
+// broad, low-noise category coverage, targeted web search for succession-
+// specific precision. Promise.allSettled — one channel timing out or erroring
+// must not take the other's real results down with it (a real Maps timeout
+// happened live during testing; a round should degrade to "web search results
+// only" rather than fail outright over an unrelated channel's hiccup).
+export async function discoverCandidates(params: {
+  industry: Industry | null;
+  states: string[];
+  limit: number;
+  round?: number; // 1-indexed — later rounds ask Maps for more places per
+  // term so a repeat call surfaces businesses beyond what earlier rounds
+  // already returned, rather than re-fetching the same top-ranked set.
+  excludeDomains?: Set<string>;
+}): Promise<{ candidates: Candidate[]; exhausted: boolean; channelErrors: string[] }> {
+  const { industry, states, limit, round = 1, excludeDomains } = params;
+
+  const [mapsResult, webResult] = await Promise.allSettled([
+    discoverViaMaps(industry, states, limit, round),
+    discoverViaWebSearch(industry, states, limit),
+  ]);
+
+  const channelErrors: string[] = [];
+  const raw: { domain: string; url: string; title: string }[] = [];
+  if (mapsResult.status === "fulfilled") raw.push(...mapsResult.value);
+  else channelErrors.push(`Maps channel failed: ${mapsResult.reason?.message?.slice(0, 150) ?? mapsResult.reason}`);
+  if (webResult.status === "fulfilled") raw.push(...webResult.value);
+  else channelErrors.push(`Web search channel failed: ${webResult.reason?.message?.slice(0, 150) ?? webResult.reason}`);
+
+  if (mapsResult.status === "rejected" && webResult.status === "rejected") {
+    throw new Error(channelErrors.join(" | "));
+  }
+
   const seen = new Set<string>(excludeDomains ?? []);
   const candidates: Candidate[] = [];
-  for (const place of items) {
-    if (!place.website) continue; // no site to fetch/classify — not worth carrying forward
-    const host = hostnameOf(place.website);
+  for (const r of raw) {
+    const host = hostnameOf(r.url);
     if (!host || isBlocked(host) || seen.has(host)) continue;
     seen.add(host);
-    candidates.push({ domain: host, url: place.website, title: place.title ?? host });
+    candidates.push({ domain: host, url: r.url, title: r.title || host });
     if (candidates.length >= limit) break;
   }
 
   // "Exhausted" — this round surfaced fewer fresh domains than asked for,
-  // meaning the category+state pool has nothing left to give; the caller
-  // should stop looping rather than re-requesting a near-empty result set.
+  // meaning both channels combined have nothing left to give for this
+  // category+state; the caller should stop looping rather than
+  // re-requesting a near-empty result set.
   const exhausted = candidates.length < limit;
-  return { candidates, exhausted };
+  return { candidates, exhausted, channelErrors };
 }
 
 export interface FetchedPage {
