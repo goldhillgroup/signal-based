@@ -1,4 +1,4 @@
-import { resolveSetting } from "../settings";
+import { resolveSetting, getSetting, setSetting } from "../settings";
 
 // Model per task, overridable from /dashboard/settings without a redeploy.
 // Defaults stay on Sonnet until Haiku is PROVEN on the 72-company labeled
@@ -33,6 +33,67 @@ export async function getOpenRouterKey(): Promise<string> {
   return key;
 }
 
+// Fallback key. Belongs to a friend, so spend on it is capped in code.
+async function getOpenRouterKey2(): Promise<string | null> {
+  return resolveSetting("OPENROUTER_API_KEY_2", process.env.OPENROUTER_API_KEY_2);
+}
+
+const OPENROUTER_2_CAP_USD = 5;
+const BASELINE_SETTING = "OPENROUTER_2_BASELINE_USD";
+
+async function usageFor(key: string): Promise<number | null> {
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/credits", {
+      headers: { Authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return null;
+    const d = await res.json();
+    const u = d?.data?.total_usage;
+    return typeof u === "number" ? u : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Guards the friend's key against a self-imposed $5 ceiling.
+ *
+ * Measures our DELTA from a baseline captured on first use, NOT absolute
+ * usage — OpenRouter reports total_usage per ACCOUNT, not per key, and the
+ * owner had already spent $16.52 of $25 when this key was added. Capping on
+ * the absolute number would have tripped instantly and been meaningless.
+ *
+ * The baseline is persisted in app_settings so a server restart can't quietly
+ * reset the allowance and let the cap be exceeded a slice at a time.
+ */
+async function assertUnderCap2(key: string): Promise<void> {
+  const current = await usageFor(key);
+  // A failed usage check must not silently grant unlimited spend on someone
+  // else's account, so refuse the FALLBACK key when its position can't be
+  // verified. The primary key is unaffected by this.
+  if (current === null) {
+    throw new Error(
+      "Could not verify fallback OpenRouter key usage — refusing to spend on it unchecked."
+    );
+  }
+
+  let baseline = Number(await getSetting(BASELINE_SETTING));
+  if (!Number.isFinite(baseline) || baseline <= 0) {
+    baseline = current;
+    await setSetting(BASELINE_SETTING, String(baseline));
+  }
+
+  const spent = current - baseline;
+  if (spent >= OPENROUTER_2_CAP_USD) {
+    throw new Error(
+      `Fallback OpenRouter key hit its self-imposed $${OPENROUTER_2_CAP_USD} cap ` +
+        `(spent $${spent.toFixed(2)} since baseline $${baseline.toFixed(2)}). ` +
+        `It belongs to someone else — top up the primary key rather than raising this.`
+    );
+  }
+}
+
 // 800 was enough for the original 8-field schema; the revenueEstimate/
 // sizeFit/stillFamilyOwned fields added on top of it pushed real responses
 // past that and truncated mid-JSON (a real failure seen live, not a
@@ -51,7 +112,6 @@ export async function chat(
   // pay the cache-write premium for a prefix that will never be reused.
   cacheSystemPrompt = false
 ): Promise<string> {
-  const apiKey = await getOpenRouterKey();
   const body = cacheSystemPrompt
     ? messages.map((m) =>
         m.role === "system"
@@ -64,22 +124,40 @@ export async function chat(
           : m
       )
     : messages;
-  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      response_format: { type: "json_object" },
-      messages: body,
-      max_tokens: maxTokens,
-    }),
+  const payload = JSON.stringify({
+    model,
+    response_format: { type: "json_object" },
+    messages: body,
+    max_tokens: maxTokens,
   });
+
+  async function call(key: string) {
+    return fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: payload,
+    });
+  }
+
+  const primary = await getOpenRouterKey();
+  if (!primary) throw new Error("OPENROUTER_API_KEY is not set");
+
+  let res = await call(primary);
+
+  // Fail over to the fallback key ONLY on 402 (credits exhausted) — never on
+  // a transient 429/5xx, which would spend someone else's money to paper over
+  // a retryable blip.
+  if (res.status === 402) {
+    const secondary = await getOpenRouterKey2();
+    if (secondary) {
+      await assertUnderCap2(secondary); // throws if the $5 delta cap is hit
+      res = await call(secondary);
+    }
+  }
+
   if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`OpenRouter request failed: ${res.status} ${body.slice(0, 300)}`);
+    const errBody = await res.text().catch(() => "");
+    throw new Error(`OpenRouter request failed: ${res.status} ${errBody.slice(0, 300)}`);
   }
   const data = await res.json();
   return data.choices?.[0]?.message?.content ?? "";

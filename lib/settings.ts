@@ -51,6 +51,7 @@ export const SETTINGS_KEYS = [
   },
   { key: "APIFY_TOKEN_3", label: "Apify — token 3 (fallback)", envFallback: "APIFY_TOKEN_3" },
   { key: "OPENROUTER_API_KEY", label: "OpenRouter", envFallback: "OPENROUTER_API_KEY" },
+  { key: "OPENROUTER_API_KEY_2", label: "OpenRouter — fallback key ($5 capped)", envFallback: "OPENROUTER_API_KEY_2" },
   { key: "ANYMAILFINDER_API_KEY", label: "Anymailfinder", envFallback: "ANYMAILFINDER_API_KEY" },
   { key: "MILLIONVERIFIER_API_KEY", label: "MillionVerifier", envFallback: "MILLIONVERIFIER_API_KEY" },
   { key: "TAVILY_API_KEY", label: "Tavily (directory search)", envFallback: "TAVILY_API_KEY" },
