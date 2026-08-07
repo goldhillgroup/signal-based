@@ -155,12 +155,22 @@ STEP 2 — "founderName"/"founderTitle": read the ENTIRE page text specifically 
 
 Then identify "industry": "landscaping", "home_builder", or "other" (anything that isn't clearly one of the first two). If "other", this can never qualify — set qualifies: false and say so in rejectionReason.
 
-THE SIGNAL (only relevant if industry is landscaping or home_builder): the company's OWN website names a founder/senior leader AND a next-generation family member together, with some hint of continuity or handoff — this can be explicit ("stepping into the President role") or soft ("family owned and operated" + a team page listing a son/daughter/family surname in a real role). You do NOT need an airtight, fully-spelled-out succession narrative to flag something — a real, credible hint is enough for "verify." Reserve outright rejection for when there is genuinely nothing: only one generation ever named, or a professionally-run team with zero family framing anywhere on the page.
+THE SIGNAL (only relevant if industry is landscaping or home_builder): the company's OWN page shows a founder/senior leader AND a next-generation family member BOTH CURRENTLY IN THE BUSINESS, mid-handoff.
+
+The client's buyer is a business where the founder is STILL AROUND while a son or daughter steps up. That word "still" is the whole product. Three specific traps below caused 19 false positives when this was scored against the client's own hand-audited list — the rubric agreed with only 5 of his 24 cuts. Each is a case where a real family story exists but is NOT a coaching opportunity.
+
+TRAP 1 — THE HANDOFF ALREADY FINISHED. If the founder has retired, died, or fully stepped back and the next generation now simply runs the company, this does NOT qualify. There is no transition left to coach. Reject phrasing like "in 1984, he retired, passing leadership to his sons", "took over the business from his dad in 1997", "founded by our grandfather", "the third generation now at the helm", or a founder referred to only in the past tense or as "late". A completed succession from decades ago is a history lesson, not a live signal. It qualifies ONLY if the older generation is still visibly present today (still listed on the team page, still holding a title, described as still active, semi-retired but involved, or working alongside the successor).
+
+TRAP 2 — SLOGAN WITHOUT PEOPLE. "Three generations of excellence", "a second-generation family business", "family owned since 1962" with NO named individuals is marketing copy, not evidence. If you cannot name a specific older-generation person AND a specific next-generation person from the page, it does NOT qualify — regardless of how much generational language appears. If founderName or nextGenName would be null/empty, qualifies MUST be false. The company's NAME never counts as evidence either: "Two Generations Landscaping" or "Smith & Sons" proves nothing on its own.
+
+TRAP 3 — SAME GENERATION, NOT TWO. Siblings ("brothers Scott and Ian"), spouses ("husband and wife founders"), cousins, or two partners of the same era are ONE generation, however many family members are named. You need an older generation and a younger one, with the relationship stated or unmistakable (father/son, mother/daughter, "his son", "joined her father", Sr./Jr., II/III).
+
+When the pairing IS genuinely live, you do NOT need an airtight narrative — a real, credible hint is enough for "verify". Reserve outright rejection for: only one generation named, a professionally-run team with zero family framing, or any of the three traps above.
 
 Score confidence:
 - "high": both generations clearly named with titles, AND explicit succession/transition language.
 - "medium": the pairing is there (named individuals, generational relationship stated or obvious) but succession language is implied rather than spelled out.
-- "verify": a real but thinner hint — e.g. "family owned and operated" plus a team page with a plausible family member, or a name mentioned without a clear title, or continuity implied without being stated outright. When genuinely unsure between verify and reject, choose verify — a human reviewing an evidence-backed maybe is the point of this list, not a mistake to avoid.
+- "verify": a real but thinner hint — BOTH generations still named and present, but the relationship or the handoff is implied rather than stated (e.g. a shared surname with clearly generational titles, or a family member named without a clear title). When genuinely unsure between verify and reject, choose verify — BUT only when both generations are actually named and currently present. Uncertainty about the STRENGTH of a live signal is a "verify"; uncertainty about whether anyone from the older generation is still there at all is a rejection.
 
 TWO ADDITIONAL GATES — check these even when the succession signal itself is real and clear (a genuine signal can still get cut on either of these):
 
