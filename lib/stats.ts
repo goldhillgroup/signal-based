@@ -1,4 +1,4 @@
-import { Company } from "./mock-companies";
+import { Company } from "./company";
 import { Confidence } from "./supabase/types";
 
 // A 'filter'/'hybrid' company accepted on ICP fit alone (no signal found) is

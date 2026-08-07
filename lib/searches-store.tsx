@@ -27,7 +27,7 @@ import type {
   FindStatus,
   VerificationStatus,
 } from "./supabase/types";
-import type { Company } from "./mock-companies";
+import type { Company } from "./company";
 
 export interface SearchFolder {
   id: string;
@@ -91,6 +91,8 @@ function mapSearchRow(row: SearchRow): SearchFolder {
 // functionally one row (one evidence quote, one contact per company here).
 interface CompanyJoinRow {
   id: string;
+  /** Nullable in the schema — rows predating the searches table have none. */
+  search_id: string | null;
   domain: string;
   name: string;
   industry: Industry;
@@ -132,6 +134,7 @@ function mapCompanyRow(row: CompanyJoinRow): Company {
   const contact = row.contacts?.[0];
   return {
     id: row.id,
+    searchId: row.search_id ?? null,
     domain: row.domain,
     name: row.name,
     industry: row.industry,
@@ -197,7 +200,7 @@ interface SearchesContextValue {
     revenueMaxMusd?: number | null;
     mode?: SearchMode;
   }) => Promise<{ id: string; label: string }>;
-  startEnrichment: (searchId: string) => Promise<void>;
+  startEnrichment: (searchId: string, scope?: "signals" | "all") => Promise<void>;
 }
 
 const SearchesContext = createContext<SearchesContextValue | null>(null);
@@ -294,8 +297,12 @@ export function SearchesProvider({ children }: { children: ReactNode }) {
     [refreshFolders]
   );
 
-  const startEnrichment = useCallback(async (searchId: string) => {
-    const res = await fetch(`/api/search/${searchId}/enrich`, { method: "POST" });
+  const startEnrichment = useCallback(async (searchId: string, scope: "signals" | "all" = "signals") => {
+    const res = await fetch(`/api/search/${searchId}/enrich`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scope }),
+    });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       throw new Error(body?.error ?? "Enrichment failed to start");

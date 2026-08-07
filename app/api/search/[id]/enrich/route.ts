@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { after } from "next/server";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
-import { enrichContacts } from "@/lib/pipeline/orchestrator";
+import { enrichContacts, type EnrichScope } from "@/lib/pipeline/orchestrator";
 
 // Same extended-lifetime pattern as /api/search — see that route's comment.
 // Enrichment is usually faster than discovery (no classification/disprove
@@ -11,6 +11,12 @@ export const maxDuration = 300;
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+
+  // Defaults to "signals" — the cheap branch. An enrichment request that
+  // arrives without a scope (an old client, a retry, a curl) should buy the
+  // 15 contacts, not the 124. Spending more has to be asked for explicitly.
+  const body = (await req.json().catch(() => ({}))) as { scope?: string };
+  const scope: EnrichScope = body.scope === "all" ? "all" : "signals";
 
   const supabase = await createClient();
   const {
@@ -46,7 +52,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   // (see maxDuration above) — the client polls the `searches` row for
   // enrichment_status/contacts_found/contacts_verified, same pattern as the
   // main search's progress polling.
-  after(() => enrichContacts(id));
+  after(() => enrichContacts(id, scope));
 
-  return NextResponse.json({ id });
+  return NextResponse.json({ id, scope });
 }

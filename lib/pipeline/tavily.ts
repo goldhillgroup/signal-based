@@ -52,6 +52,18 @@ export async function tavilySearch(
     // "which directory lists these companies" — don't pay double by default.
     search_depth: opts.depth ?? "basic",
     include_raw_content: opts.includeRaw ?? false,
+    // Every target is a US business. `country` boosts US-hosted results, and
+    // Tavily only honours it when `topic` is "general" — which is the default,
+    // but stating it explicitly is what makes `country` take effect rather
+    // than being silently ignored.
+    //
+    // This is a RANKING nudge, not a filter: Tavily will still return a
+    // Canadian trade association if it is the best match. The hard cut stays
+    // isForeignTld() in apify.ts. What this buys is that the 6 results an
+    // angle actually pays to consider are more likely to be the US ones —
+    // the difference between filtering foreign hits and not surfacing them.
+    topic: "general",
+    country: "united states",
   });
 
   // Retry transient failures only, same policy and shape as openrouter.ts's

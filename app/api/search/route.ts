@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { runSearchPipeline } from "@/lib/pipeline/orchestrator";
 import { industryLabel } from "@/lib/pipeline/intake-types";
 import { stateNameFor, US_STATES } from "@/lib/pipeline/us-states";
+import { creditBlockerFor } from "@/lib/pipeline/preflight";
 import type { Industry, SearchMode } from "@/lib/supabase/types";
 
 // Raise the ceiling where the deployment platform honors it (Vercel Pro+ with
@@ -76,6 +77,15 @@ export async function POST(req: Request) {
   } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  // Refuse BEFORE creating the folder. A search that starts without enough
+  // credit to finish produces a half-populated folder that looks like a real
+  // result — worse than no folder at all, because nothing on screen says it
+  // was cut short. 402 tells you afterwards; this tells you instead.
+  const creditBlocker = await creditBlockerFor(target);
+  if (creditBlocker) {
+    return NextResponse.json({ error: creditBlocker }, { status: 402 });
   }
 
   // Human-readable label built server-side from the structured fields — the

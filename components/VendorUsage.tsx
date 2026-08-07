@@ -132,15 +132,48 @@ export function VendorUsage() {
         </div>
       )}
 
+      {/* One line that answers the page's real question before he reads a
+          single card. Ten cards of equal weight meant "is anything about to
+          die?" required reading all ten. */}
+      {rows !== null && rows.length > 0 && (
+        <p className="mt-3 text-xs font-medium text-gh-ink-secondary" aria-live="polite">
+          {summarise(rows)}
+        </p>
+      )}
+
       {rows !== null && (
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          {rows.map((row) => (
+          {[...rows].sort(byUrgency).map((row) => (
             <VendorCard key={row.id} row={row} />
           ))}
         </div>
       )}
     </section>
   );
+}
+
+// Anything he has to ACT on comes first: spent, then unreadable (which may
+// also be spent — an exhausted key often stops answering), then nearly out.
+// Healthy vendors sort last; they are the ones it is safe not to read.
+const URGENCY: Record<WarnLevel, number> = { exhausted: 0, near: 2, ok: 3 };
+function byUrgency(a: VendorUsageRow, b: VendorUsageRow): number {
+  const rank = (r: VendorUsageRow) => (r.ok ? URGENCY[r.warnLevel] : 1);
+  return rank(a) - rank(b) || a.vendor.localeCompare(b.vendor);
+}
+
+function summarise(rows: VendorUsageRow[]): string {
+  const spent = rows.filter((r) => r.ok && r.warnLevel === "exhausted").length;
+  const near = rows.filter((r) => r.ok && r.warnLevel === "near").length;
+  const broken = rows.filter((r) => !r.ok).length;
+  const fine = rows.length - spent - near - broken;
+
+  const parts: string[] = [];
+  if (spent) parts.push(`${spent} spent`);
+  if (broken) parts.push(`${broken} unreadable`);
+  if (near) parts.push(`${near} nearly out`);
+  if (!parts.length) return `All ${rows.length} vendors have room.`;
+  parts.push(`${fine} ok`);
+  return `${parts.join(" · ")} — the ones needing attention are first.`;
 }
 
 function VendorCard({ row }: { row: VendorUsageRow }) {
@@ -153,7 +186,19 @@ function VendorCard({ row }: { row: VendorUsageRow }) {
       }`}
     >
       <div className="flex items-start justify-between gap-2">
-        <p className="text-sm font-semibold text-gh-ink">{row.vendor}</p>
+        {/* The name IS the link. Every route off this card goes to the same
+            place — top it up, check the renewal date, find out why it won't
+            read — so the most prominent thing on the card should be the thing
+            that gets him there, not an 11px line at the bottom. That line
+            stays: it names the destination, which a bare title never does. */}
+        <a
+          href={row.dashboardUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="cursor-pointer rounded text-sm font-semibold text-gh-ink underline-offset-2 transition-colors duration-200 hover:text-gh-navy hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+        >
+          {row.vendor}
+        </a>
         <span
           className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
             row.ok ? styles.pill : "bg-gh-surface-sunken text-gh-ink-muted"

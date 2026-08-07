@@ -592,13 +592,6 @@ const LICENSING_SOURCES: Record<string, StateSupport> = {
   },
 };
 
-/** Exported so callers/tests can ask what this channel can actually cover. */
-export function supportedLicensingStates(): string[] {
-  return Object.entries(LICENSING_SOURCES)
-    .filter(([, s]) => s.supported)
-    .map(([code]) => code);
-}
-
 // ── Row cache ───────────────────────────────────────────────────────────────
 // These files change monthly at best (CSLB stamps a LastUpdated per row; WA
 // and OR refresh on their own schedule). Re-downloading 1.2 MB of California

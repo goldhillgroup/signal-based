@@ -65,6 +65,24 @@ export function FolderCard({ folder }: { folder: SearchFolder }) {
             : `${found} of ${folder.targetSignals} requested`}
         </p>
       )}
+
+      {/* What this folder cost, on the folder itself. It was recorded from the
+          first run but only ever shown inside the folder, so the one question
+          you cannot answer while looking at a wall of them — "which of these
+          was expensive?" — needed opening every one. Cost per LEAD rather than
+          cost per run, because $0.46 means nothing until you know whether it
+          bought twelve leads or one. */}
+      {!isRunning && folder.costEstimateUsd !== null && folder.costEstimateUsd > 0 && (
+        <p className="tabular mt-2 text-[11px] text-gh-ink-muted">
+          ~${folder.costEstimateUsd.toFixed(2)}
+          {found > 0 && (
+            <span className="opacity-70">
+              {" "}
+              · ${(folder.costEstimateUsd / found).toFixed(3)}/lead
+            </span>
+          )}
+        </p>
+      )}
     </button>
   );
 }

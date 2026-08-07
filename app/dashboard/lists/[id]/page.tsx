@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useSearches, SearchFolder } from "@/lib/searches-store";
-import { Company } from "@/lib/mock-companies";
+import { Company } from "@/lib/company";
 import { FolderView } from "@/components/FolderView";
 import { SearchProgress } from "@/components/SearchProgress";
 import { ArrowLeftIcon } from "@/components/icons";

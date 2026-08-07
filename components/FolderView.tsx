@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Company } from "@/lib/mock-companies";
+import { Company } from "@/lib/company";
 import { SearchFolder, useSearches } from "@/lib/searches-store";
 import {
   getSummaryStats,

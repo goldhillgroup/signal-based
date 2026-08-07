@@ -1,6 +1,8 @@
 import { getSetting, SETTINGS_KEYS } from "@/lib/settings";
 import { SettingsForm } from "@/components/SettingsForm";
 import { VendorUsage } from "@/components/VendorUsage";
+import { WeeklySchedule } from "@/components/WeeklySchedule";
+import { getSchedule } from "@/lib/pipeline/schedule";
 
 // Server component on purpose — it's the only place allowed to see a real
 // key value (via getSetting, service-role only). Everything handed to the
@@ -9,12 +11,17 @@ import { VendorUsage } from "@/components/VendorUsage";
 // would serialize it into the page's RSC payload regardless of how
 // carefully the server-side fetch was scoped — masking has to happen here,
 // not in the browser.
+// Never served from a cached render — this page shows live vendor balances
+// and a schedule that must reflect the last save, not a snapshot.
+export const dynamic = "force-dynamic";
+
 function mask(value: string): string {
   if (value.length <= 4) return "••••";
   return `••••••••${value.slice(-4)}`;
 }
 
 export default async function SettingsPage() {
+  const schedule = await getSchedule();
   const rows = await Promise.all(
     SETTINGS_KEYS.map(async ({ key, label, envFallback }) => {
       const dbValue = await getSetting(key);
@@ -46,6 +53,11 @@ export default async function SettingsPage() {
           run another search today?" is the question this page actually gets
           opened for. */}
       <VendorUsage />
+
+      {/* Above the keys: switching the schedule on is the decision that
+          changes what this system spends, and it is the only control here
+          that acts on its own. */}
+      <WeeklySchedule initial={schedule} cronConfigured={Boolean(process.env.CRON_SECRET)} />
 
       <section>
         <h2 className="font-display text-lg font-semibold text-gh-ink">API keys</h2>

@@ -1,5 +1,5 @@
 import { resolveSetting, getSetting } from "./settings";
-import { BUDGET_CAP_USD } from "./pipeline/apify";
+import { DEV_CAP_USD, CLIENT_PLAN_USD } from "./pipeline/apify";
 import { OPENROUTER_2_CAP_USD, BASELINE_SETTING } from "./pipeline/openrouter";
 
 /**
@@ -607,52 +607,32 @@ export const VENDOR_FETCHERS: readonly VendorDescriptor[] = [
     dashboardUrl: "https://openrouter.ai/settings/credits",
     run: fetchOpenRouterFallback,
   },
+  // Two Apify cards, down from four (2026-08-07). Tokens 2 and 3 were $5/mo
+  // free-tier accounts that both ran dry; they are out of the token chain in
+  // lib/pipeline/apify.ts, so showing a card for them here would report a
+  // balance nothing can spend.
   {
     id: "apify-4",
-    vendor: "Apify — token 4",
+    vendor: "Apify — active account",
     dashboardUrl: "https://console.apify.com/billing",
     run: (meta) =>
       fetchApify(meta, {
         settingKey: "APIFY_TOKEN_4",
         envValue: process.env.APIFY_TOKEN_4,
-        capUsd: BUDGET_CAP_USD,
-        role: "First choice — every Apify call tries this token before any other.",
-      }),
-  },
-  {
-    id: "apify-3",
-    vendor: "Apify — token 3",
-    dashboardUrl: "https://console.apify.com/billing",
-    run: (meta) =>
-      fetchApify(meta, {
-        settingKey: "APIFY_TOKEN_3",
-        envValue: process.env.APIFY_TOKEN_3,
-        capUsd: null,
-        role: "Fallback — used only if token 4 is unset.",
-      }),
-  },
-  {
-    id: "apify-2",
-    vendor: "Apify — token 2",
-    dashboardUrl: "https://console.apify.com/billing",
-    run: (meta) =>
-      fetchApify(meta, {
-        settingKey: "APIFY_TOKEN_2",
-        envValue: process.env.APIFY_TOKEN_2,
-        capUsd: null,
-        role: "Fallback — used only if tokens 4 and 3 are unset.",
+        capUsd: DEV_CAP_USD,
+        role: "First choice — every Apify call uses this token when it is set.",
       }),
   },
   {
     id: "apify-1",
-    vendor: "Apify — token 1",
+    vendor: "Apify — client's own account",
     dashboardUrl: "https://console.apify.com/billing",
     run: (meta) =>
       fetchApify(meta, {
         settingKey: "APIFY_TOKEN",
         envValue: process.env.APIFY_TOKEN,
-        capUsd: null,
-        role: "Last resort in the token chain.",
+        capUsd: CLIENT_PLAN_USD,
+        role: "Used when the active token is unset. Where this lands at handoff.",
       }),
   },
   {

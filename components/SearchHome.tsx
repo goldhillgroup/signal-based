@@ -3,14 +3,15 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSearches } from "@/lib/searches-store";
-import { US_STATES, AGREED_STATES, stateNameFor } from "@/lib/pipeline/us-states";
+import { AGREED_STATES, stateNameFor } from "@/lib/pipeline/us-states";
 import { INDUSTRY_META } from "@/lib/signal-meta";
 import { applyAnswer, bandLabel, labelFor, type IntakeResult } from "@/lib/pipeline/intake-types";
 import type { Industry, SearchMode } from "@/lib/supabase/types";
 import { FolderCard } from "./FolderCard";
 import { ReturnOverview } from "./ReturnOverview";
 import { SearchProgress } from "./SearchProgress";
-import { ZapIcon } from "./icons";
+import { StatePicker } from "./StatePicker";
+import { CheckIcon, ZapIcon } from "./icons";
 
 const TARGET_OPTIONS = [10, 20, 50, 100];
 const REFINEMENT_EXAMPLES = [
@@ -73,7 +74,12 @@ export function SearchHome() {
   // ── Manual path (unchanged, now opt-in) ─────────────────────────────────
   const [showManual, setShowManual] = useState(false);
   const [industry, setIndustry] = useState<Industry | null>(null);
-  const [state, setState] = useState("");
+  // Defaults to all four agreed states — the signed scope, and the most likely
+  // thing to want. It is not more expensive than picking one: the target
+  // (companies to find) is what bounds cost, while locationForRound() rotates
+  // state-by-state per round, so four states spread the SAME number of rounds
+  // across more ground instead of adding rounds.
+  const [states, setStates] = useState<string[]>([...AGREED_STATES]);
   const [mode, setMode] = useState<SearchMode>("hybrid");
   const [refinement, setRefinement] = useState("");
   const [target, setTarget] = useState(20);
@@ -83,7 +89,7 @@ export function SearchHome() {
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState("");
 
-  const canSearch = industry !== null && state !== "" && !starting;
+  const canSearch = industry !== null && states.length > 0 && !starting;
   const pending = intake?.questions.filter((q) => !resolved.includes(q.field)) ?? [];
 
   async function parse() {
@@ -135,14 +141,14 @@ export function SearchHome() {
   }
 
   async function startSearch() {
-    if (!industry || !state || starting) return;
+    if (!industry || states.length === 0 || starting) return;
     setError("");
     setStarting(true);
     try {
       const band = BAND_OPTIONS[bandIdx];
       const { id, label } = await createSearch({
         industry,
-        state,
+        states,
         refinement,
         targetSignals: target,
         mode,
@@ -330,56 +336,32 @@ export function SearchHome() {
             <p className="mt-1.5 text-[11px] text-gh-ink-muted">{MODE_META[mode].description}</p>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-1.5 block text-xs font-semibold text-gh-ink-secondary">
-                Vertical
-              </label>
-              <div className="flex gap-2">
-                {(["landscaping", "home_builder"] as Industry[]).map((key) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setIndustry(key)}
-                    className={`flex-1 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors ${
-                      industry === key
-                        ? "border-gh-navy bg-gh-navy text-white"
-                        : "border-gh-border bg-gh-surface-sunken text-gh-ink-secondary hover:border-gh-sky/40"
-                    }`}
-                  >
-                    {INDUSTRY_META[key].label}
-                  </button>
-                ))}
-              </div>
+          <div>
+            <label id="vertical-label" className="mb-1.5 block text-xs font-semibold text-gh-ink-secondary">
+              Vertical
+            </label>
+            <div role="group" aria-labelledby="vertical-label" className="flex gap-2">
+              {(["landscaping", "home_builder"] as Industry[]).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setIndustry(key)}
+                  aria-pressed={industry === key}
+                  className={`flex min-h-11 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 ${
+                    industry === key
+                      ? "border-gh-navy bg-gh-navy text-white"
+                      : "border-gh-border bg-gh-surface-sunken text-gh-ink-secondary hover:border-gh-sky/40 hover:text-gh-ink"
+                  }`}
+                >
+                  {industry === key && <CheckIcon className="h-3.5 w-3.5 shrink-0" />}
+                  {INDUSTRY_META[key].label}
+                </button>
+              ))}
             </div>
+          </div>
 
-            <div>
-              <label htmlFor="state" className="mb-1.5 block text-xs font-semibold text-gh-ink-secondary">
-                State
-              </label>
-              <select
-                id="state"
-                value={state}
-                onChange={(e) => setState(e.target.value)}
-                className="w-full rounded-lg border border-gh-border bg-gh-surface-sunken px-3 py-2.5 text-sm text-gh-ink focus:border-gh-sky focus:outline-none focus:ring-2 focus:ring-gh-sky/20"
-              >
-                <option value="">Choose a state…</option>
-                <optgroup label="Agreed states">
-                  {US_STATES.filter((s) => AGREED_STATES.includes(s.code)).map((s) => (
-                    <option key={s.code} value={s.code}>
-                      {s.name}
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="Other states">
-                  {US_STATES.filter((s) => !AGREED_STATES.includes(s.code)).map((s) => (
-                    <option key={s.code} value={s.code}>
-                      {s.name}
-                    </option>
-                  ))}
-                </optgroup>
-              </select>
-            </div>
+          <div className="mt-4">
+            <StatePicker value={states} onChange={setStates} />
           </div>
 
           <div className="mt-4">
@@ -392,8 +374,14 @@ export function SearchHome() {
                 search drifts off the agreed vertical; the two required
                 structured inputs exist to make that impossible. */}
             <p className="mb-1.5 text-[11px] leading-relaxed text-gh-ink-muted">
-              A hint for what to look for within {INDUSTRY_META[industry ?? "landscaping"].label.toLowerCase()} in your chosen
-              state — it never changes which companies get searched.
+              A hint for what to look for within{" "}
+              {INDUSTRY_META[industry ?? "landscaping"].label.toLowerCase()} in{" "}
+              {states.length === 0
+                ? "your chosen states"
+                : states.length <= 2
+                  ? states.map(stateNameFor).join(" and ")
+                  : `the ${states.length} states above`}{" "}
+              — it never changes which companies get searched.
             </p>
             <input
               id="refinement"
@@ -463,10 +451,21 @@ export function SearchHome() {
             type="button"
             onClick={startSearch}
             disabled={!canSearch}
-            className="mt-5 w-full rounded-xl bg-gh-navy py-3 text-sm font-semibold text-white transition-colors hover:bg-gh-navy-2 disabled:cursor-not-allowed disabled:opacity-40"
+            className="mt-5 w-full cursor-pointer rounded-xl bg-gh-navy py-3 text-sm font-semibold text-white transition-colors duration-200 hover:bg-gh-navy-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {starting ? "Starting…" : "Search"}
           </button>
+          {/* A disabled button with no stated reason is a dead end — say which
+              input is still missing rather than leaving him to guess. */}
+          {!canSearch && !starting && (
+            <p className="mt-1.5 text-center text-[11px] font-medium text-gh-ink-muted" aria-live="polite">
+              {industry === null && states.length === 0
+                ? "Pick a vertical and at least one state to search."
+                : industry === null
+                  ? "Pick a vertical to search."
+                  : "Pick at least one state to search."}
+            </p>
+          )}
         </div>
       )}
 

@@ -23,6 +23,13 @@ import { runWithCounters, estimateUsd, describeCost, type CostCounters } from ".
 // and stop." Confirmed signals from an early round are never discarded; a
 // short round just triggers another round rather than being treated as done.
 const ROUND_SIZE = 15;
+
+// Ceiling on how many due-for-recheck companies one run pulls in. Without it a
+// first sweep after a long gap would front-load hundreds of free reads and
+// crowd out new discovery entirely — the run would spend its whole scan
+// ceiling re-reading known companies and find nothing new. Bounded so a run is
+// always part re-check, part fresh ground.
+const RECHECK_PER_RUN = 20;
 const MAX_SCAN_MULTIPLIER = 6; // never scan more than target * this
 const ABSOLUTE_SCAN_CEILING = 240; // hard stop regardless of target — cost/time sanity
 
@@ -130,7 +137,7 @@ const CLASSIFY_TEXT_BUDGET = 12000;
  */
 export function buildClassifyText(primary: FetchedPage, all: FetchedPage[]): string {
   let text = primary.text.slice(0, CLASSIFY_TEXT_BUDGET);
-  let remaining = CLASSIFY_TEXT_BUDGET - text.length;
+  const remaining = CLASSIFY_TEXT_BUDGET - text.length;
 
   if (remaining > 800) {
     const secondary = all
@@ -271,9 +278,112 @@ export async function runSearchPipeline(
     // Now: every fresh candidate lands here, rounds drain it ROUND_SIZE at a
     // time, and discovery is only re-invoked (and re-billed) when it's empty.
     const pending: Candidate[] = [];
-    let discoveryCalls = 0; // drives metro/state rotation, NOT the same as classify rounds
+
+    // ── Free reads first: companies whose re-check has come due ──────────
+    //
+    // recheck-policy.ts has always computed WHEN each rejected company is
+    // worth another look — 14 days if the page simply would not load, 90 days
+    // for "only one generation is named", which is exactly the fact that
+    // changes when a daughter joins. That date was written on every row and
+    // then never queried. A due company was only re-examined if a paid channel
+    // happened to surface it again by luck.
+    //
+    // These cost NOTHING to find: the domain is already known, so the whole
+    // discovery step is skipped and only the fetch+classify is paid for. They
+    // go into the buffer BEFORE any discovery call, so the loop drains the
+    // free reads first and only pays for new ground once they run out.
+    //
+    // This is also what makes the engine recurring rather than one-shot: the
+    // universe it has already bought keeps producing new verdicts as the
+    // companies in it change.
+    let recheckSeeded = 0;
+    try {
+      const nowIso2 = new Date().toISOString();
+      const { data: due } = await supabase
+        .from("companies")
+        .select("domain, source_url")
+        .eq("industry", industry)
+        .in("state", states)
+        .lt("recheck_after", nowIso2)
+        .not("recheck_after", "is", null)
+        .limit(RECHECK_PER_RUN);
+      const seenHere = new Set<string>();
+      for (const r of due ?? []) {
+        if (!r.domain || seenHere.has(r.domain)) continue;
+        seenHere.add(r.domain);
+        pending.push({
+          domain: r.domain,
+          url: r.source_url ?? `https://${r.domain}`,
+          title: "",
+          channel: "recheck",
+        });
+      }
+      recheckSeeded = pending.length;
+      if (recheckSeeded > 0) {
+        console.log(
+          `Search ${searchId}: ${recheckSeeded} companies came due for re-check — read first, at no discovery cost.`
+        );
+      }
+    } catch {
+      // Never let the sweep stop a search; discovery still runs as normal.
+    }
+
+    // ── Where in the rotation this run STARTS ────────────────────────────
+    //
+    // discoveryCalls drives which metro and which succession phrasing each
+    // call uses (locationForRound / successionTermsFor). It used to start at
+    // zero on every single search — so a search for Ohio run today and the
+    // same search run in ten weeks both began at Cleveland with phrasing set
+    // one, issued byte-identical queries, had every result filtered out as
+    // already-seen, and concluded the pool was dry. The rotation existed but
+    // reset before it could ever advance.
+    //
+    // Seeded instead from how much ground this (vertical, state) has already
+    // covered: every ~ROUND_SIZE companies already on file moves the start one
+    // step deeper. Deliberately derived from existing data rather than stored
+    // in a new cursor table — a migration here has to be pasted into the
+    // Supabase SQL editor by hand, and this needs no new state to be correct.
+    // It is monotonic (the company count only grows), per (vertical, state),
+    // and self-correcting: a search that finds nothing does not advance it,
+    // so the next run re-asks rather than skipping ground it never covered.
+    let rotationSeed = 0;
+    try {
+      const { count } = await supabase
+        .from("companies")
+        .select("*", { count: "exact", head: true })
+        .eq("industry", industry)
+        .in("state", states);
+      rotationSeed = Math.floor((count ?? 0) / ROUND_SIZE);
+    } catch {
+      // Non-fatal: a failed count means we start at the top, which is exactly
+      // the old behaviour. Never let bookkeeping stop a search.
+    }
+
+    let discoveryCalls = rotationSeed; // drives metro/state rotation, NOT the same as classify rounds
     let poolDry = false;
     let totalDiscovered = 0;
+
+    // How many discovery calls must come back empty IN A ROW before believing
+    // a state is actually mined out.
+    //
+    // This used to be one. That was wrong, and expensively so: each discovery
+    // call asks a DIFFERENT metro with a DIFFERENT succession phrasing (see
+    // locationForRound and successionTermsFor), so a single empty result means
+    // "Cleveland, asked that one way, returned nothing new" — not "Ohio has no
+    // more landscapers". The run then stopped and stamped
+    // candidates_pool_exhausted: true, which reads as a fact about the state.
+    //
+    // The real-world check that settles it: Ohio was recorded as exhausted
+    // after 23 companies. Ohio has thousands of landscaping companies. The
+    // flag was measuring the rotation, not the market.
+    //
+    // Four consecutive empties = four different metro+phrasing pairs all dry,
+    // which is real evidence. The cost of being wrong in the old direction was
+    // a truncated run reported as complete; in this direction it is at most
+    // three extra discovery calls (~$0.03 of SERP pages, since the buffer
+    // refills only when empty).
+    const EMPTY_DISCOVERIES_BEFORE_DRY = 4;
+    let consecutiveEmpty = 0;
 
     roundLoop: while (countsTowardTarget() < targetSignals && totalScanned < scanCeiling) {
       round++;
@@ -308,7 +418,17 @@ export async function runSearchPipeline(
           pending.push(...fresh);
           totalDiscovered += fresh.length;
           await bump(supabase, searchId, { candidates_found: totalDiscovered });
-          if (fresh.length === 0) poolDry = true;
+
+          if (fresh.length === 0) {
+            consecutiveEmpty++;
+            if (consecutiveEmpty >= EMPTY_DISCOVERIES_BEFORE_DRY) poolDry = true;
+            else continue roundLoop; // rotate to the next metro/phrasing and ask again
+          } else {
+            // Any hit at all means the rotation is still finding ground. Reset,
+            // so four empties scattered across a long run never accumulate into
+            // a false "exhausted".
+            consecutiveEmpty = 0;
+          }
         } catch (e) {
           stoppedEarlyReason = `Stopped after round ${round}: discovery failed (${(e as Error).message.slice(0, 200)})`;
           break;
@@ -531,7 +651,25 @@ export async function runSearchPipeline(
         const aboveBand =
           bandSet && band!.max !== null && classification.sizeFit === "too_big";
 
-        if (finalQualifies && !classification.stillFamilyOwned) {
+        // Geography gate — the client works only with US companies. Listed
+        // FIRST because it is the most decisive cut: a British landscaper is
+        // not a lead however family-run, well-sized and mid-succession it is,
+        // so there is no point paying for a disprove pass on it.
+        //
+        // Fires ONLY on the literal "foreign" — an explicit positive read that
+        // the business operates outside the US. "unknown" (the common answer),
+        // "us", a missing field on an older cached row, and anything the model
+        // returns off-schema all fall through and keep the company. The
+        // classify result is a plain JSON cast with no validation, so
+        // `undefined` here is a real case, not a theoretical one, and it must
+        // mean "keep" — the whole design of this filter is that the expensive
+        // error is cutting a real US lead on a page that simply never
+        // mentioned where it is.
+        if (finalQualifies && classification.operatingCountry === "foreign") {
+          finalQualifies = false;
+          rejectionReason =
+            "Outside the US — the page shows this business operating in another country.";
+        } else if (finalQualifies && !classification.stillFamilyOwned) {
           finalQualifies = false;
           rejectionReason =
             "No longer family-owned — acquired/consolidated, current leadership shows no family members.";
@@ -737,7 +875,27 @@ async function addEnrichmentCost(
 // Safe to re-run: only enriches companies from this search that don't
 // already have a contacts row, so a retry after a partial failure (or just
 // running it again later) never re-queries someone already looked up.
-export async function enrichContacts(searchId: string) {
+/**
+ * Which accepted companies to buy contact details for.
+ *
+ *   "signals" — only companies where a founder/next-gen pair was actually
+ *      found. The strict list, and the cheapest.
+ *   "all"     — every company that fits the ICP, signal or not.
+ *
+ * This is a SPENDING choice and it belongs to the operator, not to the code.
+ * On the current data the two differ by 8x — 15 signals against 124 ICP fits,
+ * roughly $0.75 versus $6.20 at AnymailFinder's ~$0.05 per found address, out
+ * of a few hundred credits. It used to always enrich everything accepted,
+ * which is the expensive branch chosen silently.
+ *
+ * "all" is a perfectly reasonable default for a coach who is happy to open a
+ * conversation with a good family business that simply hasn't published its
+ * succession story — the signal is what makes the call TIMELY, not what makes
+ * the company a fit.
+ */
+export type EnrichScope = "signals" | "all";
+
+export async function enrichContacts(searchId: string, scope: EnrichScope = "all") {
   const supabase = createServiceRoleClient();
 
   // Enrichment gets its OWN counters, separate from the discovery run's — the
@@ -757,11 +915,16 @@ export async function enrichContacts(searchId: string) {
     let contactsFound = search?.contacts_found ?? 0;
     let contactsVerified = search?.contacts_verified ?? 0;
 
-    const { data: companies, error: companiesErr } = await supabase
+    // `.eq("has_signal", true)` rather than filtering in JS: a search with 300
+    // accepted companies would otherwise pull all 300 rows over the wire to
+    // discard most of them.
+    let companiesQuery = supabase
       .from("companies")
       .select("id, domain, next_gen_name, next_gen_title, founder_name, founder_title")
       .eq("search_id", searchId)
       .eq("status", "qualified");
+    if (scope === "signals") companiesQuery = companiesQuery.eq("has_signal", true);
+    const { data: companies, error: companiesErr } = await companiesQuery;
     if (companiesErr) throw companiesErr;
 
     const { data: existingContacts } = await supabase

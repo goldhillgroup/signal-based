@@ -10,59 +10,70 @@ import { discoverViaLicensing } from "./licensing-discovery";
 import { firecrawlScrape } from "./firecrawl";
 import { recordCost } from "./cost-tracker";
 
-// Prefers APIFY_TOKEN_4, then _3, _2, then the primary APIFY_TOKEN — keeps
-// test-run cost off Jonathan's account during development. _2 ran dry
-// testing actor schemas, _3 ran dry live-testing (both $5/mo free-tier
-// accounts, see .env.local for reset dates); _4 is the current one. Editable
-// from /dashboard/settings (DB value wins); each falls through to its own
-// env var when unset in Settings — see lib/settings.ts.
-async function getApifyToken(): Promise<{ token: string; isToken4: boolean }> {
-  const [t4, t3, t2, t1] = await Promise.all([
+// Two accounts, down from four (2026-08-07). Tokens 2 and 3 were $5/mo
+// free-tier accounts and both ran dry within a day; they are gone rather than
+// dormant, because a chain that quietly rotates onto an exhausted account
+// converts a billing problem into a 402 mid-search with no explanation.
+//
+// THE CAP IS PER ACCOUNT, because the two accounts mean different things:
+//   - the active token is a developer account. Nothing about this project
+//     should ever spend much of it, so it stays on the low self-imposed cap.
+//   - APIFY_TOKEN is the CLIENT'S OWN $29/mo plan, and $29/mo of Apify is a
+//     line item in the signed scope — it is exactly what he agreed to pay for.
+//     Capping it at $10 does not protect him, it throws away $19/month of
+//     capacity he is already buying. (It briefly was capped at $10 earlier
+//     today; measured against Apify's own cycle data that would have blocked
+//     his account on Aug 8 with no refill until Sep 2 — 25 days dark, on a
+//     plan with $20 still on it.)
+async function getApifyToken(): Promise<{ token: string; capUsd: number }> {
+  const [active, clientOwn] = await Promise.all([
     resolveSetting("APIFY_TOKEN_4", process.env.APIFY_TOKEN_4),
-    resolveSetting("APIFY_TOKEN_3", process.env.APIFY_TOKEN_3),
-    resolveSetting("APIFY_TOKEN_2", process.env.APIFY_TOKEN_2),
     resolveSetting("APIFY_TOKEN", process.env.APIFY_TOKEN),
   ]);
-  if (t4) return { token: t4, isToken4: true };
-  const token = t3 || t2 || t1;
-  if (!token) throw new Error("APIFY_TOKEN is not set");
-  return { token, isToken4: false };
+  if (active) return { token: active, capUsd: DEV_CAP_USD };
+  if (clientOwn) return { token: clientOwn, capUsd: CLIENT_PLAN_USD };
+  throw new Error("No Apify token is set (APIFY_TOKEN_4 or APIFY_TOKEN)");
 }
 const APIFY_BASE = "https://api.apify.com/v2";
 
-// Self-imposed spending cap — ONLY for token 4 (info@frydai.ai, a $29/mo
-// plan Apify's API refused to lower: "cannot be less than 29"). The other
-// tokens are $5/mo free-tier accounts already hard-capped by Apify itself;
-// this guard is specifically to keep this one account's real $29 ceiling
-// from ever being used past $5 by this app, not a generic cap on every token.
-// Raised 5 -> 10 on request (2026-08-07), at the same time as the Maps cost
-// fix above. Worth pairing the two facts: of the $5.68 the previous cap
-// stopped at, ~$2.40 was duplicate Maps places bought and discarded. The
-// higher ceiling therefore buys substantially more than 2x the discovery.
-// Exported so lib/vendor-usage.ts can show this exact number as the
-// denominator on the Apify card. A hardcoded copy over there would eventually
-// disagree with this one, and the failure is nasty: the dashboard says "$3 of
-// headroom left" while a search dies on a cap it never mentioned.
-export const BUDGET_CAP_USD = 10;
-const BUDGET_CHECK_TTL_MS = 15_000; // avoid hammering /limits on a burst of concurrent fetch calls
-let budgetCache: { usedUsd: number; checkedAt: number } | null = null;
+// Developer account: a low self-imposed ceiling. Apify's API refuses to set a
+// plan limit below $29 ("cannot be less than 29"), so this is enforced here.
+export const DEV_CAP_USD = 10;
 
-async function assertUnderBudget(token: string) {
+// The client's own plan. $29/mo of Apify is a line item in the signed scope,
+// so the ceiling is the plan, not an arbitrary fraction of it.
+export const CLIENT_PLAN_USD = 29;
+
+// Kept as the name lib/vendor-usage.ts imports for its Apify card denominator.
+export const BUDGET_CAP_USD = DEV_CAP_USD;
+
+const BUDGET_CHECK_TTL_MS = 15_000; // avoid hammering /limits on a burst of concurrent fetch calls
+
+// Keyed BY TOKEN. This was a single global, which was harmless while one
+// account could ever be active and is a real bug now that two can: a fall
+// through to the second token would have read the first account's usage from
+// the cache and either blocked a token with room or waved through one without.
+// The key is the token string, which never leaves this module.
+const budgetCache = new Map<string, { usedUsd: number; checkedAt: number }>();
+
+async function assertUnderBudget(token: string, capUsd: number) {
   const now = Date.now();
-  if (!budgetCache || now - budgetCache.checkedAt > BUDGET_CHECK_TTL_MS) {
+  const cached = budgetCache.get(token);
+  if (!cached || now - cached.checkedAt > BUDGET_CHECK_TTL_MS) {
     const res = await fetch(`${APIFY_BASE}/users/me/limits?token=${token}`);
     if (res.ok) {
       const body = await res.json().catch(() => null);
       const usedUsd = body?.data?.current?.monthlyUsageUsd;
-      if (typeof usedUsd === "number") budgetCache = { usedUsd, checkedAt: now };
+      if (typeof usedUsd === "number") budgetCache.set(token, { usedUsd, checkedAt: now });
     }
     // A failed limits check doesn't block the run — this is a spending
     // guard, not the primary error path; an outage here shouldn't be why a
     // search fails.
   }
-  if (budgetCache && budgetCache.usedUsd >= BUDGET_CAP_USD) {
+  const entry = budgetCache.get(token);
+  if (entry && entry.usedUsd >= capUsd) {
     throw new Error(
-      `Apify self-imposed budget cap hit: this account has used $${budgetCache.usedUsd.toFixed(2)} this cycle (cap: $${BUDGET_CAP_USD}). Raise BUDGET_CAP_USD in lib/pipeline/apify.ts or switch tokens to continue.`
+      `Apify budget cap hit: this account has used $${entry.usedUsd.toFixed(2)} this cycle (cap: $${capUsd}). Raise the cap in lib/pipeline/apify.ts or switch tokens to continue.`
     );
   }
 }
@@ -139,7 +150,11 @@ export interface Candidate {
   domain: string;
   url: string;
   title: string;
-  channel: "maps" | "web_search" | "directory" | "licensing";
+  // "recheck" is not a discovery channel — it is a company already in the
+  // database whose recheck_after came due. Tracked as a channel anyway so the
+  // per-channel yield table can measure it against the paid ones; it is the
+  // only source whose discovery cost is zero.
+  channel: "maps" | "web_search" | "directory" | "licensing" | "recheck";
 }
 
 export function hostnameOf(url: string): string | null {
@@ -163,7 +178,40 @@ const BLOCKED_TLDS = [".edu", ".gov", ".mil"];
 // newspaper (dailyliberal.com.au) and a UK university museum
 // (merl.reading.ac.uk) as "new landscaping companies" — succession language
 // like "joined her father" is journalism vocabulary worldwide.
-const FOREIGN_TLD_RE = /\.(au|uk|ca|nz|ie|za|in|de|fr|es|it|nl|se|no|dk|fi|pl|br|mx|jp|cn|sg|ph)$/i;
+//
+// Stated as a RULE, not a list. The first version enumerated 26 ccTLDs, which
+// is a list that is wrong the moment a run turns up the 27th — there are ~250,
+// and nothing about ".mt" or ".co.il" makes it more of a US landscaper than
+// ".com.au". Every ccTLD is two letters and no gTLD is, so "two-letter TLD"
+// separates the two families exactly.
+//
+// The exceptions are the ccTLDs that stopped meaning their country: a handful
+// sold generically that a US business plausibly registers. ".us" is the actual
+// US ccTLD and obviously stays. Under-blocking on purpose, same trade as the
+// publisher list below — a missed foreign site costs one classification call,
+// a wrongly blocked company is a lead lost with no trace.
+const GENERIC_TWO_LETTER_TLDS = new Set([
+  "us", // the US ccTLD itself
+  "co", // Colombia, sold generically — plenty of US small businesses use it
+  "io",
+  "ai",
+  "me",
+  "tv",
+  "cc",
+  "ly",
+  "fm",
+  "gg",
+  "to",
+  "sh",
+  "so",
+  "im",
+  "st",
+]);
+
+export function isForeignTld(host: string): boolean {
+  const tld = host.split(".").pop()?.toLowerCase() ?? "";
+  return tld.length === 2 && /^[a-z]{2}$/.test(tld) && !GENERIC_TWO_LETTER_TLDS.has(tld);
+}
 
 // THE structural weakness of the succession-phrase web-search channel: those
 // phrases appear in STORIES ABOUT family businesses far more often than on the
@@ -189,15 +237,15 @@ const MEDIA_HOST_RE =
 
 export function isBlocked(host: string): boolean {
   if (BLOCKED_TLDS.some((t) => host.endsWith(t))) return true;
-  if (FOREIGN_TLD_RE.test(host)) return true;
+  if (isForeignTld(host)) return true;
   if (MEDIA_HOST_RE.test(host)) return true;
   if (MEDIA_SUFFIX_RE.test(host.split(".")[0] ?? "")) return true;
   return BLOCKED_HOSTS.some((b) => host === b || host.endsWith(`.${b}`));
 }
 
 async function runActorSync(actorId: string, input: Record<string, unknown>, timeoutSecs = 120) {
-  const { token, isToken4 } = await getApifyToken();
-  if (isToken4) await assertUnderBudget(token);
+  const { token, capUsd } = await getApifyToken();
+  await assertUnderBudget(token, capUsd);
   const url = `${APIFY_BASE}/acts/${actorId}/run-sync-get-dataset-items?token=${token}&timeout=${timeoutSecs}`;
 
   // Retry transient failures. A real run lost its entire Maps channel to a

@@ -1,4 +1,4 @@
-import { Company } from "./mock-companies";
+import { Company } from "./company";
 
 // The "sheet" — a plain CSV download, opens directly in Excel/Google Sheets/
 // Numbers with no export API, no OAuth, no extra vendor. Simplest thing that

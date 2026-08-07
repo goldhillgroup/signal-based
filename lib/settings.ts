@@ -23,6 +23,24 @@ export async function getSetting(key: string): Promise<string | null> {
   return value;
 }
 
+/**
+ * Cache-bypassing read, for values where "correct right now" beats "cheap".
+ *
+ * The 30s cache above exists for API KEYS: a single search resolves them dozens
+ * of times and they change maybe monthly. Config read once per page load is the
+ * opposite trade, and the cache actively lied about it — toggling the weekly
+ * harvest on, saving it (verified in the database), then reloading showed it
+ * back OFF, because the page read a stale cached copy. A settings screen that
+ * discards what you just saved is worse than a slow one.
+ */
+export async function getSettingFresh(key: string): Promise<string | null> {
+  const supabase = createServiceRoleClient();
+  const { data } = await supabase.from("app_settings").select("value").eq("key", key).maybeSingle();
+  const value = data?.value ?? null;
+  cache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
+  return value;
+}
+
 export async function setSetting(key: string, value: string): Promise<void> {
   const supabase = createServiceRoleClient();
   const { error } = await supabase
@@ -42,16 +60,26 @@ export async function resolveSetting(key: string, envFallback?: string): Promise
 // The keys this app actually uses, in one place — the Settings page and the
 // pipeline modules both read off this list so they can't drift apart.
 export const SETTINGS_KEYS = [
-  { key: "APIFY_TOKEN", label: "Apify — primary token", envFallback: "APIFY_TOKEN" },
-  { key: "APIFY_TOKEN_2", label: "Apify — token 2 (fallback)", envFallback: "APIFY_TOKEN_2" },
+  // Two Apify accounts, down from four (2026-08-07). Tokens 2 and 3 were
+  // $5/mo free-tier accounts opened purely to keep test spend off the client's
+  // own, and both ran fully dry within a day of being added. They are removed
+  // rather than left in the chain: a dead token in a fallback list is not
+  // free — every run still resolves it, and a chain that silently rotates onto
+  // an exhausted account turns a billing problem into a mysterious 402 in the
+  // middle of a search. This ends at one account; token 4 is the working one
+  // today, and APIFY_TOKEN is the client's own, which is where it lands.
   {
     key: "APIFY_TOKEN_4",
-    // Cap raised 5 -> 10 on 2026-08-07; the label has to track BUDGET_CAP_USD
-    // in lib/pipeline/apify.ts or it contradicts the Vendor usage card above it.
-    label: "Apify — token 4 ($29/mo plan, code-capped at $10)",
+    // Label has to track BUDGET_CAP_USD in lib/pipeline/apify.ts or it
+    // contradicts the Vendor usage card above it.
+    label: "Apify — active token ($29/mo plan, code-capped at $10)",
     envFallback: "APIFY_TOKEN_4",
   },
-  { key: "APIFY_TOKEN_3", label: "Apify — token 3 (fallback)", envFallback: "APIFY_TOKEN_3" },
+  {
+    key: "APIFY_TOKEN",
+    label: "Apify — client's own account (code-capped at $10)",
+    envFallback: "APIFY_TOKEN",
+  },
   { key: "OPENROUTER_API_KEY", label: "OpenRouter", envFallback: "OPENROUTER_API_KEY" },
   { key: "OPENROUTER_API_KEY_2", label: "OpenRouter — fallback key ($5 capped)", envFallback: "OPENROUTER_API_KEY_2" },
   { key: "ANYMAILFINDER_API_KEY", label: "Anymailfinder", envFallback: "ANYMAILFINDER_API_KEY" },

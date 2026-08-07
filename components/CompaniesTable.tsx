@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Company } from "@/lib/mock-companies";
+import { Company } from "@/lib/company";
 import { INDUSTRY_META, FIT_ONLY_META } from "@/lib/signal-meta";
 import type { Industry } from "@/lib/supabase/types";
 import { formatRelativeDate } from "@/lib/stats";

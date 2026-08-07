@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { RadarIcon, FolderIcon, SettingsIcon } from "./icons";
+import { RadarIcon, FolderIcon, SettingsIcon, InboxIcon, UsersIcon } from "./icons";
 import { SignOutButton } from "./SignOutButton";
 
 // Two real destinations — "Crawl Runs" and "Reports" were placeholders from
@@ -20,8 +20,19 @@ import { SignOutButton } from "./SignOutButton";
 // "All Leads" added the same day — every accepted company across every
 // search, combined into one place to browse/download, instead of needing to
 // open each search folder individually to find a spreadsheet.
+// Ordered as the work actually flows: see where things stand -> find companies
+// -> get their emails -> take the list -> keep the keys working.
+//
+// "Overview" leads because it is the only page that says what the numbers
+// mean; landing on a search box tells you nothing about what you are looking
+// at. "Enrichment" is its own destination rather than a button inside a folder
+// because it is a genuinely separate job with its own cost model — it bills
+// per PERSON, not per company, and it applies across searches, so burying it
+// one folder deep both hid it and made it look like part of searching.
 const NAV_ITEMS = [
+  { label: "Overview", icon: InboxIcon, href: "/dashboard/overview" },
   { label: "Signal Radar", icon: RadarIcon, href: "/dashboard" },
+  { label: "Enrichment", icon: UsersIcon, href: "/dashboard/enrichment" },
   { label: "All Leads", icon: FolderIcon, href: "/dashboard/all-leads" },
   { label: "Settings", icon: SettingsIcon, href: "/dashboard/settings" },
 ];

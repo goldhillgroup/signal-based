@@ -29,11 +29,32 @@ interface Rule {
 // (see CLASSIFY_SYSTEM in openrouter.ts) plus the orchestrator's gate messages.
 const RULES: Rule[] = [
   {
-    // An HVAC company does not become a landscaper. A marketplace does not
-    // become a contractor. This is the cheapest possible skip and the safest.
-    test: /outside the (landscaping|icp)|not a landscaping|marketplace|directory platform|supplier|brokerage|trade publication|not a single/i,
+    // Structurally never a family-owned trade business, however long you wait.
+    // A marketplace does not grow crews; a magazine does not start installing
+    // irrigation. These are the only genuinely permanent rejections.
+    test: /marketplace|directory platform|lead-?gen|brokerage|trade publication|magazine|not an? (actual|real) (company|business)|not a single/i,
     days: NEVER,
-    why: "wrong industry — structurally permanent",
+    why: "not a trade business at all — structurally permanent",
+  },
+  {
+    // Wrong TRADE, which is a different claim from "not a business". This used
+    // to sit in the rule above under "an HVAC company does not become a
+    // landscaper" — true on any given day, and wrong over years. Trades
+    // diversify: roofers add gutters and outdoor living, HVAC firms add
+    // irrigation, a materials supplier starts installing what it sells. The
+    // ICP is also an umbrella (tree service and hardscaping both count), so
+    // a company sitting just outside it can drift inside without changing
+    // what it calls itself.
+    //
+    // 18 months is deliberately long — this is not a fact that moves in a
+    // quarter — but it is not "never". The whole cost of being wrong here is
+    // one fetch and one classify (~$0.018) per company per 18 months; for the
+    // 78 rows currently marked permanent that is about $1.40 every year and a
+    // half. Cheap insurance against silently blacklisting a company that grew
+    // into the ICP.
+    test: /outside the (landscaping|icp)|not a landscaping|wrong industry|supplier|hvac|roofing|plumbing/i,
+    days: 545,
+    why: "wrong trade today — trades diversify, so worth one look in 18 months",
   },
   {
     // PE roll-ups and acquisitions essentially never revert to family control.

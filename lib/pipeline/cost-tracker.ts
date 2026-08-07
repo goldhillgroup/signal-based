@@ -89,6 +89,13 @@ export function describeCost(counters: CostCounters): string {
   if (llm) parts.push(`${llm} classify/disprove`);
   if (c.extract_call) parts.push(`${c.extract_call} extract`);
   if (c.tavily_search) parts.push(`${c.tavily_search} searches`);
+  // Was MISSING (found 2026-08-07). apify_serp_page is metered and priced, so
+  // estimateUsd always counted it — but describeCost never emitted it, which
+  // made the human-readable line omit the succession web-search channel
+  // entirely. That line is the only per-vendor record kept per run, so any
+  // analysis built from it scored the highest-yield channel at zero spend.
+  // The totals were never wrong; every breakdown of them was.
+  if (c.apify_serp_page) parts.push(`${c.apify_serp_page} SERP pages`);
   if (c.firecrawl_scrape) parts.push(`${c.firecrawl_scrape} renders`);
   if (c.apify_maps_place) parts.push(`${c.apify_maps_place} map places`);
   if (c.apify_crawler_run) parts.push(`${c.apify_crawler_run} crawls`);

@@ -268,6 +268,11 @@ export interface ClassificationResult {
   // company; never a rejection gate.
   operatingModel: "own_crews" | "subcontract" | "mixed" | "unknown";
   stillFamilyOwned: boolean; // false if acquired/consolidated even though history says "family owned"
+  // "us" | "foreign" | "unknown" — where the business actually operates, read
+  // from the page. The TLD filter in apify.ts catches ".com.au"; this catches
+  // the Canadian or British landscaper on a plain ".com", which nothing else
+  // in the pipeline looks at. "unknown" is the common answer and never cuts.
+  operatingCountry: "us" | "foreign" | "unknown";
   rejectionReason: string | null;
 }
 
@@ -338,7 +343,11 @@ TWO ADDITIONAL GATES — check these even when the succession signal itself is r
 
 2. "sizeFit": estimate where the company likely falls versus a ${TARGET_REVENUE_BAND} revenue target, using whatever textual proxies the page gives you — years in business, team/crew size, fleet size, service area breadth, number of locations, scale of projects described, review count if mentioned. Return "too_small" (a one or two-person operation, clearly sub-scale), "too_big" (an obvious regional/national-scale operator, multiple states, a large corporate-feeling org chart), "in_band" (plausibly fits), or "unknown" if the page gives no real signal either way — "unknown" is common and fine, do not force a guess; it does not disqualify on its own. Put your best-effort estimate in "revenueEstimate" as a short string like "$5-10M (est.)", or null if truly unknown.
 
-3. "operatingModel": does the company run its OWN crews/employees, SUBCONTRACT the work out, or both? Read for signals like "our crews", "our team of technicians", "our employees" (own_crews) vs. "our network of trusted trade partners", "our subcontractors" (subcontract), vs. explicit mentions of both (mixed). Return "unknown" if the page doesn't say — that is common and completely fine. This is recorded for context, never used to qualify or disqualify.
+3. "operatingCountry": does this business operate in the UNITED STATES? The client works only with US companies, and succession language is worldwide — an earlier discovery run surfaced an Australian newspaper and a UK museum as "landscaping companies". Domain filtering catches ".com.au"; it cannot catch a Canadian or British contractor on a plain ".com", which is what this field is for.
+Return "foreign" ONLY on positive evidence the business is outside the US: a foreign postal address, a non-US province/county/region as its service area ("serving Ontario", "throughout Surrey", "Auckland region"), a non-US phone format or country code, prices in £/€/A$/C$, or spellings paired with foreign locations. Return "us" when a US state, US city, ZIP code or US phone number appears.
+Return "unknown" when the page simply doesn't say — this is COMMON and completely fine, and it does NOT cut the company. Never infer "foreign" from British spelling alone ("colour", "centre"), from a foreign-sounding company or family name, or from a service area you don't recognise. A US company wrongly marked "foreign" is a lead lost with no trace; a foreign company marked "unknown" costs nothing but one row to eyeball. When in doubt, "unknown".
+
+4. "operatingModel": does the company run its OWN crews/employees, SUBCONTRACT the work out, or both? Read for signals like "our crews", "our team of technicians", "our employees" (own_crews) vs. "our network of trusted trade partners", "our subcontractors" (subcontract), vs. explicit mentions of both (mixed). Return "unknown" if the page doesn't say — that is common and completely fine. This is recorded for context, never used to qualify or disqualify.
 
 A company only fails on gate 1 or 2 when there's a real, specific reason in the text — not by default, and not from missing information alone (missing info -> "unknown"/null, not an automatic cut).
 
@@ -356,6 +365,7 @@ Respond with ONLY a JSON object (no markdown fences, no prose) matching this sha
   "quote": string | null,
   "revenueEstimate": string | null,
   "sizeFit": "too_small" | "in_band" | "too_big" | "unknown",
+  "operatingCountry": "us" | "foreign" | "unknown",
   "operatingModel": "own_crews" | "subcontract" | "mixed" | "unknown",
   "stillFamilyOwned": boolean,
   "rejectionReason": string | null
