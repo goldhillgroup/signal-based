@@ -158,8 +158,40 @@ export function hostnameOf(url: string): string | null {
 // never would.
 const BLOCKED_TLDS = [".edu", ".gov", ".mil"];
 
+// Every target is a US business, so a foreign country-code TLD is definitively
+// the wrong company. A 20-phrasing discovery test surfaced an Australian
+// newspaper (dailyliberal.com.au) and a UK university museum
+// (merl.reading.ac.uk) as "new landscaping companies" — succession language
+// like "joined her father" is journalism vocabulary worldwide.
+const FOREIGN_TLD_RE = /\.(au|uk|ca|nz|ie|za|in|de|fr|es|it|nl|se|no|dk|fi|pl|br|mx|jp|cn|sg|ph)$/i;
+
+// THE structural weakness of the succession-phrase web-search channel: those
+// phrases appear in STORIES ABOUT family businesses far more often than on the
+// businesses' own sites. The same test returned a funeral home, a legal
+// directory, two trade magazines, a regional newspaper and Southern Living —
+// only 2 of 12 sampled were actual landscaping companies. Each one otherwise
+// costs a page fetch plus a full classification call to conclude "this is a
+// magazine". Publishers are recognisable by name, so this is free to catch.
+//
+// Matched as a SUFFIX of the first domain label ("gadsdentimes", "nurserymag",
+// "thecantoncitizen") because publisher names are compounds, not prefixes.
+// The word list is deliberately conservative and errs toward UNDER-blocking:
+// a missed magazine costs one classification call, while a wrongly blocked
+// company is a lead lost forever with no trace. A first draft of this list
+// included "inc" and blocked oceansidelandscapinginc.com — a real qualified
+// lead with a verified contact — which is exactly the trade never to make.
+// "press", "post" and "blog" are omitted for the same reason
+// (pressurewashing…, fencepost…).
+const MEDIA_SUFFIX_RE =
+  /(news|times|tribune|herald|gazette|citizen|journal|chronicle|dispatch|observer|sentinel|ledger|courier|magazine|mag|weekly)$/i;
+const MEDIA_HOST_RE =
+  /^(southernliving|forbes|entrepreneur|bizjournals|patch|axios|avvo|justia|findlaw|crunchbase|dnb|zoominfo|apollo|rocketreach|signalhire|leadiq)\./i;
+
 export function isBlocked(host: string): boolean {
   if (BLOCKED_TLDS.some((t) => host.endsWith(t))) return true;
+  if (FOREIGN_TLD_RE.test(host)) return true;
+  if (MEDIA_HOST_RE.test(host)) return true;
+  if (MEDIA_SUFFIX_RE.test(host.split(".")[0] ?? "")) return true;
   return BLOCKED_HOSTS.some((b) => host === b || host.endsWith(`.${b}`));
 }
 
