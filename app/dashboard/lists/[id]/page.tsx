@@ -20,11 +20,17 @@ export default function FolderPage() {
     (async () => {
       const f = await fetchFolder(params.id);
       if (cancelled) return;
+      // Fetch the companies BEFORE publishing the folder, then set both in
+      // one pass. Setting `folder` first mounted FolderView with an empty
+      // companies array, and FolderView copies that prop into local state —
+      // which it only re-syncs when the folder ID changes. Same ID meant the
+      // companies that arrived a moment later were ignored permanently, so a
+      // completed search rendered "0 of everything" while its rows sat in the
+      // database. Awaiting both first makes the race impossible.
+      const c = f && f.status === "complete" ? await fetchCompanies(params.id) : [];
+      if (cancelled) return;
+      setCompanies(c);
       setFolder(f);
-      if (f && f.status === "complete") {
-        const c = await fetchCompanies(params.id);
-        if (!cancelled) setCompanies(c);
-      }
     })();
     return () => {
       cancelled = true;

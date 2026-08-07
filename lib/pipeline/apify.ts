@@ -6,7 +6,9 @@ import { resolveSetting } from "../settings";
 // only inside function bodies at call time, never at module-evaluation time,
 // so neither module needs the other to be fully initialized when it loads.
 import { discoverViaDirectories } from "./directory-discovery";
+import { discoverViaLicensing } from "./licensing-discovery";
 import { firecrawlScrape } from "./firecrawl";
+import { recordCost } from "./cost-tracker";
 
 // Prefers APIFY_TOKEN_4, then _3, _2, then the primary APIFY_TOKEN — keeps
 // test-run cost off Jonathan's account during development. _2 ran dry
@@ -33,7 +35,15 @@ const APIFY_BASE = "https://api.apify.com/v2";
 // tokens are $5/mo free-tier accounts already hard-capped by Apify itself;
 // this guard is specifically to keep this one account's real $29 ceiling
 // from ever being used past $5 by this app, not a generic cap on every token.
-const BUDGET_CAP_USD = 5;
+// Raised 5 -> 10 on request (2026-08-07), at the same time as the Maps cost
+// fix above. Worth pairing the two facts: of the $5.68 the previous cap
+// stopped at, ~$2.40 was duplicate Maps places bought and discarded. The
+// higher ceiling therefore buys substantially more than 2x the discovery.
+// Exported so lib/vendor-usage.ts can show this exact number as the
+// denominator on the Apify card. A hardcoded copy over there would eventually
+// disagree with this one, and the failure is nasty: the dashboard says "$3 of
+// headroom left" while a search dies on a cap it never mentioned.
+export const BUDGET_CAP_USD = 10;
 const BUDGET_CHECK_TTL_MS = 15_000; // avoid hammering /limits on a burst of concurrent fetch calls
 let budgetCache: { usedUsd: number; checkedAt: number } | null = null;
 
@@ -113,6 +123,14 @@ const BLOCKED_HOSTS = [
   "homeadvisor.com",
   "buildzoom.com",
   "zillow.com",
+  // Structurally never a family-owned trade business, and all three turned up
+  // in one real run off an alphabetical chamber-of-commerce member list
+  // (abac.edu, accenture.com, adp.com). Each cost a full Sonnet call to be
+  // told it isn't a landscaper. Free to exclude here, before the fetch.
+  "accenture.com",
+  "adp.com",
+  "aarons.com",
+  "acuitybrands.com",
   "google.com",
   "maps.google.com",
 ];
@@ -121,7 +139,7 @@ export interface Candidate {
   domain: string;
   url: string;
   title: string;
-  channel: "maps" | "web_search" | "directory";
+  channel: "maps" | "web_search" | "directory" | "licensing";
 }
 
 export function hostnameOf(url: string): string | null {
@@ -132,26 +150,55 @@ export function hostnameOf(url: string): string | null {
   }
 }
 
+// Whole TLDs that can never be a family-owned landscaping or building
+// company. A live run off an alphabetical chamber-of-commerce list produced
+// abac.edu (a college's staff page) and acecga.org (a trade association), each
+// paid for at full classification price. A suffix rule catches every future
+// college, agency and association at once, which an ever-growing host list
+// never would.
+const BLOCKED_TLDS = [".edu", ".gov", ".mil"];
+
 export function isBlocked(host: string): boolean {
+  if (BLOCKED_TLDS.some((t) => host.endsWith(t))) return true;
   return BLOCKED_HOSTS.some((b) => host === b || host.endsWith(`.${b}`));
 }
 
 async function runActorSync(actorId: string, input: Record<string, unknown>, timeoutSecs = 120) {
   const { token, isToken4 } = await getApifyToken();
   if (isToken4) await assertUnderBudget(token);
-  const res = await fetch(
-    `${APIFY_BASE}/acts/${actorId}/run-sync-get-dataset-items?token=${token}&timeout=${timeoutSecs}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
+  const url = `${APIFY_BASE}/acts/${actorId}/run-sync-get-dataset-items?token=${token}&timeout=${timeoutSecs}`;
+
+  // Retry transient failures. A real run lost its entire Maps channel to a
+  // single 502 Bad Gateway — Apify's gateway hiccuping is not a statement
+  // about whether California has landscapers, and losing a whole channel to
+  // it both degrades the result and (via the warning line) misreports why.
+  // Same policy as the OpenRouter client: 429/5xx/network only. A 4xx means
+  // the request itself is wrong and will fail identically forever.
+  const delays = [2000, 5000];
+  let lastErr = "";
+  for (let attempt = 0; ; attempt++) {
+    let res: Response | null = null;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+    } catch (e) {
+      lastErr = `network error: ${(e as Error).message}`;
     }
-  );
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Apify actor ${actorId} failed: ${res.status} ${body.slice(0, 300)}`);
+    if (res?.ok) return res.json();
+
+    if (res) {
+      const body = await res.text().catch(() => "");
+      lastErr = `${res.status} ${body.slice(0, 200)}`;
+    }
+    const retryable = !res || res.status === 429 || res.status >= 500;
+    if (!retryable || attempt >= delays.length) {
+      throw new Error(`Apify actor ${actorId} failed: ${lastErr}`);
+    }
+    await new Promise((r) => setTimeout(r, delays[attempt]));
   }
-  return res.json();
 }
 
 // "Best landscaping companies in X," "Top 10 home builders" — directory/
@@ -168,6 +215,58 @@ function isListicleTitle(title: string | undefined): boolean {
 // noise (every result is a real local business in the right category) —
 // but undifferentiated: it has no idea what a succession signal is, so it
 // surfaces the whole category, not the companies actually likely to show one.
+// Places scraped per round, flat. This actor bills PER PLACE (~$0.004), and
+// measured spend showed why a flat number matters: the previous
+// `Math.min(60 * round, 360)` produced runs costing $0.24, $0.48, $0.72,
+// $0.96, $1.20 across one search's five rounds.
+//
+// The reason that was pure waste: Google Maps has no "skip the first N"
+// option. Asking round 2 for 120 places re-scrapes the same 60 round 1
+// already bought, and excludeDomains only filters them out afterwards, in
+// JavaScript — after the bill. That one search paid for 900 places to find
+// 300 unique ones.
+//
+// 30 also comfortably feeds a round: ROUND_SIZE in the orchestrator is 15
+// candidates, and Maps is one of three channels supplying them.
+const MAPS_PLACES_PER_ROUND = 30;
+
+// Rotating the LOCATION each round is what replaces scraping deeper. A
+// different metro returns genuinely different businesses at the same cost,
+// where a bigger `maxCrawledPlacesPerSearch` on the same query just re-buys
+// the same ones. It also attacks pool exhaustion directly: a state-level
+// query bottoms out around 23-80 companies, but its metros do not overlap.
+const STATE_METROS: Record<string, string[]> = {
+  CA: ["Los Angeles", "San Diego", "San Jose", "Sacramento", "Fresno", "Riverside", "Oakland", "Bakersfield"],
+  TX: ["Houston", "Dallas", "San Antonio", "Austin", "Fort Worth", "El Paso", "Arlington", "Plano"],
+  FL: ["Jacksonville", "Miami", "Tampa", "Orlando", "St. Petersburg", "Fort Lauderdale", "Naples", "Sarasota"],
+  NY: ["New York", "Buffalo", "Rochester", "Syracuse", "Albany", "Yonkers", "White Plains", "Long Island"],
+  NC: ["Charlotte", "Raleigh", "Greensboro", "Durham", "Winston-Salem", "Asheville"],
+  GA: ["Atlanta", "Savannah", "Augusta", "Columbus", "Macon", "Athens"],
+  OH: ["Columbus", "Cleveland", "Cincinnati", "Toledo", "Akron", "Dayton"],
+  AZ: ["Phoenix", "Tucson", "Mesa", "Chandler", "Scottsdale", "Gilbert"],
+  CO: ["Denver", "Colorado Springs", "Aurora", "Fort Collins", "Boulder"],
+  TN: ["Nashville", "Memphis", "Knoxville", "Chattanooga", "Franklin"],
+  WA: ["Seattle", "Spokane", "Tacoma", "Vancouver", "Bellevue"],
+  OR: ["Portland", "Salem", "Eugene", "Bend", "Medford"],
+};
+
+/**
+ * Where round N should look. Rounds walk the metro list, then fall back to
+ * the whole state once the metros are used up.
+ */
+function locationForRound(states: string[], round: number): string {
+  if (states.length === 0) return "United States";
+  // Multi-state searches alternate states first, so an early stop still
+  // covered every state the user asked for rather than exhausting state one.
+  const state = states[(round - 1) % states.length];
+  const metros = STATE_METROS[state];
+  const stateName = stateNameFor(state);
+  if (!metros || metros.length === 0) return `${stateName}, USA`;
+  const pass = Math.floor((round - 1) / states.length);
+  if (pass >= metros.length) return `${stateName}, USA`;
+  return `${metros[pass]}, ${stateName}, USA`;
+}
+
 async function discoverViaMaps(
   industry: Industry | null,
   states: string[],
@@ -175,14 +274,11 @@ async function discoverViaMaps(
   round: number
 ): Promise<Candidate[]> {
   const searchTerms = searchTermsFor(industry);
-  const locationQuery = states.length > 0 ? `${stateNameFor(states[0])}, USA` : "United States";
-  // Budget places per ROUND, then split across however many terms there are —
-  // rather than a fixed count per term, which silently multiplied Apify cost
-  // every time a term was added (this actor bills per place scraped, and the
-  // round's `limit` cut happens afterward, so extra places are paid for
-  // whether or not they're used). Widening trade coverage is now free.
-  const roundPlaceBudget = Math.min(60 * round, 360);
-  const perTerm = Math.max(10, Math.floor(roundPlaceBudget / searchTerms.length));
+  const locationQuery = locationForRound(states, round);
+  // Split the flat round budget across however many trade terms there are,
+  // rather than a fixed count per term — which silently multiplied cost every
+  // time a term was added. Widening trade coverage stays free.
+  const perTerm = Math.max(5, Math.floor(MAPS_PLACES_PER_ROUND / searchTerms.length));
   const timeoutSecs = Math.min(280, 60 + perTerm * searchTerms.length * 1.5);
 
   const items = (await runActorSync(
@@ -197,6 +293,9 @@ async function discoverViaMaps(
     timeoutSecs
   )) as Array<{ title?: string; website?: string | null; categoryName?: string }>;
 
+  // This actor bills per place scraped — meter what was actually returned.
+  recordCost("apify_maps_place", items.length);
+
   return items
     .filter((place) => place.website)
     .map((place) => ({ domain: "", url: place.website!, title: place.title ?? "", channel: "maps" as const }));
@@ -209,22 +308,109 @@ async function discoverViaMaps(
 // Adjacent trades folded in via OR rather than as extra queries — this actor
 // bills per SERP page, so covering tree service / irrigation / remodelers
 // this way widens the trade family without increasing the query count.
-const SUCCESSION_QUERY_TERMS: Record<Industry, string[]> = {
+//
+// This is the channel that has actually earned its place: across four live
+// test runs it produced 5 of the 5 succession signals found, outperforming
+// both Maps and the directories. The mechanism is the whole lesson — QUERY
+// THE SIGNAL, NOT THE CATEGORY. Maps can only ask "who is a landscaper in
+// this metro"; these queries ask "who is already talking like a handoff
+// happened." (Small n, and treated as such — what's being scaled here is the
+// mechanism, not the 5/5 number.)
+//
+// ROTATION — why this is a LIST OF SETS and not three fixed queries.
+// The orchestrator re-invokes discovery whenever its candidate buffer drains,
+// passing an incrementing `round` (see `discoveryCalls` in orchestrator.ts).
+// With three fixed queries, every one of those repeat calls re-ran the SAME
+// SERP: the same ~100 results, all already in `seenDomains`, so the channel
+// returned nothing fresh and the run concluded the pool was exhausted — while
+// dozens of untried succession phrasings sat right there. That's the exact
+// shape Maps hit before metro rotation (see locationForRound and the MAPS
+// comment block above); same fix on a different axis. Maps rotates WHERE it
+// looks, this rotates HOW it asks. A new phrasing buys a genuinely different
+// SERP for the same one-page price; re-asking the old phrasing just re-buys
+// the page already paid for.
+//
+// SET 1 IS THE PROVEN SET — those six strings are verbatim what produced the
+// live-test hits. Do not reword them to fit a pattern; new phrasings belong
+// in new sets, where a bad one costs one round instead of the channel.
+export const SUCCESSION_QUERY_SETS: Record<Industry, string[][]> = {
   landscaping: [
-    '"second generation" family owned landscaping OR "tree service" company',
-    '"family owned" landscaping OR irrigation company "joined the business"',
-    'father son landscaping OR "tree service" company "family business"',
+    // Set 1 — proven in live testing. Verbatim, do not edit.
+    [
+      '"second generation" family owned landscaping OR "tree service" company',
+      '"family owned" landscaping OR irrigation company "joined the business"',
+      'father son landscaping OR "tree service" company "family business"',
+    ],
+    // Set 2 — generations further along, and the handoff stated as a past
+    // event. "Second generation" is a self-description; "took over" is an
+    // account of the transition itself, which tends to live in local press
+    // and owner-letter pages Maps has no view of.
+    [
+      '"third generation" OR "3rd generation" landscaping OR "tree service" company',
+      '"took over the family business" landscaping OR "lawn care" company',
+      '"passed down" family owned landscaping OR irrigation company',
+    ],
+    // Set 3 — the relationship named explicitly, plus the longevity boast
+    // ("...since 1978") that almost always sits next to a founder's name on
+    // an About page.
+    [
+      '"son of founder" OR "daughter of founder" landscaping OR "tree service" company',
+      '"family owned and operated since" landscaping OR irrigation company',
+      '"my father started" OR "my grandfather started" landscaping OR "lawn care" company',
+    ],
+    // Set 4 — how the company describes the handoff when it's happening now
+    // rather than already done: succession in progress, which is the moment
+    // Jonathan's offer is actually relevant.
+    [
+      '"next generation of leadership" landscaping OR "tree service" company',
+      '"carrying on the family tradition" landscaping OR irrigation company',
+      '"joined his father" OR "joined her father" landscaping OR "lawn care" company',
+    ],
   ],
   home_builder: [
-    '"second generation" family owned home builder OR remodeler',
-    '"family owned" custom home builder OR "general contractor" "joined the business"',
-    'father son home builder OR remodeler "family business"',
+    // Set 1 — proven in live testing. Verbatim, do not edit.
+    [
+      '"second generation" family owned home builder OR remodeler',
+      '"family owned" custom home builder OR "general contractor" "joined the business"',
+      'father son home builder OR remodeler "family business"',
+    ],
+    [
+      '"third generation" OR "3rd generation" home builder OR remodeler',
+      '"took over the family business" custom home builder OR "general contractor"',
+      '"passed down" family owned home builder OR remodeler',
+    ],
+    [
+      '"son of founder" OR "daughter of founder" home builder OR remodeler',
+      '"family owned and operated since" custom home builder OR "general contractor"',
+      '"my father started" OR "my grandfather started" home builder OR remodeler',
+    ],
+    [
+      '"next generation of leadership" home builder OR remodeler',
+      '"carrying on the family tradition" custom home builder OR "general contractor"',
+      '"joined his father" OR "joined her father" home builder OR remodeler',
+    ],
   ],
 };
 
-function successionTermsFor(industry: Industry | null): string[] {
-  if (industry) return SUCCESSION_QUERY_TERMS[industry];
-  return [...SUCCESSION_QUERY_TERMS.landscaping, ...SUCCESSION_QUERY_TERMS.home_builder];
+/**
+ * Which phrasing set round N asks with. Wraps once the sets are used up —
+ * by then the search has moved far enough (different state, and every domain
+ * already returned is in the orchestrator's excludeDomains) that re-asking
+ * set 1 is not the dead repeat it was when round 2 asked it.
+ */
+function successionSetForRound(sets: string[][], round: number): string[] {
+  return sets[(round - 1) % sets.length];
+}
+
+export function successionTermsFor(industry: Industry | null, round: number): string[] {
+  if (industry) return successionSetForRound(SUCCESSION_QUERY_SETS[industry], round);
+  // No vertical picked — same pattern as before rotation: both verticals'
+  // set for this round, merged. Query count is unchanged (6), so the SERP
+  // page bill for an industry-less search is exactly what it always was.
+  return [
+    ...successionSetForRound(SUCCESSION_QUERY_SETS.landscaping, round),
+    ...successionSetForRound(SUCCESSION_QUERY_SETS.home_builder, round),
+  ];
 }
 
 // Channel B — targeted web search (apify/google-search-scraper) for
@@ -235,13 +421,29 @@ function successionTermsFor(industry: Industry | null): string[] {
 // year" pieces, a company's own press page. isListicleTitle + BLOCKED_HOSTS
 // filter the obvious noise; the classifier's own "not actually a company"
 // check (see project memory) catches the rest at ~$0.01-0.02/candidate.
+// Best-performing channel in live testing, and the one `round` matters most
+// to — it selects the phrasing set, so a repeat call asks a different
+// question instead of re-buying the same SERP (see SUCCESSION_QUERY_SETS).
+// Still exactly one SERP page per query, before and after rotation.
 async function discoverViaWebSearch(
   industry: Industry | null,
   states: string[],
-  limit: number
+  limit: number,
+  round = 1
 ): Promise<Candidate[]> {
-  const stateName = states.length > 0 ? stateNameFor(states[0]) : "";
-  const queries = successionTermsFor(industry)
+  // Rotate which state this call covers — states[0] alone meant a
+  // "Texas + Oklahoma" search never web-searched Oklahoma at all.
+  const stateName = states.length > 0 ? stateNameFor(states[(round - 1) % states.length]) : "";
+  // Note that on a multi-state search `round` drives BOTH rotations, so the
+  // state and the phrasing set advance in lockstep: round 2 is state 2 asked
+  // with set 2, and the pairings that come up repeat every lcm(states, sets)
+  // rounds rather than covering the full grid. Left as-is on purpose. What
+  // has to be new on each call is the PAIR, and it is — a long enough search
+  // eventually re-asks an earlier pairing, which is a far smaller problem
+  // than round 2 re-asking round 1's exact SERP, which is what happened
+  // before. Decoupling the two indexes would be a change to state rotation,
+  // and state rotation is not the thing that's broken.
+  const queries = successionTermsFor(industry, round)
     .map((q) => `${q} ${stateName}`.trim())
     .join("\n");
 
@@ -257,18 +459,29 @@ async function discoverViaWebSearch(
     90
   )) as Array<{ organicResults?: Array<{ url: string; title: string }> }>;
 
+  // Billed per SERP page: one page per query.
+  recordCost("apify_serp_page", queries.split("\n").length);
+
+  // No slice here — every organic result on the page is already paid for,
+  // and the orchestrator's candidate buffer consumes surplus in later
+  // rounds instead of re-billing a fresh search for it.
   return items
     .flatMap((page) => page.organicResults ?? [])
     .filter((r) => !isListicleTitle(r.title))
-    .slice(0, limit)
     .map((r) => ({ domain: "", url: r.url, title: r.title ?? "", channel: "web_search" as const }));
 }
 
-// Step 1 — discovery. THREE channels run in parallel and get merged:
+// Step 1 — discovery. FOUR channels run in parallel and get merged:
 //   - directory (lib/pipeline/directory-discovery.ts) — highest-yield per the
 //     Ofer Lieberson lesson, Claude+OpenRouter not Apify, gets cheaper over
 //     time via the directory_sources cache. Listed FIRST so its candidates
 //     win the `limit` cut when channels overlap.
+//   - licensing (lib/pipeline/licensing-discovery.ts) — state contractor
+//     licensing boards, the ground-truth universe of who may legally trade.
+//     Costs nothing (free government downloads) and never re-bills, so it is
+//     listed second: its candidates are the cheapest in the merge. Small in
+//     v1 by design — boards publish names, not domains, and this channel only
+//     emits rows that carry a domain of their own. See that file's header.
 //   - web search — succession-specific phrasing, precision play.
 //   - Maps — broad category coverage, but the most Apify-expensive; kept as
 //     the volume backstop rather than the primary source now.
@@ -284,12 +497,13 @@ export async function discoverCandidates(params: {
   // term so a repeat call surfaces businesses beyond what earlier rounds
   // already returned, rather than re-fetching the same top-ranked set.
   excludeDomains?: Set<string>;
-}): Promise<{ candidates: Candidate[]; exhausted: boolean; channelErrors: string[] }> {
+}): Promise<{ candidates: Candidate[]; channelErrors: string[] }> {
   const { industry, states, limit, round = 1, excludeDomains } = params;
 
-  const [dirResult, webResult, mapsResult] = await Promise.allSettled([
-    discoverViaDirectories(industry, states, limit),
-    discoverViaWebSearch(industry, states, limit),
+  const [dirResult, licResult, webResult, mapsResult] = await Promise.allSettled([
+    discoverViaDirectories(industry, states, limit, round),
+    discoverViaLicensing(industry, states, limit, round),
+    discoverViaWebSearch(industry, states, limit, round),
     discoverViaMaps(industry, states, limit, round),
   ]);
 
@@ -297,11 +511,20 @@ export async function discoverCandidates(params: {
   const raw: Candidate[] = [];
   if (dirResult.status === "fulfilled") raw.push(...dirResult.value);
   else channelErrors.push(`Directory channel failed: ${dirResult.reason?.message?.slice(0, 150) ?? dirResult.reason}`);
+  if (licResult.status === "fulfilled") raw.push(...licResult.value);
+  else channelErrors.push(`Licensing channel failed: ${licResult.reason?.message?.slice(0, 150) ?? licResult.reason}`);
   if (webResult.status === "fulfilled") raw.push(...webResult.value);
   else channelErrors.push(`Web search channel failed: ${webResult.reason?.message?.slice(0, 150) ?? webResult.reason}`);
   if (mapsResult.status === "fulfilled") raw.push(...mapsResult.value);
   else channelErrors.push(`Maps channel failed: ${mapsResult.reason?.message?.slice(0, 150) ?? mapsResult.reason}`);
 
+  // Deliberately still the THREE searching channels, not all four. Licensing
+  // returns [] rather than throwing for a state with no free enumerable source
+  // — which is most states — so folding it into this AND would mean a run where
+  // every key is dead but the search happened to be for Texas fulfils quietly
+  // with zero candidates instead of raising. That silent-partial-answer failure
+  // is the exact thing channel-health.ts exists to prevent. A licensing
+  // rejection still lands in channelErrors above and surfaces as a warning.
   if (
     dirResult.status === "rejected" &&
     webResult.status === "rejected" &&
@@ -317,15 +540,15 @@ export async function discoverCandidates(params: {
     if (!host || isBlocked(host) || seen.has(host)) continue;
     seen.add(host);
     candidates.push({ domain: host, url: r.url, title: r.title || host, channel: r.channel });
-    if (candidates.length >= limit) break;
   }
 
-  // "Exhausted" — this round surfaced fewer fresh domains than asked for,
-  // meaning all three channels combined have nothing left to give for this
-  // category+state; the caller should stop looping rather than
-  // re-requesting a near-empty result set.
-  const exhausted = candidates.length < limit;
-  return { candidates, exhausted, channelErrors };
+  // NO cut at `limit` here — everything above was already paid for (Maps
+  // bills per place, the SERP per page, directory extraction per Haiku
+  // call), and cutting used to throw the surplus away and re-bill a fresh
+  // discovery for it next round. The orchestrator's candidate buffer now
+  // consumes these at its own pace; `limit` only sizes the per-channel
+  // harvests above.
+  return { candidates, channelErrors };
 }
 
 export interface FetchedPage {
@@ -343,6 +566,7 @@ export interface FetchedPage {
 export async function fetchSingleUrl(url: string): Promise<string | null> {
   let items: RawFetchedItem[];
   try {
+    recordCost("apify_crawler_run");
     items = (await runActorSync(
       "apify~website-content-crawler",
       {
@@ -406,6 +630,7 @@ const TEAM_PAGE_GLOBS = [
 // domain — never the batch.
 async function fetchOneDomain(domain: string): Promise<RawFetchedItem[]> {
   const startUrls = ABOUT_SLUGS.map((slug) => ({ url: `https://${domain}/${slug}` }));
+  recordCost("apify_crawler_run");
   return (await runActorSync(
     "apify~website-content-crawler",
     {
@@ -476,39 +701,66 @@ function htmlToText(html: string): string {
     .trim();
 }
 
+// Entities survive in attribute values (og:site_name) even though htmlToText
+// decodes them in body text — which is how a company reached the UI displayed
+// as "Father &amp; Son YYC". Shared so both paths decode identically.
+export function decodeEntities(s: string): string {
+  return s
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;|&apos;|&rsquo;/g, "'")
+    .replace(/&lsquo;/g, "'")
+    .replace(/&(?:ldquo|rdquo);/g, '"')
+    .replace(/&ndash;|&mdash;/g, "-")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)));
+}
+
 function ogSiteNameFrom(html: string): string | null {
   const m =
     html.match(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i) ??
     html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:site_name["']/i);
-  return m?.[1] ?? null;
+  return m?.[1] ? decodeEntities(m[1]).trim() : null;
 }
 
-async function freeFetchOne(
-  url: string
-): Promise<{ page: FetchedPage; teamLinks: string[] } | null> {
+interface FreeFetchAttempt {
+  hit: { page: FetchedPage; teamLinks: string[] } | null;
+  // TRUE the moment any HTTP response arrives, even a 404 — that separates
+  // "site exists but is picky/JS-gated" (worth paying Firecrawl/Apify for)
+  // from "DNS dead / connection refused" (nothing downstream can help).
+  sawHttp: boolean;
+}
+
+async function freeFetchOne(url: string): Promise<FreeFetchAttempt> {
   try {
     const res = await fetch(url, {
       headers: { "User-Agent": FREE_FETCH_UA, Accept: "text/html,application/xhtml+xml" },
       redirect: "follow",
       signal: AbortSignal.timeout(FREE_FETCH_TIMEOUT_MS),
     });
-    if (!res.ok) return null;
+    if (!res.ok) return { hit: null, sawHttp: true };
     const ct = res.headers.get("content-type") ?? "";
-    if (!ct.includes("html")) return null;
+    if (!ct.includes("html")) return { hit: null, sawHttp: true };
     const html = await res.text();
     const text = htmlToText(html);
     // A JS-rendered shell yields almost no text — treat that as a miss so the
     // Apify fallback (which renders) gets its turn, rather than passing an
     // empty page to an expensive classify call.
-    if (text.length < 400) return null;
+    if (text.length < 400) return { hit: null, sawHttp: true };
     const host = hostnameOf(res.url) ?? hostnameOf(url);
-    if (!host) return null;
+    if (!host) return { hit: null, sawHttp: true };
     return {
-      page: { domain: host, url: res.url || url, text, siteName: ogSiteNameFrom(html) },
-      teamLinks: extractTeamLinks(html, res.url || url),
+      hit: {
+        page: { domain: host, url: res.url || url, text, siteName: ogSiteNameFrom(html) },
+        teamLinks: extractTeamLinks(html, res.url || url),
+      },
+      sawHttp: true,
     };
   } catch {
-    return null;
+    return { hit: null, sawHttp: false };
   }
 }
 
@@ -535,12 +787,17 @@ function extractTeamLinks(html: string, baseUrl: string): string[] {
 // Tries the seeded slugs for free, then one free hop to any team pages they
 // link to. Returns null when the free path produced nothing usable, so the
 // caller knows to fall back to Apify.
-async function freeFetchDomain(domain: string): Promise<FetchedPage[] | null> {
+async function freeFetchDomain(
+  domain: string
+): Promise<{ pages: FetchedPage[] | null; sawHttp: boolean }> {
   const seeded = await Promise.all(
     ABOUT_SLUGS.map((slug) => freeFetchOne(`https://${domain}/${slug}`))
   );
-  const hits = seeded.filter((r): r is { page: FetchedPage; teamLinks: string[] } => r !== null);
-  if (hits.length === 0) return null;
+  const sawHttp = seeded.some((r) => r.sawHttp);
+  const hits = seeded
+    .map((r) => r.hit)
+    .filter((r): r is { page: FetchedPage; teamLinks: string[] } => r !== null);
+  if (hits.length === 0) return { pages: null, sawHttp };
 
   // Dedupe by FINAL url — different seeded slugs routinely redirect to the
   // same page (/about -> /about-us/), and a duplicate costs a wasted classify
@@ -558,9 +815,9 @@ async function freeFetchDomain(domain: string): Promise<FetchedPage[] | null> {
 
   const followed = await Promise.all(teamUrls.slice(0, 3).map((u) => freeFetchOne(u)));
   followed.forEach((r) => {
-    if (r) pages.push(r.page);
+    if (r.hit) pages.push(r.hit.page);
   });
-  return pages;
+  return { pages, sawHttp: true };
 }
 
 export async function fetchCompanyPages(domains: string[]): Promise<Map<string, FetchedPage[]>> {
@@ -576,8 +833,19 @@ export async function fetchCompanyPages(domains: string[]): Promise<Map<string, 
     // LAYER 1 — free plain fetch. Costs nothing and handles the plain-HTML
     // majority: two consecutive live runs got 15/15 and 24/24 this way.
     const free = await freeFetchDomain(domain);
-    if (free) {
-      byDomain.set(domain, free);
+    if (free.pages) {
+      byDomain.set(domain, free.pages);
+      return;
+    }
+
+    // DEAD-DOMAIN FAST PATH — every seeded request failed at the network
+    // level (DNS, connection refused, timeout): the site is down, not picky.
+    // Firecrawl and Apify fetch the same internet; paying them to re-confirm
+    // a dead domain burned 2 render credits + a crawler run + ~3 minutes of
+    // wall-clock per dead domain, to learn nothing the first 8 seconds
+    // hadn't already said. The company is recorded as unfetchable with a
+    // 14-day recheck either way.
+    if (!free.sawHttp) {
       return;
     }
 

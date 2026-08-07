@@ -1,4 +1,5 @@
 import { resolveSetting } from "../settings";
+import { recordCost } from "./cost-tracker";
 
 // Tavily — search priced as SEARCH, not as LLM tokens.
 //
@@ -30,6 +31,12 @@ export interface TavilyResult {
  * Returns [] rather than throwing when unconfigured or failing — every caller
  * treats Tavily as one option among several, so a Tavily outage should quietly
  * fall through to the next source, never take a search down.
+ *
+ * Quietly to the CALLER, loudly to the log. This used to swallow every failure
+ * without a word, which made a dead angle and a healthy-but-empty one look
+ * identical from the outside: four searches metered, four candidates found, and
+ * no way to tell whether Tavily had answered at all. Never do that again — a
+ * failed lookup costs a whole directory angle for that search.
  */
 export async function tavilySearch(
   query: string,
@@ -38,24 +45,65 @@ export async function tavilySearch(
   const key = await getTavilyKey();
   if (!key) return [];
 
-  try {
-    const res = await fetch(`${TAVILY_BASE}/search`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-      body: JSON.stringify({
-        query,
-        max_results: opts.maxResults ?? 8,
-        // "basic" is 1 credit, "advanced" 2. Basic has been enough for
-        // "which directory lists these companies" — don't pay double by default.
-        search_depth: opts.depth ?? "basic",
-        include_raw_content: opts.includeRaw ?? false,
-      }),
-      signal: AbortSignal.timeout(30_000),
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return Array.isArray(data?.results) ? (data.results as TavilyResult[]) : [];
-  } catch {
+  const body = JSON.stringify({
+    query,
+    max_results: opts.maxResults ?? 8,
+    // "basic" is 1 credit, "advanced" 2. Basic has been enough for
+    // "which directory lists these companies" — don't pay double by default.
+    search_depth: opts.depth ?? "basic",
+    include_raw_content: opts.includeRaw ?? false,
+  });
+
+  // Retry transient failures only, same policy and shape as openrouter.ts's
+  // chat() and apify.ts's runActorSync(). Measured live: four angles fired
+  // concurrently (the real Promise.all burst) all returned 200 in ~320ms with
+  // no rate-limit headers, so the angles are deliberately NOT serialized —
+  // that would quadruple discovery latency to fix a 429 that doesn't happen.
+  // This is just insurance for the blip that used to vanish silently.
+  const delays = [1000, 3000];
+  for (let attempt = 0; ; attempt++) {
+    let res: Response | null = null;
+    let networkErr = "";
+    try {
+      res = await fetch(`${TAVILY_BASE}/search`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+        body,
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch (e) {
+      networkErr = `${(e as Error).name}: ${(e as Error).message}`;
+    }
+
+    if (res?.ok) {
+      // Meter only a response that actually came back — the counter is meant
+      // to answer "what did this run BUY", and an attempt that 4xx'd or timed
+      // out bought nothing. Recording before the fetch inflated every run's
+      // search count by however many calls failed, with no trace of which.
+      recordCost("tavily_search");
+      try {
+        const data = await res.json();
+        return Array.isArray(data?.results) ? (data.results as TavilyResult[]) : [];
+      } catch (e) {
+        console.warn(`Tavily search returned unparseable JSON for "${query.slice(0, 80)}": ${(e as Error).message}`);
+        return [];
+      }
+    }
+
+    const retryable = !res || res.status === 429 || res.status >= 500;
+    if (retryable && attempt < delays.length) {
+      await new Promise((r) => setTimeout(r, delays[attempt] + Math.floor(Math.random() * 300)));
+      continue;
+    }
+
+    if (res) {
+      const errBody = await res.text().catch(() => "");
+      console.warn(
+        `Tavily search failed: ${res.status} ${errBody.slice(0, 200)} — query "${query.slice(0, 80)}"`
+      );
+    } else {
+      console.warn(`Tavily search failed: ${networkErr} — query "${query.slice(0, 80)}"`);
+    }
     return [];
   }
 }

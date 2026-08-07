@@ -1,4 +1,5 @@
 import { resolveSetting } from "../settings";
+import { recordCost } from "./cost-tracker";
 
 const BASE = "https://api.anymailfinder.com/v5.0";
 
@@ -43,10 +44,22 @@ async function post(path: string, body: Record<string, unknown>) {
 // Primary path — a named next-gen leader. Falls back to "any owner/manager
 // email at this domain" + email-handle name inference when the page named no
 // one (per scope: the Kessler & Sons / "mike@..." case).
+//
+// COST METERING (see cost-tracker.ts): recorded on a FOUND email, not on the
+// attempt. AnymailFinder bills per delivered address and charges nothing when
+// a search comes back empty, and the response says which happened — a hit is
+// `success` with an actual email in the payload, a miss is a non-2xx with no
+// address. Metering attempts would badly overstate this step: plenty of the
+// small trade companies in this pipeline have no discoverable email at all,
+// and each of those misses would otherwise show up as a $0.05 charge that
+// never existed. Both branches below can bill at most once per call, since
+// the person lookup returns before the company fallback runs.
+// (Price is an ESTIMATE — see UNIT_USD.)
 export async function findContact(domain: string, fullName: string | null): Promise<ContactFindResult> {
   if (fullName) {
     const { ok, data } = await post("/search/person.json", { domain, full_name: fullName });
     if (ok && data?.success && data?.results?.email) {
+      recordCost("anymailfinder_lookup");
       return { found: true, email: data.results.email, name: fullName, nameInferred: false };
     }
   }
@@ -57,6 +70,7 @@ export async function findContact(domain: string, fullName: string | null): Prom
     const emails: string[] = data?.results?.emails ?? [];
     const first = emails[0];
     if (first) {
+      recordCost("anymailfinder_lookup");
       return { found: true, email: first, name: inferNameFromEmail(first), nameInferred: true };
     }
   }

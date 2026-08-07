@@ -74,14 +74,3 @@ export const VERIFICATION_META: Record<
   risky: { label: "Risky", color: "#9a4a1f", bg: "#fbe4d7" },
   unknown: { label: "Unknown", color: "var(--gh-ink-muted)", bg: "var(--gh-surface-sunken)" },
 };
-
-// Common, real rejection reasons per the scope's own classification bar.
-export const REJECTION_REASONS = [
-  "Only the founder is listed — no next-gen name on the leadership page",
-  "Next-gen name present, but no succession or transition language found",
-  "No About / Team / Leadership page found on the site",
-  "Professionally managed — no family-owned language or indicators",
-  "Outside target revenue band",
-  "Outside agreed states",
-  "Duplicate of an already-tracked company",
-] as const;

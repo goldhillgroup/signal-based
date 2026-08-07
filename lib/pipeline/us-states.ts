@@ -1,5 +1,6 @@
-// Full US state list — used by the SearchHome geography dropdown and by
-// parse-query.ts's free-text fallback. Single source of truth for both.
+// Full US state list — used by the SearchHome geography dropdown, the
+// free-text intake parser and the search route's validation. Single source
+// of truth for all three.
 // The four states named in the method Jonathan describes ('California, New
 // York, Texas, and Florida') and covered by the delivered proof. Surfaced
 // first in the picker as the agreed baseline — every other state stays
@@ -59,15 +60,6 @@ export const US_STATES: { code: string; name: string }[] = [
   { code: "WY", name: "Wyoming" },
   { code: "DC", name: "District of Columbia" },
 ];
-
-export const STATE_NAME_TO_CODE: Record<string, string> = US_STATES.reduce(
-  (acc, s) => {
-    acc[s.name.toLowerCase()] = s.code;
-    acc[s.code.toLowerCase()] = s.code;
-    return acc;
-  },
-  {} as Record<string, string>
-);
 
 export function stateNameFor(code: string): string {
   return US_STATES.find((s) => s.code === code)?.name ?? code;

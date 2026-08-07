@@ -36,9 +36,17 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
   // (e.g. navigating from one folder's results to another) — adjusted
   // during render rather than in an effect, per React's own guidance for
   // "state that needs to change when a prop changes."
+  //
+  // Tracks the companies ARRAY IDENTITY as well as the folder id. Keying on
+  // the id alone meant a late-arriving companies array for the SAME folder
+  // was silently dropped — the parent's fetch resolves after the first
+  // render, so "same folder, now with data" is the normal case, not an edge
+  // one. The parent now sets both together, and this is the second guard.
   const [trackedFolderId, setTrackedFolderId] = useState(folderProp.id);
-  if (folderProp.id !== trackedFolderId) {
+  const [trackedCompanies, setTrackedCompanies] = useState(companiesProp);
+  if (folderProp.id !== trackedFolderId || companiesProp !== trackedCompanies) {
     setTrackedFolderId(folderProp.id);
+    setTrackedCompanies(companiesProp);
     setFolder(folderProp);
     setCompanies(companiesProp);
   }
@@ -146,8 +154,27 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
             {folder.errorMessage && (
               <p className="mt-0.5 max-w-xs text-xs text-gh-ink-muted">{folder.errorMessage}</p>
             )}
+            {/* What this run actually cost, metered call by call — see
+                lib/pipeline/cost-tracker.ts. Estimates, and labeled as such. */}
+            {folder.costEstimateUsd !== null && folder.costEstimateUsd > 0 && (
+              <p className="tabular mt-0.5 text-xs text-gh-ink-muted">
+                ~${folder.costEstimateUsd.toFixed(2)} est.
+                {folder.costBreakdown ? ` (${folder.costBreakdown})` : ""}
+              </p>
+            )}
           </div>
         </div>
+
+        {/* Sits directly under the counts on purpose. "Pool exhausted" and
+            "a channel was capped" produce the same short number but mean
+            opposite things — one says the state is mined out, the other says
+            nobody looked. Reading the count without this can be misleading. */}
+        {folder.warnings && (
+          <div className="mt-3 flex items-start gap-2 rounded-lg border border-gh-warning/30 bg-gh-warning/10 px-3 py-2">
+            <span className="mt-px text-xs">⚠</span>
+            <p className="text-xs leading-relaxed text-gh-ink-secondary">{folder.warnings}</p>
+          </div>
+        )}
       </div>
 
       {/* Step 2 of the two-step flow — discovery is already done by the time

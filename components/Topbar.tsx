@@ -13,11 +13,12 @@ export function Topbar() {
         className="shrink-0 rounded bg-gh-navy p-1 lg:hidden"
       />
 
+      {/* A "Demo data — pipeline not yet wired up" badge lived here from the
+          mock phase. It was still rendering over real, live, paid-for results,
+          which is the worst possible direction for a labeling error: it tells
+          the user his genuine leads are fake. Removed when the pipeline went
+          live rather than left to rot. */}
       <div className="ml-auto flex items-center gap-2.5">
-        <span className="hidden items-center gap-1.5 rounded-full bg-gh-surface-sunken px-2.5 py-1 text-xs font-semibold text-gh-ink-muted sm:inline-flex">
-          <span className="h-1.5 w-1.5 rounded-full bg-gh-gold" />
-          Demo data — pipeline not yet wired up
-        </span>
         <Link
           href="/dashboard"
           className="inline-flex items-center gap-1.5 rounded-lg bg-gh-navy px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-gh-navy-2"

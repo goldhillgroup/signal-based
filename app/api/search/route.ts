@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { runSearchPipeline } from "@/lib/pipeline/orchestrator";
-import { industryLabel } from "@/lib/pipeline/parse-query";
-import { stateNameFor } from "@/lib/pipeline/us-states";
+import { industryLabel } from "@/lib/pipeline/intake-types";
+import { stateNameFor, US_STATES } from "@/lib/pipeline/us-states";
 import type { Industry, SearchMode } from "@/lib/supabase/types";
 
 // Raise the ceiling where the deployment platform honors it (Vercel Pro+ with
@@ -19,11 +19,13 @@ const MIN_TARGET = 1;
 const MAX_TARGET = 200; // UI-level sanity cap — see MAX_SCAN_MULTIPLIER/ABSOLUTE_SCAN_CEILING in the orchestrator for the real cost ceiling
 const VALID_INDUSTRIES: Industry[] = ["landscaping", "home_builder"];
 const VALID_MODES: SearchMode[] = ["signal", "filter", "hybrid"];
+const VALID_STATE_CODES = new Set(US_STATES.map((s) => s.code));
 
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as {
     industry?: string;
     state?: string;
+    states?: string[];
     refinement?: string;
     targetSignals?: number;
     mode?: string;
@@ -38,9 +40,26 @@ export async function POST(req: Request) {
       { status: 400 }
     );
   }
-  const state = (body.state ?? "").trim().toUpperCase();
-  if (state.length !== 2) {
+
+  // Accepts either the single `state` the structured form has always sent or
+  // the `states` array free-text intake produces ("Texas + Oklahoma", "the
+  // Southeast"). One search covers all of them — a request the user made once
+  // stays one folder — and the pipeline has always taken a states array.
+  // Silently dropping a named state is the specific failure this replaces, so
+  // an unknown code is a 400, never a quiet omission.
+  const requested = (body.states?.length ? body.states : [body.state ?? ""])
+    .map((s) => (s ?? "").trim().toUpperCase())
+    .filter(Boolean);
+  const states = Array.from(new Set(requested));
+  if (states.length === 0) {
     return NextResponse.json({ error: "state is required (2-letter code)" }, { status: 400 });
+  }
+  const unknown = states.filter((s) => !VALID_STATE_CODES.has(s));
+  if (unknown.length > 0) {
+    return NextResponse.json(
+      { error: `Unrecognized state code(s): ${unknown.join(", ")}` },
+      { status: 400 }
+    );
   }
   const refinement = (body.refinement ?? "").trim();
 
@@ -62,7 +81,7 @@ export async function POST(req: Request) {
   // Human-readable label built server-side from the structured fields — the
   // free-text refinement is along for the ride in the label/query only, it
   // never drives the actual discovery filters (see lib/pipeline/apify.ts).
-  const label = `${industryLabel(industry)} companies in ${stateNameFor(state)}`;
+  const label = `${industryLabel(industry)} companies in ${states.map(stateNameFor).join(", ")}`;
   const query = refinement ? `${label} — ${refinement}` : label;
 
   const { data: search, error } = await supabase
@@ -92,7 +111,7 @@ export async function POST(req: Request) {
   // Runs after this response is sent, within the extended function lifetime
   // (see maxDuration above) — the client polls the `searches` row for progress.
   after(() =>
-    runSearchPipeline(search.id, industry, [state], target, mode, refinement || null, {
+    runSearchPipeline(search.id, industry, states, target, mode, refinement || null, {
       min: body.revenueMinMusd ?? null,
       max: body.revenueMaxMusd ?? null,
     })

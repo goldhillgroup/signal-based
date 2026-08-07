@@ -9,6 +9,8 @@ interface Props {
   query: string;
   onComplete: (folder: SearchFolder) => void;
   onError: (message: string) => void;
+  /** Close the dialog without stopping the server-side run. */
+  onDismiss?: () => void;
 }
 
 // Round-based accumulator (see lib/pipeline/orchestrator.ts) — discover ->
@@ -40,7 +42,7 @@ function currentActivity(folder: SearchFolder): string {
   return "Looking for more candidates…";
 }
 
-export function SearchProgress({ searchId, query, onComplete, onError }: Props) {
+export function SearchProgress({ searchId, query, onComplete, onError, onDismiss }: Props) {
   const { fetchFolder } = useSearches();
   const [folder, setFolder] = useState<SearchFolder | null>(null);
   const stopRef = useRef(false);
@@ -133,6 +135,24 @@ export function SearchProgress({ searchId, query, onComplete, onError }: Props) 
         <p className="mt-3 text-center text-[11px] text-gh-ink-muted">
           {folder.companiesScanned} companies checked so far — kept results accumulate as
           rounds continue, nothing found so far gets thrown away.
+        </p>
+
+        {/* The run lives on the server (see `after()` in app/api/search/route.ts),
+            not in this tab — closing the dialog, navigating away or quitting
+            the browser does not stop it. Without a way out, this modal reads
+            as "you must sit here and wait", which is both untrue and the
+            reason a long search feels like wasted time. */}
+        {onDismiss && (
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="mt-4 w-full rounded-xl border border-gh-border bg-gh-surface-sunken py-2.5 text-xs font-semibold text-gh-ink-secondary transition-colors hover:border-gh-sky/40 hover:text-gh-ink"
+          >
+            Let it run — I&rsquo;ll check back later
+          </button>
+        )}
+        <p className="mt-2 text-center text-[11px] text-gh-ink-muted">
+          Keeps running if you close this or leave the page.
         </p>
       </div>
 

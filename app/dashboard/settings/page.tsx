@@ -1,5 +1,6 @@
 import { getSetting, SETTINGS_KEYS } from "@/lib/settings";
 import { SettingsForm } from "@/components/SettingsForm";
+import { VendorUsage } from "@/components/VendorUsage";
 
 // Server component on purpose — it's the only place allowed to see a real
 // key value (via getSetting, service-role only). Everything handed to the
@@ -32,16 +33,28 @@ export default async function SettingsPage() {
   );
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="mx-auto max-w-3xl space-y-8">
       <div>
         <h1 className="font-display text-2xl font-semibold text-gh-ink">Settings</h1>
         <p className="mt-1 text-sm text-gh-ink-secondary">
-          API keys the search pipeline uses. Saved here take effect on the very
-          next search — no redeploy needed. Leave a field blank to keep
-          whatever&apos;s already set.
+          What each vendor has left, and the keys the search pipeline uses to
+          get there.
         </p>
       </div>
-      <SettingsForm rows={rows} />
+
+      {/* Usage first, keys second. Keys get edited maybe once a month; "can I
+          run another search today?" is the question this page actually gets
+          opened for. */}
+      <VendorUsage />
+
+      <section>
+        <h2 className="font-display text-lg font-semibold text-gh-ink">API keys</h2>
+        <p className="mt-0.5 mb-3 text-sm text-gh-ink-secondary">
+          Saved here take effect on the very next search — no redeploy needed.
+          Leave a field blank to keep whatever&apos;s already set.
+        </p>
+        <SettingsForm rows={rows} />
+      </section>
     </div>
   );
 }

@@ -46,7 +46,9 @@ export const SETTINGS_KEYS = [
   { key: "APIFY_TOKEN_2", label: "Apify — token 2 (fallback)", envFallback: "APIFY_TOKEN_2" },
   {
     key: "APIFY_TOKEN_4",
-    label: "Apify — token 4 ($29/mo plan, code-capped at $5)",
+    // Cap raised 5 -> 10 on 2026-08-07; the label has to track BUDGET_CAP_USD
+    // in lib/pipeline/apify.ts or it contradicts the Vendor usage card above it.
+    label: "Apify — token 4 ($29/mo plan, code-capped at $10)",
     envFallback: "APIFY_TOKEN_4",
   },
   { key: "APIFY_TOKEN_3", label: "Apify — token 3 (fallback)", envFallback: "APIFY_TOKEN_3" },

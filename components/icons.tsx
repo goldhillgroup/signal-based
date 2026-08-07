@@ -83,15 +83,6 @@ export function UsersIcon({ className }: IconProps) {
   );
 }
 
-export function TargetIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden>
-      <circle cx="10" cy="10" r="7.5" stroke="currentColor" strokeWidth={base} />
-      <circle cx="10" cy="10" r="4" stroke="currentColor" strokeWidth={base} />
-      <circle cx="10" cy="10" r="0.9" fill="currentColor" />
-    </svg>
-  );
-}
 
 export function ZapIcon({ className }: IconProps) {
   return (
@@ -101,13 +92,6 @@ export function ZapIcon({ className }: IconProps) {
   );
 }
 
-export function ChevronDownIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden>
-      <path d="M5.5 8L10 12.5L14.5 8" stroke="currentColor" strokeWidth={base} strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
 
 export function XIcon({ className }: IconProps) {
   return (
@@ -117,14 +101,6 @@ export function XIcon({ className }: IconProps) {
   );
 }
 
-export function ExternalLinkIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden>
-      <path d="M8 5H5.5a1.5 1.5 0 00-1.5 1.5v8A1.5 1.5 0 005.5 16h8a1.5 1.5 0 001.5-1.5V12" stroke="currentColor" strokeWidth={base} strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M12 4h4v4M16 4l-7 7" stroke="currentColor" strokeWidth={base} strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
 
 export function BuildingIcon({ className }: IconProps) {
   return (
@@ -135,13 +111,6 @@ export function BuildingIcon({ className }: IconProps) {
   );
 }
 
-export function FilterIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden>
-      <path d="M3 4.5h14M6 10h8M8.5 15.5h3" stroke="currentColor" strokeWidth={base} strokeLinecap="round" />
-    </svg>
-  );
-}
 
 export function DotIcon({ className }: IconProps) {
   return (
@@ -174,13 +143,3 @@ export function InboxIcon({ className }: IconProps) {
   );
 }
 
-export function ChartIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden>
-      <path d="M3 17V3M3 17h14" stroke="currentColor" strokeWidth={base} strokeLinecap="round" />
-      <rect x="6" y="10" width="2.2" height="5" rx="0.6" fill="currentColor" />
-      <rect x="10" y="7" width="2.2" height="8" rx="0.6" fill="currentColor" />
-      <rect x="14" y="4" width="2.2" height="11" rx="0.6" fill="currentColor" />
-    </svg>
-  );
-}

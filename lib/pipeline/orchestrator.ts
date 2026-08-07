@@ -1,9 +1,12 @@
 import { createServiceRoleClient } from "../supabase/server";
-import { discoverCandidates, fetchCompanyPages, pickBestPage } from "./apify";
+import { discoverCandidates, fetchCompanyPages, pickBestPage, type Candidate, type FetchedPage } from "./apify";
 import { classifySignal, disprovePass } from "./openrouter";
 import { findContact } from "./anymailfinder";
 import { verifyEmail } from "./millionverifier";
 import type { Industry, SearchMode, SearchRow } from "../supabase/types";
+import { recheckAfterFor } from "./recheck-policy";
+import { buildWarningLine } from "./channel-health";
+import { runWithCounters, estimateUsd, describeCost, type CostCounters } from "./cost-tracker";
 
 // Contact enrichment (Anymailfinder + MillionVerifier) lives in
 // enrichContacts() at the bottom of this file, NOT inline in the discovery
@@ -50,7 +53,31 @@ async function runWithConcurrency<T>(
 type Supa = ReturnType<typeof createServiceRoleClient>;
 
 async function bump(supabase: Supa, searchId: string, patch: Partial<SearchRow>) {
-  await supabase.from("searches").update(patch).eq("id", searchId);
+  const { error } = await supabase.from("searches").update(patch).eq("id", searchId);
+  if (!error) return;
+
+  // This function's errors were previously swallowed entirely, which is fine
+  // for a mid-run progress tick but dangerous for the FINAL write: if the
+  // patch mentions a column the deployed database doesn't have yet (a
+  // migration not yet applied), the whole update is rejected and the search
+  // sits at status 'running' forever, with the work done and invisible.
+  // Strip whichever column PostgREST names as missing and retry, so an
+  // unapplied migration degrades to "that one field isn't saved" instead of
+  // "run never finishes". Bounded by the number of keys in the patch.
+  const current: Partial<SearchRow> = { ...patch };
+  let err = error;
+  for (let i = 0; i < Object.keys(patch).length; i++) {
+    const m = /'([a-z_]+)' column/.exec(err.message ?? "");
+    if (!m || !(m[1] in current)) break;
+    console.warn(
+      `Search ${searchId}: '${m[1]}' column missing in DB — apply the latest supabase/migrations. Saving without it.`
+    );
+    delete (current as Record<string, unknown>)[m[1]];
+    const retry = await supabase.from("searches").update(current).eq("id", searchId);
+    if (!retry.error) return;
+    err = retry.error;
+  }
+  console.warn(`Search ${searchId}: update failed — ${err.message}`);
 }
 
 // Last-resort name when neither og:site_name nor the classifier could read
@@ -88,6 +115,62 @@ function resolveName(
   return classifiedName ?? cleanDomainName(domain);
 }
 
+// Matches classifySignal's MAX_PAGE_CHARS — compose to the same ceiling so
+// the slice there never cuts a section mid-way.
+const CLASSIFY_TEXT_BUDGET = 12000;
+
+/**
+ * The text classify actually reads: the best page, plus the best DISTINCT
+ * other page while budget remains. Evidence for one company is routinely
+ * split across pages — founder story on /about, the next generation on
+ * /team — and feeding only one page made the other half structurally
+ * invisible no matter how good the rubric is (Russell Landscape Group was a
+ * real miss of exactly this shape). Same total budget as before; secondary
+ * sections are labeled with their URL so a quote can still be traced.
+ */
+export function buildClassifyText(primary: FetchedPage, all: FetchedPage[]): string {
+  let text = primary.text.slice(0, CLASSIFY_TEXT_BUDGET);
+  let remaining = CLASSIFY_TEXT_BUDGET - text.length;
+
+  if (remaining > 800) {
+    const secondary = all
+      .filter((p) => p.url !== primary.url && p.text.length >= 300)
+      // Most additional text first — and skip near-duplicates of the primary
+      // (same page under two URLs after a redirect).
+      .filter((p) => !p.text.startsWith(text.slice(0, 200)))
+      .sort((a, b) => b.text.length - a.text.length)[0];
+    if (secondary) {
+      const header = `\n\n=== ANOTHER PAGE FROM THE SAME SITE (${secondary.url}) ===\n\n`;
+      text += header + secondary.text.slice(0, Math.max(0, remaining - header.length));
+    }
+  }
+  return text;
+}
+
+/**
+ * Does the model's evidence quote actually appear in the text it was shown?
+ * Normalizes the punctuation classes that legitimately differ between page
+ * HTML and model output (curly vs straight quotes, dash variants, whitespace
+ * runs) and then requires a literal substring hit. Long quotes only need
+ * their first ~80 normalized chars to match, so a quote the model trimmed
+ * with an ellipsis still verifies while an invented one still fails.
+ */
+export function quoteAppears(quote: string, pageText: string): boolean {
+  const norm = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/[‘’ʼ]/g, "'")
+      .replace(/[“”]/g, '"')
+      .replace(/[–—]/g, "-")
+      .replace(/…/g, "...")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  const q = norm(quote);
+  if (q.length < 12) return true; // too short to meaningfully verify
+  const hay = norm(pageText);
+  return hay.includes(q.length > 80 ? q.slice(0, 80).trim() : q);
+}
+
 export async function runSearchPipeline(
   searchId: string,
   industry: Industry,
@@ -109,10 +192,51 @@ export async function runSearchPipeline(
 ) {
   const supabase = createServiceRoleClient();
 
+  // Meter every vendor call this run makes (see cost-tracker.ts) — the totals
+  // land on the search row so each run's spend is a visible number, not a
+  // dashboard archaeology project.
+  const costCounters: CostCounters = { counts: {} };
+  await runWithCounters(costCounters, async () => {
   try {
     const scanCeiling = Math.min(targetSignals * MAX_SCAN_MULTIPLIER, ABSOLUTE_SCAN_CEILING);
 
+    // CROSS-SEARCH MEMORY — the thing that makes next month's scan different
+    // from today's. Previously this started empty every run, so re-running a
+    // state re-discovered and re-paid for the identical companies and handed
+    // back the identical list.
+    //
+    // Now it is pre-loaded with every domain we've already settled: qualified
+    // leads (already on his list) and rejections that aren't due for another
+    // look yet. Rejections DO come back, on a schedule set by why they were
+    // cut — see recheck-policy.ts. A company cut for "only one generation on
+    // the page" returns in 90 days precisely because that is the fact that
+    // changes when a son or daughter steps in.
     const seenDomains = new Set<string>();
+    let skippedRecent = 0;
+    {
+      const nowIso = new Date().toISOString();
+      // Paginate: this table grows without bound and a single select would
+      // silently cap at PostgREST's default row limit, quietly re-scanning
+      // everything past it.
+      const PAGE = 1000;
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await supabase
+          .from("companies")
+          .select("domain, recheck_after")
+          .or(`recheck_after.is.null,recheck_after.gt.${nowIso}`)
+          .range(from, from + PAGE - 1);
+        if (error || !data || data.length === 0) break;
+        data.forEach((r) => {
+          if (r.domain) seenDomains.add(r.domain);
+        });
+        if (data.length < PAGE) break;
+      }
+      skippedRecent = seenDomains.size;
+      console.log(
+        `Search ${searchId}: cross-search memory holds ${skippedRecent} settled domains — these are skipped, everything due for re-check is fair game.`
+      );
+    }
+
     let totalScanned = 0;
     let qualified = 0; // signal found, confidence high/medium (or fit-only accepted in filter/hybrid, no signal)
     let verify = 0; // signal found, confidence verify
@@ -131,48 +255,87 @@ export async function runSearchPipeline(
     const countsTowardTarget = () => (mode === "signal" ? qualified + verify : accepted);
     let round = 0;
     let stoppedEarlyReason: string | null = null;
+    // Accumulates across EVERY round, unlike roundChannelErrors which resets
+    // each pass. A channel that was capped in round 1 and recovered by round 4
+    // still means round 1 searched a smaller pool than it appeared to, so the
+    // run as a whole was degraded and has to say so.
+    const degradedChannels = new Set<string>();
+
+    // CANDIDATE BUFFER — consume everything already paid for before paying
+    // for more. Discovery channels return more than one round consumes (a
+    // directory page yields 40 names, a Maps run 30 places), and the old code
+    // cut the merged list at ROUND_SIZE and THREW THE REST AWAY — places and
+    // extractions that were already billed. With Maps now rotating metros per
+    // discovery call, those discards weren't even re-findable: round 2
+    // searches a different city, so round 1's leftovers were simply lost.
+    // Now: every fresh candidate lands here, rounds drain it ROUND_SIZE at a
+    // time, and discovery is only re-invoked (and re-billed) when it's empty.
+    const pending: Candidate[] = [];
+    let discoveryCalls = 0; // drives metro/state rotation, NOT the same as classify rounds
+    let poolDry = false;
+    let totalDiscovered = 0;
 
     roundLoop: while (countsTowardTarget() < targetSignals && totalScanned < scanCeiling) {
       round++;
       const roundLimit = Math.min(ROUND_SIZE, scanCeiling - totalScanned);
 
+      // ── 1. Refill the buffer only when it's actually empty ───────────────
       // Discover + fetch get their own try/catch: an Apify hiccup (timeout,
       // rate limit) on round 2+ must not discard signals already found and
       // persisted in earlier rounds — degrade to "stop here, keep what we
       // have" rather than letting it bubble to the outer catch's full
       // status: 'failed', which would misrepresent real, saved results as
       // a failed run.
-      let candidates, exhausted;
-      try {
-        // ── 1. Discover this round's batch (excludes every domain seen so far) ──
-        let channelErrors: string[];
-        ({ candidates, exhausted, channelErrors } = await discoverCandidates({
-          industry,
-          states,
-          limit: roundLimit,
-          round,
-          excludeDomains: seenDomains,
-        }));
-        // One channel degrading (e.g. Maps times out) isn't fatal — the other
-        // channel's results still came through (see apify.ts's
-        // Promise.allSettled). Only note it; the round keeps going.
-        if (channelErrors.length > 0) {
-          console.warn(`Search ${searchId} round ${round}: ${channelErrors.join(" | ")}`);
+      let roundChannelErrors: string[] = [];
+      if (pending.length === 0 && !poolDry) {
+        discoveryCalls++;
+        try {
+          const { candidates: fresh, channelErrors } = await discoverCandidates({
+            industry,
+            states,
+            limit: roundLimit,
+            round: discoveryCalls,
+            excludeDomains: seenDomains,
+          });
+          if (channelErrors.length > 0) {
+            roundChannelErrors = channelErrors;
+            channelErrors.forEach((e) => degradedChannels.add(e));
+            console.warn(`Search ${searchId} discovery ${discoveryCalls}: ${channelErrors.join(" | ")}`);
+          }
+          // Claimed for this search the moment they enter the buffer, so the
+          // next discovery call can't re-return (or re-bill) them.
+          fresh.forEach((c) => seenDomains.add(c.domain));
+          pending.push(...fresh);
+          totalDiscovered += fresh.length;
+          await bump(supabase, searchId, { candidates_found: totalDiscovered });
+          if (fresh.length === 0) poolDry = true;
+        } catch (e) {
+          stoppedEarlyReason = `Stopped after round ${round}: discovery failed (${(e as Error).message.slice(0, 200)})`;
+          break;
         }
-      } catch (e) {
-        stoppedEarlyReason = `Stopped after round ${round}: discovery failed (${(e as Error).message.slice(0, 200)})`;
+      }
+
+      if (pending.length === 0) {
+        // CRITICAL DISTINCTION: "this state has no more companies" and "we
+        // could not search" look identical here (both yield zero candidates)
+        // but mean opposite things to the person reading the result. Claiming
+        // the pool is exhausted when a channel was actually blocked — by a
+        // budget cap, an outage, an expired key — tells Jonathan California is
+        // mined out when in fact nobody looked. Only claim exhaustion when
+        // discovery genuinely ran.
+        if (roundChannelErrors.length > 0) {
+          stoppedEarlyReason =
+            `Could not search: ${roundChannelErrors.join(" | ")}`.slice(0, 500);
+        } else {
+          await bump(supabase, searchId, { candidates_pool_exhausted: true });
+        }
         break;
       }
 
-      if (candidates.length === 0) {
-        await bump(supabase, searchId, { candidates_pool_exhausted: true });
-        break;
-      }
-
-      candidates.forEach((c) => seenDomains.add(c.domain));
+      // ── consume this round's batch from the buffer ───────────────────────
+      const candidates = pending.splice(0, roundLimit);
       totalScanned += candidates.length;
       await bump(supabase, searchId, {
-        candidates_found: totalScanned,
         companies_scanned: totalScanned,
       });
 
@@ -201,13 +364,25 @@ export async function runSearchPipeline(
         // finish past the target; their results are kept, never discarded.)
         if (targetHit) return;
 
-        const page = pickBestPage(pagesByDomain.get(candidate.domain) ?? []);
+        const domainPages = pagesByDomain.get(candidate.domain) ?? [];
+        const page = pickBestPage(domainPages);
 
+        // discovery_channel belongs on EVERY row, including the early
+        // rejections below. It used to be set only on the full-classification
+        // insert, so a candidate that failed its page fetch, came back too
+        // thin, or read as "other" was stored with a null channel — and those
+        // are exactly the outcomes a weak channel produces. Counting
+        // discovery_channel = 'directory' therefore measured "directory
+        // candidates that made it all the way to a verdict", not "candidates
+        // the directory channel found", and under-reported it badly: the
+        // 2026-08-07 NC run shows 3 directory rows and 5 nulls that are all
+        // NARI member companies.
         const base = {
           search_id: searchId,
           domain: candidate.domain,
           state: states[0] ?? null,
           source_url: page?.url ?? candidate.url,
+          discovery_channel: candidate.channel ?? null,
           first_seen_at: new Date().toISOString(),
           last_crawled_at: new Date().toISOString(),
         };
@@ -219,15 +394,46 @@ export async function runSearchPipeline(
             industry,
             status: "rejected",
             rejection_reason: "No About/Team/Leadership page could be fetched from this domain",
+            recheck_after: recheckAfterFor("rejected", "could not be fetched"),
           });
           rejected++;
           await bump(supabase, searchId, { rejected_count: rejected });
           return;
         }
 
+        // THIN-PAGE GUARD — a page under ~500 chars is a JS shell, a parked
+        // domain, or pure nav chrome. It cannot contain a founder AND a
+        // next-gen with their relationship stated, so a paid Sonnet call on
+        // it has exactly one possible outcome bought at full price. Reject
+        // as a fetch-quality failure (14-day recheck, same as "could not be
+        // fetched") rather than paying to hear "names no individuals".
+        if (page.text.length < 500) {
+          await supabase.from("companies").insert({
+            ...base,
+            name: resolveName(page.siteName, null, candidate.domain),
+            industry,
+            status: "rejected",
+            rejection_reason:
+              "Page too thin to evaluate — likely a JS-rendered shell or placeholder page",
+            recheck_after: recheckAfterFor("rejected", "could not be fetched"),
+          });
+          rejected++;
+          await bump(supabase, searchId, { rejected_count: rejected });
+          return;
+        }
+
+        // COMPOSITE FEED — the classifier used to see exactly ONE page, but
+        // the evidence is routinely split: the founder's story lives on
+        // /about while the next generation is named on /team. Russell
+        // Landscape was a real, measured miss of this shape. Same 12k-char
+        // budget as before, now spent across the two best DISTINCT pages
+        // instead of only the first — the rubric's traps apply unchanged,
+        // the model just gets to see the whole story.
+        const classifyText = buildClassifyText(page, domainPages);
+
         let classification;
         try {
-          classification = await classifySignal(candidate.title, page.url, page.text, refinement);
+          classification = await classifySignal(candidate.title, page.url, classifyText, refinement);
         } catch (e) {
           await supabase.from("companies").insert({
             ...base,
@@ -235,6 +441,7 @@ export async function runSearchPipeline(
             industry,
             status: "rejected",
             rejection_reason: `Classification failed: ${(e as Error).message}`.slice(0, 500),
+            recheck_after: recheckAfterFor("rejected", "classification failed"),
           });
           rejected++;
           await bump(supabase, searchId, { rejected_count: rejected });
@@ -264,6 +471,19 @@ export async function runSearchPipeline(
           rejected++;
           await bump(supabase, searchId, { rejected_count: rejected });
           return;
+        }
+
+        // EVIDENCE RECEIPT CHECK — the quote is the proof Jonathan is shown,
+        // and until now nothing verified it actually appears on the page.
+        // A fabricated or paraphrased quote is the single worst thing this
+        // product could hand him: a receipt that doesn't check out. Costs
+        // zero API calls; a quote that can't be found on the page the model
+        // was shown drops the company to "verify" and says why.
+        let quoteWarning: string | null = null;
+        if (classification.qualifies && classification.quote && !quoteAppears(classification.quote, classifyText)) {
+          quoteWarning =
+            "Evidence quote could not be located verbatim on the fetched page — flagged for manual verification.";
+          classification = { ...classification, confidence: "verify" as const };
         }
 
         // What the classifier actually found, independent of what this
@@ -326,7 +546,10 @@ export async function runSearchPipeline(
           // signal claim to check — a filter/hybrid company accepted purely
           // on category fit has nothing for it to disprove.
           try {
-            const disprove = await disprovePass(companyName, classification, page.text);
+            // Sees the same composite text classify saw — refuting a claim
+            // against LESS text than it was made from would invent
+            // contradictions out of missing context.
+            const disprove = await disprovePass(companyName, classification, classifyText);
             disproveNotes = disprove.notes;
             if (!disprove.holds) {
               signalStands = false;
@@ -362,9 +585,13 @@ export async function runSearchPipeline(
             status: finalQualifies ? "qualified" : "rejected",
             confidence: finalQualifies && finalHasSignal ? finalConfidence : null,
             has_signal: finalQualifies ? finalHasSignal : null,
-            discovery_channel: candidate.channel ?? null,
             operating_model: classification.operatingModel ?? null,
             rejection_reason: finalQualifies ? null : rejectionReason,
+            // Schedules (or declines) the next look — see recheck-policy.ts.
+            recheck_after: recheckAfterFor(
+              finalQualifies ? "qualified" : "rejected",
+              finalQualifies ? null : rejectionReason
+            ),
             revenue_band: classification.revenueEstimate,
             founder_name: classification.founderName,
             founder_title: classification.founderTitle,
@@ -386,7 +613,7 @@ export async function runSearchPipeline(
             quote: classification.quote,
             source_url: page.url,
             page_type: classification.pageType,
-            disprove_notes: disproveNotes,
+            disprove_notes: [quoteWarning, disproveNotes].filter(Boolean).join(" | ") || null,
           });
         }
 
@@ -421,11 +648,9 @@ export async function runSearchPipeline(
       });
 
       if (targetHit) break roundLoop;
-
-      if (exhausted) {
-        await bump(supabase, searchId, { candidates_pool_exhausted: true });
-        break;
-      }
+      // No trailing exhaustion check here — the buffer refill at the top of
+      // the loop is the single place that decides "pool dry" now, and it does
+      // so only when a real discovery call came back empty-handed.
     }
 
     // A round-level hiccup (caught above) still ends in status: 'complete' —
@@ -436,14 +661,69 @@ export async function runSearchPipeline(
     await bump(supabase, searchId, {
       status: "complete",
       error_message: stoppedEarlyReason,
+      // Separate from error_message on purpose: this run SUCCEEDED, it just
+      // searched a smaller surface than it looks like it did.
+      warnings: buildWarningLine(degradedChannels),
+      cost_estimate_usd: estimateUsd(costCounters),
+      cost_breakdown: describeCost(costCounters) || null,
       finished_at: new Date().toISOString(),
     });
   } catch (e) {
     await bump(supabase, searchId, {
       status: "failed",
       error_message: (e as Error).message?.slice(0, 500) ?? "Unknown error",
+      // Even a failed run spent money — record what it got through.
+      cost_estimate_usd: estimateUsd(costCounters),
+      cost_breakdown: describeCost(costCounters) || null,
       finished_at: new Date().toISOString(),
     });
+  }
+  });
+}
+
+/**
+ * Turns this enrich pass's counters into a cost patch that ADDS to whatever
+ * the search row already carries.
+ *
+ * Why additive: discovery wrote its own total when it finished, and
+ * enrichment is a second pass over that same row — writing estimateUsd()
+ * straight in would erase the discovery spend and make every enriched search
+ * look like it only ever cost the emails. Re-runnable, too (see below), so a
+ * second pass has to stack on the first rather than replace it.
+ *
+ * Refetched at write time rather than read once at the top of the pass, for
+ * the same reason: what matters is what's on the row at the moment we write.
+ */
+async function addEnrichmentCost(
+  supabase: Supa,
+  searchId: string,
+  counters: CostCounters
+): Promise<Partial<SearchRow>> {
+  try {
+    const { data } = await supabase
+      .from("searches")
+      .select("cost_estimate_usd, cost_breakdown")
+      .eq("id", searchId)
+      .single();
+
+    const priorUsd = data?.cost_estimate_usd ?? 0;
+    const priorLine = data?.cost_breakdown ?? null;
+    const line = describeCost(counters);
+
+    return {
+      // Re-rounded after the addition — two values each rounded to 3 decimals
+      // still add up to float noise (0.30000000000000004) otherwise.
+      cost_estimate_usd: Math.round((priorUsd + estimateUsd(counters)) * 1000) / 1000,
+      // A pass that bought nothing (every contact reused from a known domain,
+      // or nothing left to enrich) describes as "" — leave the discovery line
+      // exactly as it was instead of appending a dangling separator.
+      cost_breakdown: line ? (priorLine ? `${priorLine} · ${line}` : line) : priorLine,
+    };
+  } catch {
+    // Couldn't read the existing total. Degrade to "this pass's spend isn't
+    // recorded" rather than writing enrichment-only figures over a run's real
+    // cost — under-reporting is recoverable, a clobbered total is not.
+    return {};
   }
 }
 
@@ -460,6 +740,14 @@ export async function runSearchPipeline(
 export async function enrichContacts(searchId: string) {
   const supabase = createServiceRoleClient();
 
+  // Enrichment gets its OWN counters, separate from the discovery run's — the
+  // two passes happen in different requests (and often days apart), so there
+  // is no shared store to record into. Anymailfinder/MillionVerifier spend was
+  // simply invisible before this: the cost on the search row was the discovery
+  // total and nothing else, while the enrich button quietly bought emails at
+  // ~$0.05 each. Totals are folded into the row's existing cost below.
+  const enrichCounters: CostCounters = { counts: {} };
+  await runWithCounters(enrichCounters, async () => {
   try {
     const { data: search } = await supabase
       .from("searches")
@@ -482,10 +770,58 @@ export async function enrichContacts(searchId: string) {
       .in("company_id", (companies ?? []).map((c) => c.id));
     const alreadyEnriched = new Set((existingContacts ?? []).map((c) => c.company_id));
 
+    // Reuse an email we already bought for this DOMAIN, even if it was found
+    // under a different search. Companies are stored per (search, domain), so
+    // a re-check months later creates a NEW row for a domain we may already
+    // have a verified contact for — enriching it again would spend a second
+    // AnymailFinder credit to learn the same address. That matters: the
+    // account has hundreds of credits, not thousands.
+    const domains = Array.from(new Set((companies ?? []).map((c) => c.domain).filter(Boolean)));
+    const knownByDomain = new Map<string, { email: string | null; name: string | null; title: string | null; verification_status: string; name_inferred: boolean }>();
+    if (domains.length > 0) {
+      const { data: priorRows } = await supabase
+        .from("companies")
+        .select("domain, contacts(email, name, title, verification_status, name_inferred, find_status)")
+        .in("domain", domains);
+      (priorRows ?? []).forEach((row: { domain: string; contacts?: unknown }) => {
+        const list = (row.contacts ?? []) as Array<{
+          email: string | null; name: string | null; title: string | null;
+          verification_status: string; name_inferred: boolean; find_status: string;
+        }>;
+        // Only reuse a real find — never cache "not_found" as if it were an
+        // answer, since a company that had no discoverable email last quarter
+        // may well have one now.
+        const hit = list.find((c) => c.find_status === "found" && c.email);
+        if (hit && !knownByDomain.has(row.domain)) knownByDomain.set(row.domain, hit);
+      });
+    }
+
     const toEnrich = (companies ?? []).filter((c) => !alreadyEnriched.has(c.id));
 
     for (const company of toEnrich) {
       try {
+        // Domain already has a purchased contact — copy it forward instead of
+        // paying to rediscover it.
+        const known = knownByDomain.get(company.domain);
+        if (known) {
+          await supabase.from("contacts").insert({
+            company_id: company.id,
+            name: known.name,
+            name_inferred: known.name_inferred,
+            title: known.title,
+            email: known.email,
+            find_status: "found",
+            find_source: "reused-known-domain",
+            verification_status: known.verification_status as never,
+            verification_source: "reused-known-domain",
+            verified_at: new Date().toISOString(),
+          });
+          contactsFound++;
+          if (known.verification_status === "valid") contactsVerified++;
+          await bump(supabase, searchId, { contacts_found: contactsFound, contacts_verified: contactsVerified });
+          continue;
+        }
+
         const targetName = company.next_gen_name ?? company.founder_name ?? null;
         const contact = await findContact(company.domain, targetName);
         if (contact.found && contact.email) {
@@ -520,11 +856,18 @@ export async function enrichContacts(searchId: string) {
       await bump(supabase, searchId, { contacts_found: contactsFound, contacts_verified: contactsVerified });
     }
 
-    await bump(supabase, searchId, { enrichment_status: "complete" });
+    await bump(supabase, searchId, {
+      enrichment_status: "complete",
+      ...(await addEnrichmentCost(supabase, searchId, enrichCounters)),
+    });
   } catch (e) {
     await bump(supabase, searchId, {
       enrichment_status: "failed",
       enrichment_error: (e as Error).message?.slice(0, 500) ?? "Unknown error",
+      // A pass that died halfway still bought whatever it bought — same rule
+      // the discovery run's catch follows.
+      ...(await addEnrichmentCost(supabase, searchId, enrichCounters)),
     });
   }
+  });
 }

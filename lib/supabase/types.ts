@@ -63,6 +63,7 @@ export interface Database {
           has_signal: boolean | null;
           discovery_channel: string | null;
           operating_model: OperatingModel | null;
+          recheck_after: string | null;
           first_seen_at: string;
           last_crawled_at: string;
           created_at: string;
@@ -139,6 +140,12 @@ export interface Database {
           status: SearchStatus;
           mode: SearchMode;
           error_message: string | null;
+          /** Degraded-but-successful run note — see channel-health.ts. */
+          warnings: string | null;
+          /** Estimated vendor spend for this run — see cost-tracker.ts. */
+          cost_estimate_usd: number | null;
+          /** Human-readable call counts behind the estimate. */
+          cost_breakdown: string | null;
           enrichment_status: EnrichmentStatus;
           enrichment_error: string | null;
           target_signals: number;
@@ -208,8 +215,4 @@ export interface Database {
   };
 }
 
-export type CompanyRow = Database["public"]["Tables"]["companies"]["Row"];
-export type SignalEvidenceRow = Database["public"]["Tables"]["signal_evidence"]["Row"];
-export type ContactRow = Database["public"]["Tables"]["contacts"]["Row"];
-export type CrawlRunRow = Database["public"]["Tables"]["crawl_runs"]["Row"];
 export type SearchRow = Database["public"]["Tables"]["searches"]["Row"];

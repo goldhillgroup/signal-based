@@ -38,6 +38,11 @@ export interface SearchFolder {
   enrichmentStatus: EnrichmentStatus;
   enrichmentError: string | null;
   errorMessage: string | null;
+  /** Channels unavailable during an otherwise successful run. */
+  warnings: string | null;
+  /** Estimated vendor spend for this run + the call counts behind it. */
+  costEstimateUsd: number | null;
+  costBreakdown: string | null;
   createdAt: string;
   finishedAt: string | null;
   targetSignals: number;
@@ -63,6 +68,9 @@ function mapSearchRow(row: SearchRow): SearchFolder {
     enrichmentStatus: row.enrichment_status,
     enrichmentError: row.enrichment_error,
     errorMessage: row.error_message,
+    warnings: row.warnings,
+    costEstimateUsd: row.cost_estimate_usd,
+    costBreakdown: row.cost_breakdown,
     createdAt: row.created_at,
     finishedAt: row.finished_at,
     targetSignals: row.target_signals,
@@ -180,7 +188,9 @@ interface SearchesContextValue {
   fetchAllCompanies: () => Promise<Company[]>;
   createSearch: (params: {
     industry: Industry;
-    state: string;
+    /** Structured form path. Use `states` for multi-state free-text requests. */
+    state?: string;
+    states?: string[];
     refinement?: string;
     targetSignals: number;
     revenueMinMusd?: number | null;
@@ -260,7 +270,8 @@ export function SearchesProvider({ children }: { children: ReactNode }) {
   const createSearch = useCallback(
     async (params: {
       industry: Industry;
-      state: string;
+      state?: string;
+      states?: string[];
       refinement?: string;
       targetSignals: number;
       revenueMinMusd?: number | null;

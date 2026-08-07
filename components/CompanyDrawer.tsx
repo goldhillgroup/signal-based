@@ -25,7 +25,11 @@ const OPERATING_MODEL_LABELS: Record<string, string> = {
 };
 
 const CHANNEL_LABELS: Record<string, string> = {
-  directory: "Industry directory / licensing board",
+  // "directory" used to read "Industry directory / licensing board". Licensing
+  // boards are their own channel now, so that trailing clause would attribute
+  // two different sources to the same label.
+  directory: "Industry / association directory",
+  licensing: "Licensing board",
   web_search: "Web search (succession phrasing)",
   maps: "Google Maps (category listing)",
 };

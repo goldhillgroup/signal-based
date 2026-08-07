@@ -1,4 +1,5 @@
 import { resolveSetting } from "../settings";
+import { recordCost } from "./cost-tracker";
 
 // Firecrawl — renders JS-gated and bot-blocked pages a plain fetch can't read.
 //
@@ -27,6 +28,7 @@ export async function firecrawlScrape(url: string): Promise<string | null> {
   if (!key) return null;
 
   try {
+    recordCost("firecrawl_scrape");
     const res = await fetch(`${FIRECRAWL_BASE}/scrape`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
@@ -50,32 +52,3 @@ export async function firecrawlScrape(url: string): Promise<string | null> {
   }
 }
 
-/**
- * List a site's URLs. A cleaner answer to "where is this company's team page?"
- * than guessing slugs and following link globs: map the site, then scrape only
- * the page that actually matters.
- *
- * Kept available but not yet wired into the main fetch path — the free
- * slug-guess + one-hop crawl already reaches nested team pages (verified on
- * russelllandscape.com's /about-us/our-team/), and this costs credits where
- * that costs nothing. Worth switching to if free-path team-page recall ever
- * measures poorly.
- */
-export async function firecrawlMap(url: string, search?: string): Promise<string[]> {
-  const key = await getFirecrawlKey();
-  if (!key) return [];
-
-  try {
-    const res = await fetch(`${FIRECRAWL_BASE}/map`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-      body: JSON.stringify({ url, ...(search ? { search } : {}) }),
-      signal: AbortSignal.timeout(45_000),
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return Array.isArray(data?.links) ? (data.links as string[]) : [];
-  } catch {
-    return [];
-  }
-}
