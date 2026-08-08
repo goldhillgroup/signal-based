@@ -156,3 +156,39 @@ label[for],
 summary {
   cursor: pointer;
 }
+
+/* ── Touch devices ─────────────────────────────────────────────────────────
+   Scoped to `pointer: coarse` so a mouse-driven desktop keeps its compact
+   density and only fingers get the bigger targets.
+
+   TWO problems this fixes, both invisible on a laptop:
+
+   1. Targets. Apple's floor is 44pt; the audit found 36px header buttons,
+      27px example chips, and 47 sub-40px controls on Settings alone. Fixing
+      that per component would mean touching dozens of files and missing the
+      next one — the rule belongs here.
+
+   2. iOS ZOOM. Mobile Safari zooms the viewport whenever a focused input has
+      a font-size below 16px. Every field in this app is `text-sm` (14px), so
+      tapping any of them — the search box, an API key, the filter — yanked
+      the page in and left it there. 16px is the entire fix and it is not
+      optional.
+
+   .tap-sm opts a control out where 44px would break its container, e.g. the
+   remove "x" inside a state chip. */
+@media (pointer: coarse) {
+  button:not(.tap-sm),
+  select,
+  [role="switch"],
+  a[href]:not(.tap-sm):not(.inline-link) {
+    min-height: 44px;
+  }
+
+  input:not([type="checkbox"]):not([type="radio"]),
+  textarea,
+  select {
+    /* Below 16px, iOS Safari zooms on focus and does not zoom back. */
+    font-size: 16px;
+    min-height: 44px;
+  }
+}

@@ -110,7 +110,12 @@ export function SignalFunnel({
                 <p className="font-display text-base font-bold leading-none text-gh-ink sm:text-lg">
                   <CountUp value={stage.count} />
                 </p>
-                <p className="text-[10px] font-medium leading-none text-gh-ink-muted transition-colors group-hover:text-gh-ink-secondary sm:text-[11px]">
+                {/* 11px floor, not 10. This was text-[10px] with sm:text-[11px]
+                    — i.e. the SMALLEST size on the smallest screen, which is
+                    backwards. These four words are what make the diagram
+                    readable at all, so they get more room on a phone, not
+                    less. */}
+                <p className="text-[11px] font-medium leading-none text-gh-ink-muted transition-colors group-hover:text-gh-ink-secondary">
                   {stage.label}
                 </p>
               </Link>

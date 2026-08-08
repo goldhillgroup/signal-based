@@ -142,7 +142,7 @@ export function StatePicker({
                 type="button"
                 onClick={() => toggle(code)}
                 aria-label={`Remove ${stateNameFor(code)}`}
-                className="cursor-pointer rounded-full p-0.5 text-gh-ink-muted transition-colors duration-200 hover:bg-gh-surface-sunken hover:text-gh-critical focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+                className="tap-sm cursor-pointer rounded-full p-1 text-gh-ink-muted transition-colors duration-200 hover:bg-gh-surface-sunken hover:text-gh-critical focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
               >
                 <XIcon className="h-3 w-3" />
               </button>
