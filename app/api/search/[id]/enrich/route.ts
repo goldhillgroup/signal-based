@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { after } from "next/server";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { enrichContacts, type EnrichScope } from "@/lib/pipeline/orchestrator";
+import { enrichmentBlockerFor } from "@/lib/pipeline/preflight";
 
 // Same extended-lifetime pattern as /api/search — see that route's comment.
 // Enrichment is usually faster than discovery (no classification/disprove
@@ -44,6 +45,21 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
   if (search.enrichment_status === "running") {
     return NextResponse.json({ error: "Enrichment is already running for this search." }, { status: 409 });
+  }
+
+  // How many companies this scope will actually look up — the number the
+  // credit check has to be made against, not the folder's total.
+  let countQuery = service
+    .from("companies")
+    .select("*", { count: "exact", head: true })
+    .eq("search_id", id)
+    .eq("status", "qualified");
+  if (scope === "signals") countQuery = countQuery.eq("has_signal", true);
+  const { count: toEnrich } = await countQuery;
+
+  const blocker = await enrichmentBlockerFor(toEnrich ?? 0);
+  if (blocker) {
+    return NextResponse.json({ error: blocker }, { status: 402 });
   }
 
   await service.from("searches").update({ enrichment_status: "running", enrichment_error: null }).eq("id", id);

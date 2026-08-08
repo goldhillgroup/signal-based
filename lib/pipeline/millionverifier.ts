@@ -31,7 +31,16 @@ export async function verifyEmail(email: string): Promise<VerificationStatus> {
   // the answer being useful, so an "unknown" verdict still cost money.
   // (Price is an ESTIMATE — see UNIT_USD.)
   recordCost("millionverifier_check");
-  const res = await fetch(url);
+  // The API's own &timeout=15 bounds ITS verification work, not our wait for
+  // the socket. Without a client-side ceiling a hung connection blocks the
+  // enrichment loop indefinitely. 20s > their 15s, so a genuine slow verify
+  // still completes and only a real hang is cut.
+  let res: Response;
+  try {
+    res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+  } catch {
+    return "unknown"; // same degraded answer as any other failure
+  }
   if (!res.ok) return "unknown";
   const data = await res.json().catch(() => null);
   const result = data?.result as string | undefined;

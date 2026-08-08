@@ -57,7 +57,7 @@ export function StatePicker({
         <button
           type="button"
           onClick={selectAllAgreed}
-          className="cursor-pointer rounded text-[11px] font-semibold text-gh-sky underline-offset-2 transition-colors duration-200 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+          className="-my-1 cursor-pointer rounded px-1 py-1.5 text-[11px] font-semibold text-gh-sky underline-offset-2 transition-colors duration-200 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
         >
           {allAgreed ? "Clear all four" : "All four agreed"}
         </button>
@@ -92,7 +92,7 @@ export function StatePicker({
         type="button"
         onClick={() => setShowOthers((v) => !v)}
         aria-expanded={showOthers}
-        className="mt-2 flex cursor-pointer items-center gap-1 rounded text-[11px] font-medium text-gh-ink-muted transition-colors duration-200 hover:text-gh-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+        className="mt-1.5 flex cursor-pointer items-center gap-1 rounded px-1 py-1.5 text-[11px] font-medium text-gh-ink-muted transition-colors duration-200 hover:text-gh-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
       >
         <ChevronDownIcon
           className={`h-3.5 w-3.5 transition-transform duration-200 ${showOthers ? "rotate-180" : ""}`}

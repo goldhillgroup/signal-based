@@ -40,5 +40,3 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Regenerable eval page cache (bakeoff.mts --fetch-only)
-bakeoff-pages.json

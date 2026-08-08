@@ -29,6 +29,10 @@ function inferNameFromEmail(email: string): string | null {
 
 async function post(path: string, body: Record<string, unknown>) {
   const apiKey = await getApiKey();
+  // 20s ceiling. There was NO timeout here: enrichment loops over every
+  // accepted company, so a single unresponsive lookup stalled the entire run
+  // until Next killed the function at maxDuration — turning one slow domain
+  // into a whole batch of missing contacts.
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
     headers: {
@@ -36,6 +40,7 @@ async function post(path: string, body: Record<string, unknown>) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(20_000),
   });
   const data = await res.json().catch(() => ({}));
   return { ok: res.ok, status: res.status, data };

@@ -306,7 +306,7 @@ export function SearchHome() {
         <button
           type="button"
           onClick={() => setShowManual((v) => !v)}
-          className="mt-3 w-full text-center text-[11px] font-medium text-gh-ink-muted underline underline-offset-2 hover:text-gh-ink"
+          className="mt-2 w-full cursor-pointer rounded py-1.5 text-center text-[11px] font-medium text-gh-ink-muted underline underline-offset-2 transition-colors duration-200 hover:text-gh-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
         >
           {showManual ? "Hide manual setup" : "Or set it up manually"}
         </button>

@@ -142,3 +142,17 @@ body {
     transform: none;
   }
 }
+
+/* ── Interaction affordances ───────────────────────────────────────────────
+   Tailwind v4's preflight resets buttons to `cursor: default`, so every button
+   in the app looked unclickable unless someone remembered `cursor-pointer` on
+   it individually — 22 of 36 controls had been missed. Fixing it once here is
+   both complete and impossible to forget on the next component.
+
+   :disabled keeps not-allowed, which the disabled: utilities already set. */
+button:not(:disabled),
+[role="switch"]:not([aria-disabled="true"]),
+label[for],
+summary {
+  cursor: pointer;
+}
