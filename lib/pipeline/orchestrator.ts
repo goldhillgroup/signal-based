@@ -1,10 +1,11 @@
 import { createServiceRoleClient } from "../supabase/server";
-import { discoverCandidates, fetchCompanyPages, pickBestPage, type Candidate, type FetchedPage } from "./apify";
+import { discoverCandidates, fetchCompanyPages, pickBestPage, fetchSingleUrl, type Candidate, type FetchedPage } from "./apify";
 import { classifySignal, disprovePass } from "./openrouter";
 import { findContact } from "./anymailfinder";
 import { verifyEmail } from "./millionverifier";
 import type { Industry, SearchMode, SearchRow } from "../supabase/types";
-import { recheckAfterFor } from "./recheck-policy";
+import { recheckAfterFor, rejectionScope, sizeVerdictStillBinds } from "./recheck-policy";
+import { extractEmails, bestEmailFor, type FoundEmail } from "./page-email";
 import { buildWarningLine } from "./channel-health";
 import { channelRates, orderByYield } from "./channel-priors";
 import { runWithCounters, estimateUsd, describeCost, type CostCounters } from "./cost-tracker";
@@ -179,6 +180,42 @@ export function quoteAppears(quote: string, pageText: string): boolean {
   return hay.includes(q.length > 80 ? q.slice(0, 80).trim() : q);
 }
 
+/**
+ * Does a previously-settled company still bind THIS search?
+ *
+ * True  -> skip it, we already have our answer and it is still the right answer.
+ * False -> let it through; the verdict on file was made against criteria this
+ *          search does not share, so it never judged this question.
+ *
+ * Accepted companies always bind: the lead is already on his list, and paying
+ * to re-classify it would buy a duplicate. Only rejections are re-opened, and
+ * only along the axis the rejection was actually about.
+ */
+export function bindsThisSearch(
+  row: {
+    status?: string | null;
+    rejection_reason?: string | null;
+    industry?: string | null;
+    revenue_band?: string | null;
+  },
+  searchIndustry: Industry,
+  band: { min: number | null; max: number | null } | undefined
+): boolean {
+  if (row.status !== "rejected") return true;
+
+  switch (rejectionScope(row.rejection_reason ?? null)) {
+    case "industry":
+      // "Not a landscaper" is a fact about a landscaping search. Another
+      // vertical is entitled to its own look.
+      return row.industry === searchIndustry;
+    case "size":
+      // Only binds while this search's band would reach the same verdict.
+      return sizeVerdictStillBinds(row.revenue_band ?? null, band);
+    default:
+      return true;
+  }
+}
+
 export async function runSearchPipeline(
   searchId: string,
   industry: Industry,
@@ -219,8 +256,18 @@ export async function runSearchPipeline(
     // cut — see recheck-policy.ts. A company cut for "only one generation on
     // the page" returns in 90 days precisely because that is the fact that
     // changes when a son or daughter steps in.
+    //
+    // A rejection only suppresses the searches it was ENTITLED to judge. It
+    // used to suppress all of them: any settled domain was skipped everywhere,
+    // regardless of what the new search was actually looking for. So a firm cut
+    // from a landscaping run for being an HVAC company was blacklisted from the
+    // HVAC run it would have topped, for 18 months. Same for revenue: "too
+    // small" was measured against one search's band and then applied to every
+    // band. On live data that was 38 of 77 rejections (49%) suppressing
+    // searches that never made the judgement — see rejectionScope().
     const seenDomains = new Set<string>();
     let skippedRecent = 0;
+    let reopened = 0;
     {
       const nowIso = new Date().toISOString();
       // Paginate: this table grows without bound and a single select would
@@ -230,18 +277,23 @@ export async function runSearchPipeline(
       for (let from = 0; ; from += PAGE) {
         const { data, error } = await supabase
           .from("companies")
-          .select("domain, recheck_after")
+          .select("domain, recheck_after, status, rejection_reason, industry, revenue_band")
           .or(`recheck_after.is.null,recheck_after.gt.${nowIso}`)
           .range(from, from + PAGE - 1);
         if (error || !data || data.length === 0) break;
-        data.forEach((r) => {
-          if (r.domain) seenDomains.add(r.domain);
-        });
+        for (const r of data) {
+          if (!r.domain) continue;
+          if (bindsThisSearch(r, industry, band)) seenDomains.add(r.domain);
+          else reopened++;
+        }
         if (data.length < PAGE) break;
       }
       skippedRecent = seenDomains.size;
       console.log(
-        `Search ${searchId}: cross-search memory holds ${skippedRecent} settled domains, these are skipped, everything due for re-check is fair game.`
+        `Search ${searchId}: cross-search memory holds ${skippedRecent} settled domains, these are skipped, everything due for re-check is fair game.` +
+          (reopened > 0
+            ? ` ${reopened} more were judged by a search with different criteria and are back in play here.`
+            : "")
       );
     }
 
@@ -906,6 +958,29 @@ async function addEnrichmentCost(
  */
 export type EnrichScope = "signals" | "all";
 
+/**
+ * Last resort before recording "no contact": read the company's own page.
+ *
+ * Costs one crawl ($0.013) and only ever runs on a company the paid lookup
+ * already failed on, so it can never make a successful enrichment more
+ * expensive. Returns null on any failure — a contact we could not find is the
+ * status quo, and it is not worth failing the batch over.
+ */
+async function emailFromCompanyPage(
+  domain: string,
+  sourceUrl: string | null,
+  targetNames: (string | null)[]
+): Promise<FoundEmail | null> {
+  const url = sourceUrl ?? `https://${domain}`;
+  try {
+    const text = await fetchSingleUrl(url);
+    if (!text) return null;
+    return bestEmailFor(extractEmails(text), domain, targetNames);
+  } catch {
+    return null;
+  }
+}
+
 export async function enrichContacts(searchId: string, scope: EnrichScope = "all") {
   const supabase = createServiceRoleClient();
 
@@ -931,7 +1006,7 @@ export async function enrichContacts(searchId: string, scope: EnrichScope = "all
     // discard most of them.
     let companiesQuery = supabase
       .from("companies")
-      .select("id, domain, next_gen_name, next_gen_title, founder_name, founder_title")
+      .select("id, domain, next_gen_name, next_gen_title, founder_name, founder_title, source_url")
       .eq("search_id", searchId)
       .eq("status", "qualified");
     if (scope === "signals") companiesQuery = companiesQuery.eq("has_signal", true);
@@ -1015,11 +1090,41 @@ export async function enrichContacts(searchId: string, scope: EnrichScope = "all
           contactsFound++;
           if (verification === "valid") contactsVerified++;
         } else {
-          await supabase.from("contacts").insert({
-            company_id: company.id,
-            find_status: "not_found",
-            find_source: "anymailfinder",
-          });
+          // The paid lookup came back empty, which costs nothing (the vendor
+          // bills only on a find) and used to end the story: a company he wants
+          // to call, with no way to reach it. Read its own page before giving
+          // up — most small trade sites print an address in plain text.
+          const scraped = await emailFromCompanyPage(
+            company.domain,
+            company.source_url,
+            [company.next_gen_name, company.founder_name]
+          );
+          if (scraped) {
+            const verification = await verifyEmail(scraped.email).catch(() => "unknown" as const);
+            await supabase.from("contacts").insert({
+              company_id: company.id,
+              // Only claim a name when the address actually carries one. A
+              // shared inbox is not the founder, and labelling it as him is
+              // how a mail-merge opens "Hi Michael" to reception.
+              name: scraped.matchedName,
+              name_inferred: scraped.matchedName !== null,
+              title: scraped.matchedName ? company.next_gen_title ?? company.founder_title : null,
+              email: scraped.email,
+              find_status: "found",
+              find_source: `company-page:${scraped.kind}`,
+              verification_status: verification,
+              verification_source: "millionverifier",
+              verified_at: new Date().toISOString(),
+            });
+            contactsFound++;
+            if (verification === "valid") contactsVerified++;
+          } else {
+            await supabase.from("contacts").insert({
+              company_id: company.id,
+              find_status: "not_found",
+              find_source: "anymailfinder+company-page",
+            });
+          }
         }
       } catch (e) {
         // One company's vendor hiccup doesn't stop the rest of the batch —

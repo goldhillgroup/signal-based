@@ -16,11 +16,38 @@
 /** Never re-check. The answer is settled. */
 export const NEVER = null;
 
+/**
+ * WHO a rejection applies to, which is a separate question from WHEN it expires.
+ *
+ * The two were conflated, and it was silently costing real leads. A rejection
+ * was treated as a fact about the company, so it suppressed that domain in
+ * EVERY future search. But half of them are not facts about the company at all
+ * — they are facts about the company *relative to the search that judged it*:
+ *
+ *   "outside the landscaping ICP"  is only true if you are looking for landscapers
+ *   "too small, below the bound"   is only true against THAT search's revenue band
+ *
+ * Jonathan runs different searches. A firm cut from a landscaping run for being
+ * an HVAC company is the single best possible candidate for an HVAC run, and
+ * was being blacklisted from it for 18 months. Measured against live data on
+ * 2026-08-09: 38 of 77 rejections (49%) carried a verdict that only its own
+ * search was entitled to make.
+ *
+ *   global   - true no matter who asks. Not a real company; site names nobody;
+ *              no successor visible; acquired. Keep suppressing everywhere.
+ *   industry - a verdict about the TRADE. Only binds searches for that vertical.
+ *   size     - a verdict about REVENUE. Only binds searches whose band still
+ *              excludes the company's own estimate.
+ */
+export type RejectionScope = "global" | "industry" | "size";
+
 interface Rule {
   /** Matched against the rejection reason, case-insensitively. */
   test: RegExp;
   /** Days until eligible again, or NEVER. */
   days: number | null;
+  /** Which future searches this verdict is entitled to bind. */
+  scope: RejectionScope;
   why: string;
 }
 
@@ -34,6 +61,7 @@ const RULES: Rule[] = [
     // irrigation. These are the only genuinely permanent rejections.
     test: /marketplace|directory platform|lead-?gen|brokerage|trade publication|magazine|not an? (actual|real) (company|business)|not a single/i,
     days: NEVER,
+    scope: "global",
     why: "not a trade business at all, structurally permanent",
   },
   {
@@ -54,12 +82,14 @@ const RULES: Rule[] = [
     // into the ICP.
     test: /outside the (landscaping|icp)|not a landscaping|wrong industry|supplier|hvac|roofing|plumbing/i,
     days: 545,
+    scope: "industry",
     why: "wrong trade today, trades diversify, so worth one look in 18 months",
   },
   {
     // PE roll-ups and acquisitions essentially never revert to family control.
     test: /no longer family-owned|acquired|consolidat|roll-?up/i,
     days: 365,
+    scope: "global",
     why: "acquired/consolidated, very unlikely to revert, but not impossible",
   },
   {
@@ -73,6 +103,7 @@ const RULES: Rule[] = [
     // retrying in two weeks, not one quarter.
     test: /could not be fetched|classification failed|page not found|404|empty placeholder|essentially empty|no content available|placeholder content|only lists services|no about\/team|project blog post/i,
     days: 14,
+    scope: "global",
     why: "fetch or parse failure, worth another try soon",
   },
   {
@@ -88,6 +119,7 @@ const RULES: Rule[] = [
     // can't silently reclassify them.
     test: /only one generation|no next-gen|no founder-and-next-gen|only the founder|only founder|no second[- ]generation|no generational|cut -/i,
     days: 90,
+    scope: "global",
     why: "no successor visible YET, this is exactly what changes over time",
   },
   {
@@ -95,6 +127,7 @@ const RULES: Rule[] = [
     // people; slower-moving than the above but far from permanent.
     test: /no mention of any|names no individuals|no named individuals|generic marketing|slogan/i,
     days: 120,
+    scope: "global",
     why: "site names nobody today, may add a team page",
   },
   {
@@ -102,11 +135,13 @@ const RULES: Rule[] = [
     // changes, but real over a year.
     test: /too small|below the .* bound/i,
     days: 180,
+    scope: "size",
     why: "may grow into the band",
   },
   {
     test: /too big|above the .* bound/i,
     days: 365,
+    scope: "size",
     why: "unlikely to shrink into the band",
   },
 ];
@@ -137,5 +172,62 @@ export function recheckAfterFor(
   const d = new Date(now);
   d.setDate(d.getDate() + days);
   return d.toISOString();
+}
+
+/**
+ * Which future searches this rejection is entitled to suppress.
+ *
+ * Same rule table, same first-match-wins order as recheckAfterFor, so the two
+ * answers can never drift apart. An unmatched reason falls back to "global",
+ * which is the conservative direction: it costs a re-scan we might have
+ * skipped, never a lead we should have seen.
+ */
+export function rejectionScope(rejectionReason: string | null): RejectionScope {
+  const rule = RULES.find((r) => r.test.test(rejectionReason ?? ""));
+  return rule ? rule.scope : "global";
+}
+
+/**
+ * Parse the classifier's revenue estimate into millions [lo, hi].
+ *
+ * These are strings it writes itself, in a handful of shapes observed live:
+ * "$1-3M (est.)", "under $1M (est.)", "$15M+ (est.)". Anything unparseable
+ * returns null and the caller treats size as unknown.
+ */
+export function parseRevenueBand(band: string | null): { lo: number; hi: number } | null {
+  if (!band) return null;
+  const s = band.toLowerCase();
+  const under = s.match(/under\s*\$?([\d.]+)\s*m/);
+  if (under) return { lo: 0, hi: parseFloat(under[1]) };
+  const range = s.match(/\$?([\d.]+)\s*-\s*\$?([\d.]+)\s*m/);
+  if (range) return { lo: parseFloat(range[1]), hi: parseFloat(range[2]) };
+  const plus = s.match(/\$?([\d.]+)\s*m\s*\+/);
+  if (plus) return { lo: parseFloat(plus[1]), hi: Infinity };
+  const single = s.match(/\$?([\d.]+)\s*m/);
+  if (single) return { lo: parseFloat(single[1]), hi: parseFloat(single[1]) };
+  return null;
+}
+
+/**
+ * Would THIS search's revenue band still reject a company the classifier sized
+ * at `band`? Only then does an old size-based rejection still bind.
+ *
+ * Unknown size (unparseable, or no estimate recorded) returns false — do not
+ * suppress. That mirrors the soft-gate policy in the orchestrator, which
+ * refuses to cut a company on an absent size read, and keeps the two from
+ * disagreeing about the same company.
+ */
+export function sizeVerdictStillBinds(
+  companyBand: string | null,
+  search: { min: number | null; max: number | null } | undefined
+): boolean {
+  const est = parseRevenueBand(companyBand);
+  if (!est) return false;
+  const min = search?.min ?? null;
+  const max = search?.max ?? null;
+  if (min === null && max === null) return false; // unbounded search rejects nobody on size
+  if (min !== null && est.hi < min) return true; // still too small
+  if (max !== null && est.lo > max) return true; // still too big
+  return false; // overlaps the band now, so the old verdict does not apply
 }
 
