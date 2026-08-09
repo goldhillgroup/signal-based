@@ -6,6 +6,7 @@ import { verifyEmail } from "./millionverifier";
 import type { Industry, SearchMode, SearchRow } from "../supabase/types";
 import { recheckAfterFor } from "./recheck-policy";
 import { buildWarningLine } from "./channel-health";
+import { channelRates, orderByYield } from "./channel-priors";
 import { runWithCounters, estimateUsd, describeCost, type CostCounters } from "./cost-tracker";
 
 // Contact enrichment (Anymailfinder + MillionVerifier) lives in
@@ -359,6 +360,10 @@ export async function runSearchPipeline(
       // the old behaviour. Never let bookkeeping stop a search.
     }
 
+    // Per-channel signal rates: this installation's own history where it has
+    // enough, the measured seeds otherwise. Read once per run, not per round.
+    const rates = await channelRates();
+
     let discoveryCalls = rotationSeed; // drives metro/state rotation, NOT the same as classify rounds
     let poolDry = false;
     let totalDiscovered = 0;
@@ -416,6 +421,12 @@ export async function runSearchPipeline(
           // next discovery call can't re-return (or re-bill) them.
           fresh.forEach((c) => seenDomains.add(c.domain));
           pending.push(...fresh);
+          // Best-yielding channels to the front, with an exploration slice so a
+          // channel having a bad run still earns observations. Nothing is
+          // dropped — the scan ceiling is simply spent on the most promising
+          // candidates first, which is where the 7x difference between
+          // web_search and maps actually turns into signals.
+          pending.splice(0, pending.length, ...orderByYield(pending, rates));
           totalDiscovered += fresh.length;
           await bump(supabase, searchId, { candidates_found: totalDiscovered });
 
