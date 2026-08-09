@@ -1,43 +1,57 @@
 import { Company } from "./company";
+import { toLead, SIGNAL_TYPE_META } from "./lead-signal";
 
 // The "sheet" — a plain CSV download, opens directly in Excel/Google Sheets/
 // Numbers with no export API, no OAuth, no extra vendor. Simplest thing that
 // actually gets Jonathan a spreadsheet in his hands.
+//
+// COLUMN ORDER IS THE POINT. It follows the delivered lead-list format —
+// company, signal type, signal detail, why this lead, date, location, contact,
+// status, score, source — so the first five columns answer "why am I calling
+// this one" before the sheet scrolls sideways. The previous order led with
+// Company / Website / Industry / State / City / Revenue band and pushed the
+// signal quote to column twelve, so the one thing the list is FOR was off
+// screen in Excel's default width.
+//
+// It is also the shape of the Phase 1 deliverable, near enough word for word:
+// "the signal behind each name, the reason it surfaced now, and the contact to
+// start with".
 const COLUMNS: { header: string; get: (c: Company) => string }[] = [
-  { header: "Company", get: (c) => c.name },
-  { header: "Website", get: (c) => c.domain },
-  { header: "Industry", get: (c) => (c.industry === "landscaping" ? "Landscaping" : "Home Builder") },
-  { header: "State", get: (c) => c.state },
-  { header: "City", get: (c) => c.city },
-  { header: "Revenue band", get: (c) => c.revenueBand },
+  { header: "company", get: (c) => c.name },
+  { header: "signal_type", get: (c) => SIGNAL_TYPE_META[toLead(c).signalType].label },
+  { header: "signal_detail", get: (c) => toLead(c).signalDetail },
   {
-    header: "Status",
+    header: "why_this_lead",
     get: (c) => {
-      if (c.status === "rejected") return "Rejected";
-      if (c.status === "pending") return "Scanning";
-      if (!c.confidence) return "Fit only (no signal)";
-      return c.confidence === "verify" ? "Qualified, verify" : `Qualified, ${c.confidence}`;
+      const l = toLead(c);
+      return l.missing ? `${l.whyThisLead} ${l.missing}` : l.whyThisLead;
     },
   },
-  { header: "Founder name", get: (c) => c.founderName ?? "" },
-  { header: "Founder title", get: (c) => c.founderTitle ?? "" },
-  { header: "Next-gen name", get: (c) => c.nextGenName ?? "" },
-  { header: "Next-gen title", get: (c) => c.nextGenTitle ?? "" },
-  { header: "Signal quote", get: (c) => c.evidence?.quote ?? "" },
-  { header: "Signal source", get: (c) => c.evidence?.sourceUrl ?? "" },
-  { header: "Contact name", get: (c) => c.contact?.name ?? "" },
-  { header: "Contact email", get: (c) => c.contact?.email ?? "" },
+  // Labelled "surfaced", not "signal_date". A page saying "now joined by his
+  // two sons" carries no date of its own, and stamping it with the day we read
+  // the page would present a crawl timestamp as an event date.
+  { header: "surfaced_on", get: (c) => c.firstSeenAt.slice(0, 10) },
+  { header: "location", get: (c) => toLead(c).location },
+  { header: "founder", get: (c) => c.founderName ?? "" },
+  { header: "founder_title", get: (c) => c.founderTitle ?? "" },
+  { header: "next_gen", get: (c) => c.nextGenName ?? "" },
+  { header: "next_gen_title", get: (c) => c.nextGenTitle ?? "" },
+  { header: "contact_name", get: (c) => c.contact?.name ?? "" },
+  { header: "contact_email", get: (c) => c.contact?.email ?? "" },
   {
-    header: "Email deliverability",
+    header: "email_status",
     get: (c) => {
-      if (!c.contact || c.contact.findStatus !== "found") return "Not found";
+      if (!c.contact || c.contact.findStatus !== "found") return "not_found";
       const v = c.contact.verificationStatus;
-      return v === "not_attempted" ? "Not verified" : v.charAt(0).toUpperCase() + v.slice(1);
+      return v === "not_attempted" ? "unverified" : v;
     },
   },
-  { header: "Rejection reason", get: (c) => c.rejectionReason ?? "" },
-  { header: "Source URL", get: (c) => c.sourceUrl ?? "" },
-  { header: "First seen", get: (c) => c.firstSeenAt },
+  { header: "score", get: (c) => String(toLead(c).score) },
+  { header: "score_reasons", get: (c) => toLead(c).factors.join("; ") },
+  { header: "website", get: (c) => c.domain },
+  { header: "industry", get: (c) => (c.industry === "landscaping" ? "Landscaping" : "Home Builder") },
+  { header: "revenue_band", get: (c) => c.revenueBand },
+  { header: "source_url", get: (c) => toLead(c).sourceUrl ?? "" },
 ];
 
 function csvCell(value: string): string {

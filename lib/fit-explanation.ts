@@ -99,9 +99,18 @@ export function explainFit(company: Company): FitExplanation | null {
       : "The site does not name anyone in charge yet, so there is no founder-and-successor pair to confirm. It is re-checked automatically as sites get rebuilt.";
   }
 
-  const headline = hasSignal
-    ? "Fits your criteria, and a succession signal was confirmed."
-    : "Fits every criterion you set. No succession signal on the page yet.";
+  // THREE states, not two. This read `hasSignal ? "confirmed" : "none yet"`,
+  // and hasSignal is true for a 'verify' company as well as a confirmed one —
+  // so a lead the pipeline had explicitly flagged as needing a second look was
+  // telling him a succession signal "was confirmed". That is the one direction
+  // this text must never be wrong in: overstating certainty puts him on a call
+  // asserting something about a family that may not be true.
+  const headline =
+    hasSignal && company.confidence === "verify"
+      ? "Fits your criteria. Succession language is on the page, but the pairing is not airtight, so check it before you call."
+      : hasSignal
+        ? "Fits your criteria, and a succession signal was confirmed."
+        : "Fits every criterion you set. No succession signal on the page yet.";
 
   return { headline, points, missing };
 }

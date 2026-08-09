@@ -2,17 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { Company } from "@/lib/company";
-import { INDUSTRY_META, FIT_ONLY_META } from "@/lib/signal-meta";
+import { INDUSTRY_META } from "@/lib/signal-meta";
 import type { Industry } from "@/lib/supabase/types";
-import { formatRelativeDate } from "@/lib/stats";
-import {
-  ConfidenceBadge,
-  StatusBadge,
-  FindStatusBadge,
-  VerificationBadge,
-  IndustryChip,
-} from "./badges";
+import { scoreFactors } from "@/lib/lead-signal";
 import { SearchIcon } from "./icons";
+import { LeadCard } from "./LeadCard";
 
 type Tab = "all" | "qualified" | "verify" | "fit_only";
 
@@ -90,7 +84,15 @@ export function CompaniesTable({
             (c.nextGenName ?? "").toLowerCase().includes(query) ||
             c.city.toLowerCase().includes(query)
       )
-      .sort((a, b) => b.lastCrawledAt.localeCompare(a.lastCrawledAt));
+      // Best lead first. Sorting by crawl time put whatever was read last at
+      // the top, which is an artefact of the pipeline's ordering rather than
+      // anything about the companies — the strongest lead in a folder could
+      // sit at the bottom for no reason. Ties break on recency so a fresh
+      // find outranks an identical older one.
+      .sort((a, b) => {
+        const d = scoreFactors(b).score - scoreFactors(a).score;
+        return d !== 0 ? d : b.lastCrawledAt.localeCompare(a.lastCrawledAt);
+      });
   }, [companies, tab, industry, q]);
 
   return (
@@ -139,109 +141,26 @@ export function CompaniesTable({
 
       <p className="px-4 pt-3 text-xs text-gh-ink-muted">
         Showing <span className="font-semibold text-gh-ink-secondary">{filtered.length}</span> of{" "}
-        {companies.length} tracked companies
+        {companies.length} leads
       </p>
 
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[900px] border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-gh-border text-left text-xs font-semibold uppercase tracking-wide text-gh-ink-muted">
-              <th className="px-4 py-3 font-semibold">Company</th>
-              <th className="px-4 py-3 font-semibold">Industry</th>
-              <th className="px-4 py-3 font-semibold">Confidence / status</th>
-              <th className="px-4 py-3 font-semibold">Email</th>
-              <th className="px-4 py-3 font-semibold">Verification</th>
-              <th className="px-4 py-3 font-semibold">Last checked</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((c) => (
-              <tr
-                key={c.id}
-                onClick={() => onRowClick(c)}
-                className="cursor-pointer border-b border-gh-border last:border-0 hover:bg-gh-surface-sunken"
-              >
-                <td className="px-4 py-3">
-                  <p className="font-semibold text-gh-ink">{c.name}</p>
-                  <p className="text-xs text-gh-ink-muted">
-                    {c.city}, {c.state} &middot; {c.revenueBand}
-                  </p>
-                </td>
-                <td className="px-4 py-3">
-                  <IndustryChip industry={c.industry} />
-                </td>
-                <td className="px-4 py-3">
-                  {/* No "rejected" branch. Every tab filters to
-                      status === 'qualified', so a rejected row cannot reach
-                      this table at all and the badge could only ever have
-                      rendered for a row that is no longer reachable. */}
-                  {c.status === "pending" ? (
-                    <StatusBadge status="pending" />
-                  ) : c.confidence ? (
-                    <ConfidenceBadge confidence={c.confidence} />
-                  ) : (
-                    // status: 'qualified', confidence: null — a filter/hybrid
-                    // company accepted on ICP fit with no signal found. Not
-                    // "Pending" (that reads as still-processing); this is a
-                    // final, accepted result.
-                    <span
-                      className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold"
-                      style={{ color: FIT_ONLY_META.color, background: FIT_ONLY_META.bg }}
-                    >
-                      {FIT_ONLY_META.label}
-                    </span>
-                  )}
-                </td>
-                {/* The ADDRESS, not a badge saying one exists. This column
-                    used to render "Found", which is the least useful true
-                    thing it could say: after paying to look an email up, the
-                    only way to see it was to open the row. The email is the
-                    deliverable — it belongs on the row the moment it lands. */}
-                <td className="px-4 py-3">
-                  {c.contact?.email ? (
-                    <div className="min-w-0">
-                      <a
-                        href={`mailto:${c.contact.email}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="block max-w-[15rem] truncate text-xs font-medium text-gh-sky hover:underline"
-                        title={c.contact.email}
-                      >
-                        {c.contact.email}
-                      </a>
-                      {c.contact.name && (
-                        <span className="mt-0.5 block max-w-[15rem] truncate text-[11px] text-gh-ink-muted">
-                          {c.contact.name}
-                          {c.contact.title ? `, ${c.contact.title}` : ""}
-                        </span>
-                      )}
-                    </div>
-                  ) : c.contact ? (
-                    <FindStatusBadge status={c.contact.findStatus} />
-                  ) : (
-                    <span className="text-xs text-gh-ink-muted">Not looked up yet</span>
-                  )}
-                </td>
-                <td className="px-4 py-3">
-                  {c.contact?.findStatus === "found" ? (
-                    <VerificationBadge status={c.contact.verificationStatus} />
-                  ) : (
-                    <span className="text-xs text-gh-ink-muted">-</span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-xs text-gh-ink-secondary">
-                  {formatRelativeDate(c.lastCrawledAt)}
-                </td>
-              </tr>
-            ))}
-            {filtered.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-sm text-gh-ink-muted">
-                  No companies match these filters.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+      {/* Cards, not table rows. The two fields that decide whether he calls —
+          the signal quote and the reason it is a lead — are prose, and prose
+          does not survive a table column; the old grid answered "what is this
+          record" (industry, status, last checked) rather than "why am I
+          calling this one". The CSV export keeps the column shape, which is
+          where columns are the right answer. */}
+      <div className="space-y-2.5 p-4">
+        {filtered.map((c, i) => (
+          <div key={c.id} style={{ animationDelay: `${Math.min(i, 12) * 40}ms` }}>
+            <LeadCard company={c} onOpen={() => onRowClick(c)} />
+          </div>
+        ))}
+        {filtered.length === 0 && (
+          <p className="py-10 text-center text-sm text-gh-ink-muted">
+            No leads match these filters.
+          </p>
+        )}
       </div>
     </div>
   );
