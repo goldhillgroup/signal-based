@@ -55,8 +55,24 @@ export function explainFit(company: Company): FitExplanation | null {
   // reads as family-held.
   points.push("Reads as still family-owned on its own site, not acquired or rolled up.");
 
-  if (company.revenueBand && company.revenueBand.toLowerCase() !== "unknown") {
+  // Size, and what it means when there isn't any.
+  //
+  // Three quarters of companies publish nothing a revenue estimate can be
+  // built from. Saying nothing here let silence stand in for a judgement; the
+  // gate used to do the same and cut them as "too small", which is how
+  // businesses literally named "Two Generations Landscaping" were thrown out.
+  // No figure means no figure. It is not evidence of being small, and it is
+  // never grounds for cutting a company, so the panel says that outright.
+  const hasFigure =
+    company.revenueBand &&
+    !/^(unknown|size not stated|-)$/i.test(company.revenueBand.trim());
+
+  if (hasFigure) {
     points.push(`Estimated at ${company.revenueBand}, inside the size range set for this search.`);
+  } else {
+    points.push(
+      "Its site does not say how big it is, so it was not judged on size. A missing figure is not a small company."
+    );
   }
 
   if (company.operatingModel === "own_crews") {

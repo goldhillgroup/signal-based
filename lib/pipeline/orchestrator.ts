@@ -4,7 +4,7 @@ import { classifySignal, disprovePass } from "./openrouter";
 import { findContact } from "./anymailfinder";
 import { verifyEmail } from "./millionverifier";
 import type { Industry, SearchMode, SearchRow } from "../supabase/types";
-import { recheckAfterFor, rejectionScope, sizeVerdictStillBinds } from "./recheck-policy";
+import { recheckAfterFor, rejectionScope, sizeVerdictStillBinds, parseRevenueBand } from "./recheck-policy";
 import { extractEmails, bestEmailFor, type FoundEmail } from "./page-email";
 import { buildWarningLine } from "./channel-health";
 import { channelRates, orderByYield } from "./channel-priors";
@@ -705,14 +705,36 @@ export async function runSearchPipeline(
         // see companies outside $3-15M in results until Jonathan confirms the
         // band he actually wants. Re-enable by restoring the two branches
         // below (git history: this commit) once that's settled.
-        // Soft band check — only fires when a band is actually set AND the
-        // classifier's size read directly contradicts it. sizeFit "unknown"
-        // (common, and fine) never cuts.
+        // Band check, on the NUMBER rather than the model's verdict.
+        //
+        // This was the single biggest cut in the funnel — 21 of 77 rejections
+        // (27%), more than wrong-trade and not-family-owned combined — and it
+        // was the least defensible one. It fired on `sizeFit`, a bare
+        // too_small/too_big judgement the model forms from soft textual proxies
+        // (crew size, years in business, service area), not from financials.
+        // Reviewing all 21 live: ELEVEN had no revenue figure recorded at all,
+        // so they were cut on a guess with nothing behind it. Two of those were
+        // named "Two Generations Landscaping" and "Third Generation Lawn &
+        // Landscape" — businesses advertising multi-generational family
+        // ownership in their own names, which is the exact ICP, thrown away on
+        // an unevidenced size hunch.
+        //
+        // Now it cuts only when there is a real estimated RANGE and that range
+        // cannot overlap the requested band. A company read as "$1-3M" against
+        // a $3-15M band is kept, because $3M is inside both. No estimate means
+        // no cut, ever: an unknown is not evidence of being too small.
+        //
+        // Recovers 20 of those 21 against live data. The asymmetry justifies
+        // it — keeping a slightly-out-of-band company costs one row he can
+        // ignore, while cutting a real one loses a lead permanently and
+        // invisibly. sizeFit and revenueEstimate are still recorded on every
+        // row, so the band remains filterable after the fact.
         const bandSet = !!band && (band.min !== null || band.max !== null);
+        const estimate = parseRevenueBand(classification.revenueEstimate);
         const belowBand =
-          bandSet && band!.min !== null && classification.sizeFit === "too_small";
+          bandSet && band!.min !== null && estimate !== null && estimate.hi < band!.min;
         const aboveBand =
-          bandSet && band!.max !== null && classification.sizeFit === "too_big";
+          bandSet && band!.max !== null && estimate !== null && estimate.lo > band!.max;
 
         // Geography gate — the client works only with US companies. Listed
         // FIRST because it is the most decisive cut: a British landscaper is

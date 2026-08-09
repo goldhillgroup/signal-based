@@ -140,8 +140,14 @@ function mapCompanyRow(row: CompanyJoinRow): Company {
     industry: row.industry,
     state: row.state ?? "-",
     city: row.city ?? "-",
-    revenueBand: row.revenue_band ?? "Unknown",
-    employeeBand: row.employee_band ?? "Unknown",
+    // "Size not stated" rather than "Unknown". 75% of rows have no revenue
+    // figure at all — the classifier estimates size from soft textual proxies
+    // and most sites give it nothing to work from — so this is the common
+    // case, not an edge one. "Unknown" reads like a verdict about the company;
+    // this says plainly that the SITE did not say, which is the actual fact
+    // and which is why size is never grounds for cutting one.
+    revenueBand: row.revenue_band ?? "Size not stated",
+    employeeBand: row.employee_band ?? "not stated",
     status: row.status,
     confidence: row.confidence,
     rejectionReason: row.rejection_reason,
