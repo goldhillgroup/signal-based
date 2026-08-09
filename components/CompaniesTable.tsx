@@ -31,7 +31,7 @@ type Tab = "all" | "signal";
 // the recheck schedule; the folder header still reports how many were checked.
 const TABS: { key: Tab; label: string; hint: string }[] = [
   { key: "all", label: "All leads", hint: "Everything that fits the profile" },
-  { key: "signal", label: "With a signal", hint: "Founder and successor both named" },
+  { key: "signal", label: "Founder + successor", hint: "Both named and running it today" },
 ];
 
 // A 'filter'/'hybrid' company that fit the ICP with no signal found is

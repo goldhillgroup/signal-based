@@ -60,6 +60,15 @@ export function daysBetween(fromIso: string, toIso: string): number {
  *
  * `dayOfWeek` is therefore the EARLIEST preferred day, not a hard gate.
  */
+/**
+ * Days after which the harvest stops waiting for its preferred weekday.
+ *
+ * 10, not 14: a fortnight means a whole extra Monday goes by before anything
+ * happens, which is a full missed week of leads. Ten catches a run that slipped
+ * past its day without letting the gap stretch to two.
+ */
+const CATCH_UP_DAYS = 10;
+
 export function shouldRunNow(
   s: WeeklySchedule,
   now: Date
@@ -80,9 +89,32 @@ export function shouldRunNow(
     if (days < 7) {
       return { run: false, reason: `Ran ${days} day${days === 1 ? "" : "s"} ago, waits 7.` };
     }
-    // Past the cooldown, run on the next ping whatever weekday it is. Holding
-    // out for the preferred day would turn one missed Monday into a fortnight.
-    return { run: true, reason: `${days} days since the last run.` };
+    // MONDAY IS AN ANCHOR, NOT A STARTING GUN.
+    //
+    // This used to run on the next ping past day 7, whatever weekday that was
+    // — which quietly destroys "every Monday". One run displaced by a day (a
+    // deploy, an outage, an exhausted balance) lands on a Tuesday, and every
+    // run after it is a Tuesday, because each new lastRunOn re-anchors the
+    // cooldown to the wrong day. The schedule drifts one day per incident and
+    // never comes back.
+    //
+    // So: past the cooldown, wait for the chosen day. The catch-up below is
+    // what stops that becoming a fortnight — if a whole preferred day has been
+    // missed as well, run on the next ping regardless and let the day after
+    // that re-anchor.
+    if (now.getDay() === s.dayOfWeek) {
+      return { run: true, reason: `${days} days since the last run.` };
+    }
+    if (days >= CATCH_UP_DAYS) {
+      return {
+        run: true,
+        reason: `${days} days since the last run, past the ${DAY_NAMES[s.dayOfWeek]} it should have used.`,
+      };
+    }
+    return {
+      run: false,
+      reason: `Ran ${days} days ago, next ${DAY_NAMES[s.dayOfWeek]}.`,
+    };
   }
 
   // Never run before: wait for the preferred weekday so the first harvest

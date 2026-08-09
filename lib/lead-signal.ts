@@ -28,21 +28,26 @@ export const SIGNAL_TYPE_META: Record<
   SignalType,
   { label: string; blurb: string; color: string; bg: string }
 > = {
+  // PLAIN ENGLISH, not vocabulary. These started as "Qualified", "Verify" and
+  // "Fit only" — words with a precise meaning inside the classifier and none
+  // at all on a lead card. The replacements say the actual finding, so nobody
+  // has to be taught the scheme before reading the list: the label names WHO
+  // was found, not what bucket the row landed in.
   succession_pair: {
-    label: "Succession pair",
-    blurb: "Founder and next generation both named and active",
+    label: "Founder + successor",
+    blurb: "Both named on the site, both running it today",
     color: "#0b7a0b",
     bg: "#e2f6e2",
   },
   succession_verify: {
-    label: "Needs a look",
-    blurb: "Succession language found, but the pairing is not airtight",
+    label: "Probably, worth checking",
+    blurb: "Reads like a handover, but the wording is not airtight",
     color: "#9a4a1f",
     bg: "#fbe4d7",
   },
   family_owned_fit: {
-    label: "Family-owned fit",
-    blurb: "Right trade, right territory, family-run, no successor named yet",
+    label: "Good fit, no successor yet",
+    blurb: "Right trade, right area, family-run, nobody named to take over",
     color: "#3d5a80",
     bg: "#e1e9f2",
   },

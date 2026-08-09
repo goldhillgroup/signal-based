@@ -11,18 +11,23 @@ export const maxDuration = 30;
 const HISTORY_LIMIT = 25;
 
 export async function POST(req: Request) {
-  const body = (await req.json().catch(() => ({}))) as { text?: string };
-  const text = (body.text ?? "").trim();
-  if (!text) {
-    return NextResponse.json({ error: "Say what you're looking for" }, { status: 400 });
-  }
-
+  // AUTH BEFORE VALIDATION, matching every other route. The paid call was
+  // already safely behind this check, so nothing could be spent — but an
+  // anonymous caller still got "Say what you're looking for", which confirms
+  // the endpoint exists and names its parameter. Cheap to close, and it means
+  // one rule holds everywhere instead of one route being the exception.
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  const body = (await req.json().catch(() => ({}))) as { text?: string };
+  const text = (body.text ?? "").trim();
+  if (!text) {
+    return NextResponse.json({ error: "Say what you're looking for" }, { status: 400 });
   }
 
   // The adaptive half: his own past searches set the defaults, so a bare

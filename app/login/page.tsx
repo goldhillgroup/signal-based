@@ -92,7 +92,12 @@ function LoginForm() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 autoComplete="email"
-                placeholder="jonathan@thegoldhillgroup.com"
+                // Generic on purpose. The real address was hardcoded here, which put the
+                // exact account to attack in front of every visitor to the login page
+                // and left it sitting in the client bundle. Email addresses are not
+                // secret, but naming the one valid account turns a password guess into
+                // a password attack.
+                placeholder="you@company.com"
                 className="w-full rounded-lg border border-gh-border bg-gh-surface-sunken px-3 py-2.5 text-sm text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:bg-gh-surface focus:outline-none focus:ring-2 focus:ring-gh-sky/20"
               />
             </div>

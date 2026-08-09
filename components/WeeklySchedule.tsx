@@ -97,9 +97,16 @@ export function WeeklySchedule({
               schedule.enabled ? "bg-gh-navy" : "bg-gh-border-strong"
             }`}
           >
+            {/* left-0.5 is load-bearing. Without an explicit `left`, an
+                absolutely positioned child falls back to its STATIC position —
+                and a <button> centres its content, so the knob started at the
+                track's right edge and the 22px translate carried it clean
+                outside. Measured: the knob's right edge sat 20px past the
+                track's. Anchoring left and translating by the travel distance
+                (44 track - 20 knob - 2 - 2 = 20) keeps it inside at both ends. */}
             <span
-              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${
-                schedule.enabled ? "translate-x-[22px]" : "translate-x-0.5"
+              className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${
+                schedule.enabled ? "translate-x-[20px]" : "translate-x-0"
               }`}
             />
           </button>
@@ -155,7 +162,56 @@ export function WeeklySchedule({
           <StatePicker value={schedule.states} onChange={(states) => patch({ states })} />
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-2">
+                {/* WHAT IT LOOKS FOR. The schedule has always stored a mode and the
+            cron has always passed it to the pipeline — there was simply no
+            control for it, so it sat on whatever it was first saved with and
+            could never be changed. A panel that schedules an automatic scan
+            has to let you say what the scan is for. */}
+        <p className="mt-4 text-xs font-semibold text-gh-ink-secondary">What to collect</p>
+        <div className="mt-1.5 grid gap-2 sm:grid-cols-3">
+          {(
+            [
+              {
+                key: "signal",
+                title: "Signals only",
+                blurb: "Just the founder-and-successor matches. Fewest leads, purest list.",
+              },
+              {
+                key: "hybrid",
+                title: "Both, signals first",
+                blurb: "Everything that fits, with the signals ranked at the top.",
+              },
+              {
+                key: "filter",
+                title: "Every good fit",
+                blurb: "All family-owned companies in range, signal or not.",
+              },
+            ] as const
+          ).map((m) => (
+            <button
+              key={m.key}
+              type="button"
+              aria-pressed={schedule.mode === m.key}
+              onClick={() => patch({ mode: m.key })}
+              className={`cursor-pointer rounded-lg border px-3 py-2.5 text-left transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 ${
+                schedule.mode === m.key
+                  ? "border-gh-navy bg-gh-navy text-white"
+                  : "border-gh-border bg-gh-surface hover:border-gh-sky/40"
+              }`}
+            >
+              <span className="block text-xs font-semibold">{m.title}</span>
+              <span
+                className={`mt-0.5 block text-[11px] leading-snug ${
+                  schedule.mode === m.key ? "text-white/60" : "text-gh-ink-muted"
+                }`}
+              >
+                {m.blurb}
+              </span>
+            </button>
+          ))}
+        </div>
+
+<div className="mt-4 flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium text-gh-ink-muted">Day:</span>
           <select
             value={schedule.dayOfWeek}

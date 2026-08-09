@@ -49,10 +49,20 @@ ok("does not run on day six", !shouldRunNow(ranMon, new Date("2026-08-16T13:00:0
 ok("RUNS on the next Monday", shouldRunNow(ranMon, NEXT_MON).run,
    shouldRunNow(ranMon, NEXT_MON).reason);
 
-// ── a missed Monday self-heals rather than losing a fortnight ─────────────
-const missed = cfg({ lastRunOn: "2026-08-03" }); // ran two Mondays ago
-ok("a missed Monday runs on the next ping", shouldRunNow(missed, TUE).run,
-   shouldRunNow(missed, TUE).reason);
+// ── MONDAY IS AN ANCHOR: a run past the cooldown still waits for Monday ───
+// Without this the schedule drifts a day per incident and never returns.
+const ranTue = cfg({ lastRunOn: "2026-08-04" }); // a Tuesday
+ok("does not fire on the following Tuesday just because 7 days passed",
+   !shouldRunNow(ranTue, new Date("2026-08-11T13:00:00Z")).run,
+   shouldRunNow(ranTue, new Date("2026-08-11T13:00:00Z")).reason);
+ok("returns to Monday", shouldRunNow(ranTue, new Date("2026-08-17T13:00:00Z")).run,
+   shouldRunNow(ranTue, new Date("2026-08-17T13:00:00Z")).reason);
+
+// ── but a long gap catches up rather than waiting out another week ────────
+const stale = cfg({ lastRunOn: "2026-07-28" }); // 12 days before TUE
+ok("a 12-day gap runs on the next ping, whatever day",
+   shouldRunNow(stale, TUE).run, shouldRunNow(stale, TUE).reason);
+ok("a 6-day gap still waits", !shouldRunNow(cfg({ lastRunOn: "2026-08-05" }), TUE).run);
 
 // ── off means off ─────────────────────────────────────────────────────────
 ok("disabled never runs", !shouldRunNow(cfg({ enabled: false }), MON).run);
