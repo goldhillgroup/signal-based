@@ -3,8 +3,10 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect } from "react";
 import { useSearches } from "@/lib/searches-store";
-import { RadarIcon, FolderIcon, SettingsIcon, GridIcon, UsersIcon } from "./icons";
+import { useMobileNav } from "@/lib/mobile-nav";
+import { RadarIcon, FolderIcon, SettingsIcon, GridIcon, UsersIcon, XIcon } from "./icons";
 import { SignOutButton } from "./SignOutButton";
 import { SidebarStatus } from "./SidebarStatus";
 
@@ -39,7 +41,21 @@ const NAV_ITEMS = [
   { label: "Settings", icon: SettingsIcon, href: "/dashboard/settings" },
 ];
 
-export function Sidebar({ userEmail }: { userEmail: string | null }) {
+// The rail's contents, shared verbatim by the always-on desktop aside and the
+// slide-in mobile drawer so the two can never drift apart — same links, same
+// live badges, same status block, same sign-out. `onNavigate` lets the drawer
+// close itself the instant a link is tapped; the desktop rail passes nothing.
+// `onClose` renders the drawer's own close button (the desktop rail never
+// needs one, so it passes nothing there either).
+function SidebarBody({
+  userEmail,
+  onNavigate,
+  onClose,
+}: {
+  userEmail: string | null;
+  onNavigate?: () => void;
+  onClose?: () => void;
+}) {
   const pathname = usePathname();
   const { folders } = useSearches();
 
@@ -58,7 +74,7 @@ export function Sidebar({ userEmail }: { userEmail: string | null }) {
   };
 
   return (
-    <aside className="hidden h-full w-64 shrink-0 flex-col overflow-hidden bg-gh-sidebar text-white lg:flex">
+    <>
       {/* The brand block, given some weight. It was a logo and two lines of
           text on a flat field — correct and completely inert. A soft wash of
           brand colour bleeding from the top corner and a slow halo on the mark
@@ -85,6 +101,20 @@ export function Sidebar({ userEmail }: { userEmail: string | null }) {
             Signal Radar
           </p>
         </div>
+
+        {/* Only present in the mobile drawer. The overlay and the nav links
+            already close it, but a labelled control the thumb can find beats
+            making the user guess that tapping outside works. */}
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close menu"
+            className="relative ml-auto flex h-9 w-9 items-center justify-center rounded-lg text-white/60 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+          >
+            <XIcon className="h-5 w-5" />
+          </button>
+        )}
       </div>
 
       <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-5">
@@ -98,6 +128,7 @@ export function Sidebar({ userEmail }: { userEmail: string | null }) {
             <Link
               key={label}
               href={href}
+              onClick={onNavigate}
               aria-current={active ? "page" : undefined}
               className={`group relative flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
                 active
@@ -140,6 +171,74 @@ export function Sidebar({ userEmail }: { userEmail: string | null }) {
       <SidebarStatus />
 
       <SignOutButton userEmail={userEmail} />
-    </aside>
+    </>
+  );
+}
+
+export function Sidebar({ userEmail }: { userEmail: string | null }) {
+  const pathname = usePathname();
+  const { open, setOpen } = useMobileNav();
+
+  // Navigating is the whole point of the drawer, so the moment the route
+  // actually changes it has done its job and should get out of the way. The
+  // per-link onClick also closes it, but this is the backstop that covers any
+  // navigation the drawer didn't originate (e.g. a redirect) and guarantees it
+  // never lingers over the page you just asked for.
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname, setOpen]);
+
+  // Escape closes it, the reflex every overlay owes a keyboard user.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, setOpen]);
+
+  return (
+    <>
+      {/* Desktop rail: the permanent column, unchanged. Only exists at lg+. */}
+      <aside className="hidden h-full w-64 shrink-0 flex-col overflow-hidden bg-gh-sidebar text-white lg:flex">
+        <SidebarBody userEmail={userEmail} />
+      </aside>
+
+      {/* Mobile scrim. Dims the page behind the drawer and is itself the
+          tap-anywhere-to-close target. Kept in the tree and faded with opacity
+          so both the fade-in and fade-out animate; pointer-events are dropped
+          while closed so it never swallows taps meant for the page. */}
+      <div
+        aria-hidden
+        onClick={() => setOpen(false)}
+        className={`fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity duration-300 lg:hidden ${
+          open ? "opacity-100" : "pointer-events-none opacity-0"
+        }`}
+      />
+
+      {/* Mobile drawer. Same rail, slid in from the left over the content.
+          h-dvh (not h-screen) so it fills the true viewport height on mobile
+          instead of hiding its footer behind the browser chrome — the same
+          reasoning the layout uses for its outer height. Translated fully
+          off-screen when closed and made inert so its links can't be reached
+          by tab or screen reader while hidden. */}
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-label="Main navigation"
+        aria-hidden={!open}
+        inert={!open}
+        className={`fixed left-0 top-0 z-50 flex h-dvh w-72 max-w-[85vw] flex-col overflow-hidden bg-gh-sidebar text-white shadow-2xl transition-transform duration-300 ease-out lg:hidden ${
+          open ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <SidebarBody
+          userEmail={userEmail}
+          onNavigate={() => setOpen(false)}
+          onClose={() => setOpen(false)}
+        />
+      </aside>
+    </>
   );
 }

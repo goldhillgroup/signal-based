@@ -105,6 +105,17 @@ export function XIcon({ className }: IconProps) {
   );
 }
 
+// The hamburger that opens the nav drawer on phones and tablets, where the
+// permanent sidebar rail is hidden. Three evenly-spaced rules — the one glyph
+// every touch user already reads as "menu".
+export function MenuIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden>
+      <path d="M3.5 6h13M3.5 10h13M3.5 14h13" stroke="currentColor" strokeWidth={base} strokeLinecap="round" />
+    </svg>
+  );
+}
+
 
 export function BuildingIcon({ className }: IconProps) {
   return (

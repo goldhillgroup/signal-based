@@ -1,17 +1,28 @@
-import Image from "next/image";
+"use client";
+
 import Link from "next/link";
-import { SearchIcon } from "./icons";
+import { useMobileNav } from "@/lib/mobile-nav";
+import { SearchIcon, MenuIcon } from "./icons";
 
 export function Topbar() {
+  const { toggle } = useMobileNav();
+
   return (
     <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center gap-4 border-b border-gh-border bg-gh-surface/95 px-5 backdrop-blur supports-backdrop-blur:bg-gh-surface/80 lg:px-8">
-      <Image
-        src="/brand/goldhill-mark.png"
-        alt=""
-        width={24}
-        height={24}
-        className="shrink-0 rounded bg-gh-navy p-1 lg:hidden"
-      />
+      {/* The top-left, below lg where the nav rail is hidden. This used to be a
+          bare logo image with no click handler — tapping it, the natural
+          instinct for "open the menu", did nothing, which left the entire
+          navigation (Overview, Enrichment, All Leads, Settings) unreachable on
+          every phone and tablet. It is now a real button that opens the nav
+          drawer. Hidden at lg+, where the permanent rail makes it redundant. */}
+      <button
+        type="button"
+        onClick={toggle}
+        aria-label="Open menu"
+        className="-ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gh-ink transition-colors hover:bg-gh-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-navy lg:hidden"
+      >
+        <MenuIcon className="h-6 w-6" />
+      </button>
 
       {/* A "Demo data, pipeline not yet wired up" badge lived here from the
           mock phase. It was still rendering over real, live, paid-for results,
