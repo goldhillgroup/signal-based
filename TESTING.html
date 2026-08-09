@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Signal Radar — Test Guide</title>
+<style>
+  :root {
+    --navy: #001a57; --navy-2: #09276f; --sky: #0fa5e1; --lime: #b3d137;
+    --orange: #ef8b19; --critical: #d03b3b; --good: #0ca30c;
+    --page: #f7f8fa; --surface: #ffffff; --sunken: #f1f3f6;
+    --border: #e3e7ee; --ink: #0b1220; --ink-2: #4b5768; --ink-3: #8892a0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --page: #0b1220; --surface: #131b2c; --sunken: #1a2436;
+      --border: #26324a; --ink: #eef2f8; --ink-2: #a8b4c6; --ink-3: #76839a;
+      --navy: #dce6f7; --navy-2: #b9cdef;
+    }
+  }
+  :root[data-theme="dark"] {
+    --page: #0b1220; --surface: #131b2c; --sunken: #1a2436;
+    --border: #26324a; --ink: #eef2f8; --ink-2: #a8b4c6; --ink-3: #76839a;
+    --navy: #dce6f7; --navy-2: #b9cdef;
+  }
+
+  body {
+    background: var(--page); color: var(--ink);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    margin: 0; padding: 40px 20px 80px;
+  }
+  main { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 30px; line-height: 1.2; margin: 0 0 6px; letter-spacing: -0.02em; }
+  .sub { color: var(--ink-2); margin: 0 0 32px; font-size: 15px; }
+  h2 {
+    font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--ink-3); margin: 44px 0 14px; font-weight: 700;
+  }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 20px 22px; margin-bottom: 12px;
+  }
+  .t { display: flex; gap: 12px; align-items: baseline; }
+  .n {
+    flex: 0 0 auto; width: 26px; height: 26px; border-radius: 8px;
+    background: var(--navy); color: var(--page);
+    font-size: 12px; font-weight: 700; display: grid; place-items: center;
+  }
+  :root[data-theme="dark"] .n, :root:not([data-theme="light"]) .n { color: #0b1220; }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .n { color: #fff; } }
+  .t h3 { margin: 0; font-size: 16px; font-weight: 650; }
+  .body { margin-left: 38px; }
+  .body p { margin: 8px 0; color: var(--ink-2); font-size: 14.5px; }
+  .pass, .fail {
+    display: block; margin: 10px 0 0; padding: 9px 12px; border-radius: 9px;
+    font-size: 13.5px; border-left: 3px solid;
+  }
+  .pass { background: color-mix(in srgb, var(--good) 8%, transparent); border-color: var(--good); }
+  .fail { background: color-mix(in srgb, var(--critical) 8%, transparent); border-color: var(--critical); }
+  .pass b, .fail b { font-weight: 700; }
+  .warn {
+    background: color-mix(in srgb, var(--orange) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--orange) 35%, transparent);
+    border-radius: 12px; padding: 16px 18px; margin: 0 0 24px;
+  }
+  .warn p { margin: 6px 0; font-size: 14.5px; }
+  code {
+    background: var(--sunken); padding: 2px 6px; border-radius: 5px;
+    font-size: 13px; font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--ink-3); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  .scroll { overflow-x: auto; }
+  .tag {
+    display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px;
+    border-radius: 20px; background: var(--sunken); color: var(--ink-2);
+    margin-left: 8px; vertical-align: middle; letter-spacing: .02em;
+  }
+  .tag.free { background: color-mix(in srgb, var(--good) 15%, transparent); color: var(--good); }
+  .tag.paid { background: color-mix(in srgb, var(--orange) 15%, transparent); color: var(--orange); }
+  a { color: var(--sky); }
+</style>
+</head>
+<body>
+
+<main>
+  <h1>Signal Radar: test guide</h1>
+  <p class="sub">Everything below is testable as Jonathan would experience it, starting from a completely empty account. Work top to bottom; each step says what "good" looks like and what would mean something is wrong.</p>
+
+  <div class="warn">
+    <p><strong>Do this first, or most of the list will fail.</strong></p>
+    <p>OpenRouter credit is at <b>&minus;$0.06</b>. Every search will correctly refuse until it is topped up. Roughly <b>$10</b> buys about 17 full searches.</p>
+    <p>Steps marked <span class="tag free">free</span> work without it. Steps marked <span class="tag paid">costs money</span> do not.</p>
+  </div>
+
+  <h2>Where things stand</h2>
+  <div class="card">
+    <div class="scroll"><table>
+      <tr><th>Thing</th><th>State</th></tr>
+      <tr><td>Live URL</td><td><a href="https://jonathan-goldhill-k7ge.vercel.app">jonathan-goldhill-k7ge.vercel.app</a></td></tr>
+      <tr><td>Database</td><td>Empty on purpose. 0 searches, 0 companies, 0 contacts.</td></tr>
+      <tr><td>Vendor keys</td><td>All six saved in Settings</td></tr>
+      <tr><td>Weekly harvest</td><td>Off (you switch it on)</td></tr>
+      <tr><td>OpenRouter</td><td><b>&minus;$0.06</b>, needs a top-up</td></tr>
+    </table></div>
+  </div>
+
+  <h2>1. First impressions <span class="tag free">free</span></h2>
+
+  <div class="card">
+    <div class="t"><span class="n">1</span><h3>The login page</h3></div>
+    <div class="body">
+      <p>Open the URL logged out. Look at the right-hand panel.</p>
+      <span class="pass"><b>Good:</b> a short headline, three numbers (57 &rarr; 44 &rarr; 13) with arrows between them, one line of text. You should be able to take it in without reading a paragraph.</span>
+      <span class="fail"><b>Wrong:</b> a wall of text, or the numbers not fitting on one row.</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="t"><span class="n">2</span><h3>Every page, empty</h3></div>
+    <div class="body">
+      <p>Sign in. Visit all five: Overview, Signal Radar, Enrichment, All Leads, Settings.</p>
+      <span class="pass"><b>Good:</b> every page loads with zeros and an explanation. "No searches yet, run your first one above" rather than a blank space.</span>
+      <span class="fail"><b>Wrong:</b> a blank page, a spinner that never stops, or an error. Empty is expected; <em>broken</em> is not.</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="t"><span class="n">3</span><h3>On your phone</h3></div>
+    <div class="body">
+      <p>Open the same URL on your actual phone. Tap into the search box and an API key field.</p>
+      <span class="pass"><b>Good:</b> no sideways scrolling anywhere, buttons easy to hit, and <b>the page does not zoom in when you tap a field</b>.</span>
+      <span class="fail"><b>Wrong:</b> the page zooms on focus and will not zoom back. That was a real bug; worth confirming it is gone on a real device.</span>
+    </div>
+  </div>
+
+  <h2>2. The guardrails <span class="tag free">free</span></h2>
+
+  <div class="card">
+    <div class="t"><span class="n">4</span><h3>Search with no credit</h3></div>
+    <div class="body">
+      <p>Before topping up, try to run any search.</p>
+      <span class="pass"><b>Good:</b> it refuses and tells you the amount and what to do. No folder is created.</span>
+      <span class="fail"><b>Wrong:</b> a folder appears, or it runs and produces an empty result. An empty folder reading as "no leads" when the truth is "out of credit" is the single worst failure this product can have.</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="t"><span class="n">5</span><h3>The form will not let you do something silly</h3></div>
+    <div class="body">
+      <p>Open "set it up manually". Deselect all four states. Then try to switch on the weekly harvest with nothing selected.</p>
+      <span class="pass"><b>Good:</b> Search greys out and tells you which input is missing. The harvest refuses to switch on empty.</span>
+      <span class="fail"><b>Wrong:</b> a disabled button with no explanation of why.</span>
+    </div>
+  </div>
+
+  <h2>3. A real search <span class="tag paid">costs money</span></h2>
+
+  <div class="card">
+    <div class="t"><span class="n">6</span><h3>Run one small search</h3></div>
+    <div class="body">
+      <p>Top up OpenRouter first. Then: one vertical, one state, target 10. Roughly <b>$0.45</b>.</p>
+      <p><b>Watch the loading screen.</b> This is the part I could not test, because showing it needs a live search.</p>
+      <span class="pass"><b>Good:</b> a percentage that climbs, a counter (<code>3 / 10 companies</code>), and a three-step indicator showing <b>Finding &rarr; Reading &rarr; Judging</b> with the current one lit and a pulsing dot. It is normal for it to go <em>back</em> to Finding; the pipeline loops.</span>
+      <span class="fail"><b>Wrong:</b> a bar that never moves with no stage shown, or a stage that never changes.</span>
+      <p>You can close the dialog. The search keeps running on the server.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="t"><span class="n">7</span><h3>Judge the results yourself</h3></div>
+    <div class="body">
+      <p>This is the real test. Open the folder and click into a company marked with a signal.</p>
+      <p>Read the quote it captured, then <b>open the company's actual website</b> and check it.</p>
+      <span class="pass"><b>Good:</b> the founder and the next-generation person are both really named on that page, and both are really still involved. The quote is real, not paraphrased.</span>
+      <span class="fail"><b>Wrong:</b> the founder retired or died, the two people are brothers rather than father and son, or nobody is actually named. Those are the three traps the system is built to avoid, so any of them is worth telling me about.</span>
+      <p>Then click the <b>Rejected</b> tab and read a few reasons. They should be specific ("only one generation is on the leadership page"), not generic.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="t"><span class="n">8</span><h3>Run the same search again</h3></div>
+    <div class="body">
+      <p>Identical query, second time. Another ~$0.45.</p>
+      <span class="pass"><b>Good:</b> different companies from the first run. It should move to a different city and phrase the question differently.</span>
+      <span class="fail"><b>Wrong:</b> the same companies, or "ran out of companies to check" after only a handful. Both were real bugs and both are fixed, so either one returning matters.</span>
+    </div>
+  </div>
+
+  <h2>4. Contacts and the spreadsheet <span class="tag paid">costs money</span></h2>
+
+  <div class="card">
+    <div class="t"><span class="n">9</span><h3>Enrichment, and the choice it gives you</h3></div>
+    <div class="body">
+      <p>Go to Enrichment. Each folder offers two buttons.</p>
+      <span class="pass"><b>Good:</b> both show a count <em>and</em> a price, e.g. <code>2 signals ~$0.10</code> and <code>all 12 leads ~$0.60</code>. Pick the cheap one first.</span>
+      <p>Then check All Leads: the emails should appear, marked valid or risky.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="t"><span class="n">10</span><h3>Download it</h3></div>
+    <div class="body">
+      <p>All Leads picks a folder by default, never "everything". Hit download.</p>
+      <span class="pass"><b>Good:</b> the file contains only that folder's leads, and the button said how many.</span>
+    </div>
+  </div>
+
+  <h2>5. The weekly harvest <span class="tag free">free to arm</span></h2>
+
+  <div class="card">
+    <div class="t"><span class="n">11</span><h3>Switch it on and check it sticks</h3></div>
+    <div class="body">
+      <p>Settings &rarr; Weekly harvest. Pick verticals, states, a day. Switch on, then <b>reload the page</b>.</p>
+      <span class="pass"><b>Good:</b> still on after the reload.</span>
+      <span class="fail"><b>Wrong:</b> it reverts to off. That was a real bug (a cache serving stale settings) and it is fixed, so a recurrence matters.</span>
+      <p>You also need something pinging <code>/api/cron/weekly</code> daily with the secret, or it will never fire. Vercel Cron does this.</p>
+    </div>
+  </div>
+
+  <h2>6. Things worth trying to break</h2>
+
+  <div class="card">
+    <div class="body" style="margin-left:0">
+      <p><b>Type nonsense</b> in the search box ("find me 9999 crypto companies on Mars"). It should ask a sensible question, not crash.</p>
+      <p><b>Sign out and back in.</b> Everything should still be there.</p>
+      <p><b>Leave mid-search</b>, close the tab, come back. The search should still be running or finished, not lost.</p>
+      <p><b>Look for an em-dash</b> (the long &mdash; character) anywhere in the app. There should not be one.</p>
+    </div>
+  </div>
+
+  <h2>What I already verified</h2>
+  <div class="card">
+    <div class="body" style="margin-left:0">
+      <p>54 automated checks, 22 interface checks against an empty account, 30 error-path checks confirming every failure gives a readable reason, and 5 real end-to-end searches costing $0.25 in total. No console errors on any page. Production is live and reading its settings correctly.</p>
+      <p><b>What I could not verify:</b> the search loading screen, because showing it requires a live search and the credit for one. That is step 6, and it is the thing I would most like you to look at.</p>
+    </div>
+  </div>
+</main>
+
+</body>
+</html>
