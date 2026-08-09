@@ -347,18 +347,38 @@ summary {
 /* Tactile press on every control. Apple's and Material's shared rule is that a
    tap must acknowledge itself within 100ms; on touch there is no hover to do
    that job, so without this a button looks identical before and after being
-   pressed and the user taps it twice. */
-/* .lift is excluded deliberately. FolderCard is a <button> carrying .lift, and
-   `button:not(:disabled):active` out-specifies `.lift:active` — so the global
-   scale would win, replacing the card's settle-back-to-flat with a shrink and
-   throwing away the lift mid-press. Excluding the class costs one selector and
-   lets each surface own its own press. */
-button:not(:disabled):not(.lift):active,
-[role="switch"]:not([aria-disabled="true"]):active {
+   pressed and the user taps it twice.
+
+   .lift and .hover-spring are BOTH excluded, for the same reason: each already
+   owns a transform, and this selector out-specifies theirs. Unexcluded, a press
+   replaced the raised state with a shrink to 0.97 at the origin, so one click
+   read as two conflicting movements. .lift was excluded in the commit that
+   added this; .hover-spring has exactly the same collision and was missed. */
+button:not(:disabled):not(.lift):not(.hover-spring):active,
+[role="switch"]:not([aria-disabled="true"]):not(.hover-spring):active {
   transform: scale(0.97);
 }
-button, [role="switch"] {
-  transition: transform var(--gh-dur-fast) var(--gh-ease-out);
+
+/* IN @layer base, and that is the entire point of this block.
+   Unlayered rules beat layered ones no matter the specificity, and Tailwind's
+   `transition-colors` lives in @layer utilities. Written bare, the `transition`
+   SHORTHAND here reset transition-property to `transform` alone on every button
+   in the app — so 49 buttons plus the harvest switch lost the colour fade they
+   were explicitly given, and every hover snapped.
+
+   In the base layer the precedence is right way round: a button carrying a
+   Tailwind transition utility keeps it, and every other button still gets a
+   smooth press. Colours are listed too so an un-utilitied button fades as well
+   as scales. */
+@layer base {
+  button,
+  [role="switch"] {
+    transition:
+      transform var(--gh-dur-fast) var(--gh-ease-out),
+      color var(--gh-dur) var(--gh-ease-out),
+      background-color var(--gh-dur) var(--gh-ease-out),
+      border-color var(--gh-dur) var(--gh-ease-out);
+  }
 }
 
 /* ── Disclosure ────────────────────────────────────────────────────────────
@@ -403,6 +423,21 @@ button, [role="switch"] {
 }
 .pulse-dot { animation: ghPulseDot 1.4s ease-in-out infinite; }
 
+/* Expanding rings behind the progress modals. Previously set with an inline
+   `style={{ animation: "gh-ping ..." }}`, which no stylesheet rule can override
+   — so a user with reduced motion got three rings pulsing for the whole length
+   of a run, on the one screen they cannot navigate away from. As a class it is
+   reachable by the block below. Delay is passed per ring via --gh-ring-delay. */
+@keyframes ghPing {
+  0%   { transform: scale(1);   opacity: var(--gh-ring-opacity, 0.2); }
+  70%  { transform: scale(2.2); opacity: 0; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+.ping-ring {
+  animation: ghPing 2.4s cubic-bezier(0, 0, 0.2, 1) infinite;
+  animation-delay: var(--gh-ring-delay, 0ms);
+}
+
 /* Indeterminate sweep for a bar that is working but cannot know its own
    percentage — a discovery round that has not reported back yet. */
 @keyframes ghShimmer {
@@ -424,8 +459,16 @@ button, [role="switch"] {
   .pulse-ring,
   .flow-dash,
   .pulse-dot,
-  .shimmer {
+  .shimmer,
+  .ping-ring {
     animation: none !important;
+  }
+  /* Panels that slide: the drawer and the mobile sidebar. They are positioned
+     with translate utilities and toggled by class, so killing the transition
+     makes them appear and disappear instantly, which is the correct reduced
+     motion behaviour — the panel still opens, it just does not travel. */
+  .slide-panel {
+    transition: none !important;
   }
   .fade-up,
   .fade-in,

@@ -162,16 +162,16 @@ export function SearchProgress({ searchId, query, onComplete, onError, onDismiss
       >
         <div className="relative mx-auto flex h-20 w-20 items-center justify-center">
           <span
-            className="absolute rounded-full border border-gh-sky"
-            style={{ width: 80, height: 80, opacity: 0.12, animation: "gh-ping 2.4s cubic-bezier(0,0,0.2,1) infinite 0.6s" }}
+            className="ping-ring absolute rounded-full border border-gh-sky"
+            style={{ width: 80, height: 80, "--gh-ring-opacity": 0.12, "--gh-ring-delay": "600ms" } as React.CSSProperties}
           />
           <span
-            className="absolute rounded-full border border-gh-sky"
-            style={{ width: 56, height: 56, opacity: 0.2, animation: "gh-ping 2.4s cubic-bezier(0,0,0.2,1) infinite 0.3s" }}
+            className="ping-ring absolute rounded-full border border-gh-sky"
+            style={{ width: 56, height: 56, "--gh-ring-opacity": 0.2, "--gh-ring-delay": "300ms" } as React.CSSProperties}
           />
           <span
-            className="absolute rounded-full border-[1.5px] border-gh-sky"
-            style={{ width: 38, height: 38, opacity: 0.35, animation: "gh-ping 2.4s cubic-bezier(0,0,0.2,1) infinite" }}
+            className="ping-ring absolute rounded-full border-[1.5px] border-gh-sky"
+            style={{ width: 38, height: 38, "--gh-ring-opacity": 0.35 } as React.CSSProperties}
           />
           <span className="relative flex h-11 w-11 items-center justify-center rounded-xl bg-gh-navy text-white shadow-lg">
             <RadarIcon className="h-5 w-5" />

@@ -229,7 +229,7 @@ export function Sidebar({ userEmail }: { userEmail: string | null }) {
         aria-label="Main navigation"
         aria-hidden={!open}
         inert={!open}
-        className={`fixed left-0 top-0 z-50 flex h-dvh w-72 max-w-[85vw] flex-col overflow-hidden bg-gh-sidebar text-white shadow-2xl transition-transform duration-300 ease-out lg:hidden ${
+        className={`slide-panel fixed left-0 top-0 z-50 flex h-dvh w-72 max-w-[85vw] flex-col overflow-hidden bg-gh-sidebar text-white shadow-2xl transition-transform duration-300 ease-out lg:hidden ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >

@@ -59,12 +59,12 @@ export function EnrichProgress({
           {!done && (
             <>
               <span
-                className="absolute rounded-full border border-gh-sky"
-                style={{ width: 80, height: 80, opacity: 0.12, animation: "gh-ping 2.4s cubic-bezier(0,0,0.2,1) infinite 0.6s" }}
+                className="ping-ring absolute rounded-full border border-gh-sky"
+                style={{ width: 80, height: 80, "--gh-ring-opacity": 0.12, "--gh-ring-delay": "600ms" } as React.CSSProperties}
               />
               <span
-                className="absolute rounded-full border border-gh-sky"
-                style={{ width: 56, height: 56, opacity: 0.2, animation: "gh-ping 2.4s cubic-bezier(0,0,0.2,1) infinite 0.3s" }}
+                className="ping-ring absolute rounded-full border border-gh-sky"
+                style={{ width: 56, height: 56, "--gh-ring-opacity": 0.2, "--gh-ring-delay": "300ms" } as React.CSSProperties}
               />
             </>
           )}
