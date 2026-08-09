@@ -213,6 +213,8 @@ interface SearchesContextValue {
   startEnrichment: (searchId: string, scope?: "signals" | "all") => Promise<void>;
   deleteSearch: (searchId: string) => Promise<void>;
   renameSearch: (searchId: string, label: string) => Promise<void>;
+  /** Rejections for one folder. Separate because the lead views deliberately exclude them. */
+  fetchRejected: (searchId: string) => Promise<Company[]>;
 }
 
 const SearchesContext = createContext<SearchesContextValue | null>(null);
@@ -342,6 +344,24 @@ export function SearchesProvider({ children }: { children: ReactNode }) {
     [refreshFolders]
   );
 
+  // Loaded on demand, never with the leads. fetchAllCompanies filters to
+  // status 'qualified' on purpose — a rejected candidate has no business in
+  // "all of Jonathan's leads" — so the evidence section that argues the
+  // rejections matter has to ask for them separately.
+  const fetchRejected = useCallback(
+    async (searchId: string): Promise<Company[]> => {
+      const { data, error } = await supabase
+        .from("companies")
+        .select("*, signal_evidence(*), contacts(*)")
+        .eq("search_id", searchId)
+        .eq("status", "rejected")
+        .order("name", { ascending: true });
+      if (error || !data) return [];
+      return (data as unknown as CompanyJoinRow[]).map(mapCompanyRow);
+    },
+    [supabase]
+  );
+
   const renameSearch = useCallback(
     async (searchId: string, label: string) => {
       // Optimistic: the new name is on screen before the round trip, because a
@@ -391,8 +411,9 @@ export function SearchesProvider({ children }: { children: ReactNode }) {
       startEnrichment,
       deleteSearch,
       renameSearch,
+      fetchRejected,
     }),
-    [folders, loading, refreshFolders, getFolder, fetchFolder, fetchCompanies, fetchAllCompanies, createSearch, startEnrichment, deleteSearch, renameSearch]
+    [folders, loading, refreshFolders, getFolder, fetchFolder, fetchCompanies, fetchAllCompanies, createSearch, startEnrichment, deleteSearch, renameSearch, fetchRejected]
   );
 
   return <SearchesContext.Provider value={value}>{children}</SearchesContext.Provider>;

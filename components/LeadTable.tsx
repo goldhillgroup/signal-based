@@ -122,6 +122,11 @@ export function LeadTable({
                       >
                         {meta.short}
                       </span>
+                      {c.confidence && c.confidence !== "verify" && (
+                        <span className="ml-1.5 text-xs text-gh-ink-muted">
+                          {c.confidence === "high" ? "high" : "med"}
+                        </span>
+                      )}
                     </Td>
                     {/* ATOMIC VALUES, one fact per column — which is what a
                         spreadsheet is. The prose "why this lead" column that

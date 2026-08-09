@@ -9,6 +9,7 @@ import { downloadCompaniesCsv } from "@/lib/csv-export";
 import { CompaniesTable } from "@/components/CompaniesTable";
 import { CompanyDrawer } from "@/components/CompanyDrawer";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { WhyTheseAreNot } from "@/components/WhyTheseAreNot";
 import { CountUp } from "@/components/CountUp";
 import {
   ArrowLeftIcon,
@@ -277,6 +278,12 @@ export default function AllLeadsPage() {
           onRowClick={(c) => setSelectedId(c.id)}
           defaultView="table"
         />
+
+        {/* Under the leads, on both folder routes. This page and
+            /dashboard/lists/[id] are two different renders of the same thing,
+            and the section was only on one of them — which is why it did not
+            appear when opened from here. */}
+        <WhyTheseAreNot searchId={openFolder.id} count={openFolder.rejectedCount} />
 
         <CompanyDrawer company={selected} onClose={() => setSelectedId(null)} />
       </div>

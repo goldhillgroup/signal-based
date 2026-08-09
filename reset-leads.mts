@@ -45,7 +45,15 @@ const { createServiceRoleClient } = await import("./lib/supabase/server.js");
 const sb = createServiceRoleClient();
 const write = process.argv.includes("--write");
 
-const { data: searches } = await sb.from("searches").select("id, label");
+// The hand-audited list is NOT test data. It is the proof Jonathan has
+// already seen, the 28 leads with verbatim evidence, and the acceptance
+// benchmark for the crawler. Everything else on this account is a search
+// Daniel ran while building — that is what "reset" means here.
+const KEEP = "Hand-audited proof list";
+
+const { data: allSearches } = await sb.from("searches").select("id, label");
+const searches = (allSearches ?? []).filter((s) => s.label !== KEEP);
+const keeping = (allSearches ?? []).filter((s) => s.label === KEEP);
 const { data: companies } = await sb
   .from("companies")
   .select("id, search_id, recheck_after, discovery_channel, status");
@@ -56,13 +64,16 @@ const now = new Date().toISOString();
 const scheduled = all.filter((c) => c.recheck_after && c.recheck_after > now);
 const channels = new Set(all.map((c) => c.discovery_channel).filter(Boolean));
 
-console.log(`${searches?.length ?? 0} folders, ${all.length} companies (${attached.length} in a folder)\n`);
+console.log(`${allSearches?.length ?? 0} folders, ${all.length} companies (${attached.length} in a folder)\n`);
+if (keeping.length > 0) {
+  console.log(`keeping: ${keeping.map((k) => `"${k.label}"`).join(", ")}\n`);
+}
 console.log("what stays, because it is what makes the next search cheap:");
 console.log(`  ${all.length} domains in cross-search memory, never re-paid for`);
 console.log(`  ${scheduled.length} companies scheduled to come back on their own`);
 console.log(`  ${channels.size} channels with measured yield behind them`);
 console.log("\nwhat goes:");
-console.log(`  ${searches?.length ?? 0} folders, so the dashboard reads zero leads`);
+console.log(`  ${searches.length} test folders, so the dashboard shows only his own list`);
 
 if (!write) {
   console.log("\nDry run. Nothing changed. Re-run with --write.");
@@ -72,27 +83,28 @@ if (!write) {
 // Detach FIRST. Deleting the folders while companies still point at them would
 // cascade and take the companies with them — the exact loss this exists to
 // avoid. Order is the whole safety property here.
-const { error: detachErr } = await sb
-  .from("companies")
-  .update({ search_id: null })
-  .not("search_id", "is", null);
+const removeIds = searches.map((s) => s.id);
+const { error: detachErr } = removeIds.length
+  ? await sb.from("companies").update({ search_id: null }).in("search_id", removeIds)
+  : { error: null };
 
 if (detachErr) {
   console.error("Detach failed, nothing deleted:", detachErr.message);
   process.exit(1);
 }
 
-const { data: check } = await sb
-  .from("companies")
-  .select("id", { count: "exact", head: false })
-  .not("search_id", "is", null);
+// Nothing may still point at a folder about to be deleted, or the cascade
+// takes those companies with it — the exact loss this script exists to avoid.
+const { data: stillAttached } = removeIds.length
+  ? await sb.from("companies").select("id").in("search_id", removeIds)
+  : { data: [] };
 
-if ((check?.length ?? 0) > 0) {
-  console.error(`${check?.length} companies still attached. Refusing to delete folders.`);
+if ((stillAttached?.length ?? 0) > 0) {
+  console.error(`${stillAttached?.length} companies still attached. Refusing to delete folders.`);
   process.exit(1);
 }
 
-for (const s of searches ?? []) {
+for (const s of searches) {
   const { error } = await sb.from("searches").delete().eq("id", s.id);
   if (error) console.warn(`  could not remove "${s.label}": ${error.message}`);
 }

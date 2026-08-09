@@ -4,7 +4,7 @@ import { settledContact, type Company } from "@/lib/company";
 import { isSharedInbox } from "@/lib/pipeline/page-email";
 import { toLead, SIGNAL_TYPE_META, leadPeople } from "@/lib/lead-signal";
 import { formatRelativeDate } from "@/lib/stats";
-import { VerificationBadge } from "./badges";
+import { VerificationBadge, ConfidenceBadge } from "./badges";
 import { BuildingIcon, UsersIcon } from "./icons";
 
 /**
@@ -52,6 +52,14 @@ export function LeadCard({
               >
                 {meta.label}
               </span>
+              {/* HIGH vs MEDIUM, kept distinct. The signal chip says a pair was
+                  found; this says how firmly. The demo Jonathan liked shows
+                  both, and collapsing them loses the difference between "two
+                  generations named together with explicit succession language"
+                  and "one element implied rather than stated". */}
+              {company.confidence && company.confidence !== "verify" && (
+                <ConfidenceBadge confidence={company.confidence} />
+              )}
               <span className="text-[11px] text-gh-ink-muted">{lead.location}</span>
               <span aria-hidden className="text-gh-border">
                 ·

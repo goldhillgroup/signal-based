@@ -6,6 +6,7 @@ import { Company } from "@/lib/company";
 import { SearchFolder, useSearches } from "@/lib/searches-store";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { EnrichProgress } from "./EnrichProgress";
+import { WhyTheseAreNot } from "./WhyTheseAreNot";
 import {
   getSummaryStats,
   getIndustryBreakdown,
@@ -314,6 +315,13 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
       </div>
 
       <CompaniesTable companies={companies} onRowClick={(c) => setSelectedId(c.id)} />
+
+      {/* AFTER the leads, never among them. The proof page argues the
+          rejections matter most, and it is right about WHY — they are what
+          shows the full test ran rather than a keyword match — but that
+          argument only works once he has seen the leads. Mixed in, 39
+          rejections simply bury 28 leads. */}
+      <WhyTheseAreNot searchId={folder.id} count={folder.rejectedCount} />
 
       <CompanyDrawer company={selected} onClose={() => setSelectedId(null)} />
     </div>
