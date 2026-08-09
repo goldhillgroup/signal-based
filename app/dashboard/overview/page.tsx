@@ -5,7 +5,8 @@ import { readHarvestHealth } from "@/lib/pipeline/preflight";
 import { getSchedule } from "@/lib/pipeline/schedule";
 import { DAY_NAMES } from "@/lib/pipeline/schedule-types";
 import { RecentFolders } from "@/components/RecentFolders";
-import { RadarIcon, FolderIcon, SettingsIcon, SearchIcon } from "@/components/icons";
+import { RadarIcon, SettingsIcon } from "@/components/icons";
+import { HeroStats } from "@/components/HeroStats";
 
 /**
  * Orientation page — what this found, and where to go.
@@ -57,11 +58,6 @@ async function getCounts() {
   };
 }
 
-const DESTINATIONS = [
-  { href: "/dashboard", icon: SearchIcon, label: "Run a search" },
-  { href: "/dashboard/all-leads", icon: FolderIcon, label: "All leads" },
-  { href: "/dashboard/settings", icon: SettingsIcon, label: "Settings" },
-];
 
 export default async function OverviewPage() {
   const [{ recent, searches, scanned, icpFit, signals, contacts, spent }, health, schedule] =
@@ -70,18 +66,78 @@ export default async function OverviewPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-7">
-      <header>
-        <div className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gh-navy/[0.06] text-gh-navy">
-            <RadarIcon className="h-4 w-4" />
+      {/* HEADLINE, NOT AN ESSAY.
+          This opened with two sentences describing the ICP and put every
+          number a screen below them. Backwards for a page called Overview: the
+          question on arrival is "where do things stand", the answer is a
+          number, and prose that must be read first is a toll booth. The ICP
+          description now lives where it is actually needed — on the search
+          form, next to the fields that set it. */}
+      <header className="fade-up flex flex-wrap items-end justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <span className="relative flex h-9 w-9 items-center justify-center rounded-xl bg-gh-navy text-white">
+            <RadarIcon className="h-4.5 w-4.5" />
+            {/* Slow halo. The only always-on motion on the page, on the one
+                mark that stands for the product itself. */}
+            <span
+              aria-hidden
+              className="pulse-ring absolute inset-0 rounded-xl border border-gh-sky"
+            />
           </span>
-          <h1 className="font-display text-xl font-semibold text-gh-ink">Overview</h1>
+          <div>
+            <h1 className="font-display text-xl font-semibold leading-none text-gh-ink">
+              Overview
+            </h1>
+            <p className="mt-1 text-[11px] text-gh-ink-muted">
+              {searches > 0
+                ? `${searches} search${searches === 1 ? "" : "es"} run so far`
+                : "Nothing run yet"}
+            </p>
+          </div>
         </div>
-        <p className="mt-2 max-w-xl text-sm leading-relaxed text-gh-ink-secondary">
-          Family-owned landscapers and home builders where the founder is still
-          in the seat and the next generation has already joined.
-        </p>
+
+        {/* No "New search" button here: the Topbar carries one, four inches
+            up and to the right, and two identical primary buttons on one
+            screen makes neither read as the primary. */}
       </header>
+
+      {/* Deliberately NOT the funnel's numbers. The funnel below already shows
+          read -> fit -> signals -> contacts, and repeating three of them up
+          here was the single biggest reason this page felt like noise. These
+          are the four things the funnel structurally cannot say. */}
+      <HeroStats
+        stats={[
+          {
+            label: "Reachable",
+            value: contacts,
+            hint: "leads with an email found",
+            accent: "var(--gh-cat-3)",
+          },
+          {
+            label: "Hit rate",
+            value: rate ?? 0,
+            prefix: "1 in ",
+            hint: rate ? "companies read per signal" : "no signals yet",
+            accent: "var(--gh-cat-2)",
+          },
+          {
+            label: "Spent",
+            value: spent,
+            prefix: "$",
+            decimals: 2,
+            hint: `across ${searches} search${searches === 1 ? "" : "es"}`,
+            accent: "var(--gh-cat-4)",
+          },
+          {
+            label: "Per lead",
+            value: icpFit > 0 ? spent / icpFit : 0,
+            prefix: "$",
+            decimals: 3,
+            hint: "what each one cost",
+            accent: "var(--gh-cat-1)",
+          },
+        ]}
+      />
 
       {/* A scheduled run that could not happen must SAY SO. Without this, a
           harvest blocked on exhausted credit looks identical to a quiet week —
@@ -106,15 +162,9 @@ export default async function OverviewPage() {
           signals={signals}
           contacts={contacts}
         />
-        {/* The one thing the diagram cannot say. */}
-        <p className="mt-3 text-xs leading-relaxed text-gh-ink-secondary">
-          <strong className="font-semibold text-gh-ink">Fit the ICP</strong> is
-          the right kind of company.{" "}
-          <strong className="font-semibold text-gh-ink">Real signal</strong> is
-          a founder and their successor both named, both in charge today
-          {rate ? `, about 1 in ${rate}` : ""}. Rejections are kept with their
-          reason, never deleted.
-        </p>
+        {/* The 90-word explainer that lived here is gone. The funnel shows the
+            shape, the tiles carry the rate, and "1 in 33" says what a
+            paragraph was saying at length. */}
       </section>
 
       {/* What actually happened, not just totals. */}
@@ -159,40 +209,16 @@ export default async function OverviewPage() {
         </div>
       </section>
 
-      <section>
-        <div className="grid gap-3 sm:grid-cols-3">
-          {DESTINATIONS.map(({ href, icon: Icon, label }, i) => (
-            <Link
-              key={href}
-              href={href}
-              className="fade-up hover-spring group flex items-center gap-2.5 rounded-xl border border-gh-border bg-gh-surface px-4 py-3.5 hover:border-gh-sky/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
-              style={{ animationDelay: `${300 + i * 60}ms` }}
-            >
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gh-navy/[0.06] text-gh-navy">
-                <Icon className="h-3.5 w-3.5" />
-              </span>
-              <span className="text-xs font-semibold text-gh-ink group-hover:text-gh-navy">
-                {label}
-              </span>
-            </Link>
-          ))}
-        </div>
-        {/* Spend, stated plainly. Cost PER LEAD is the number that means
-            something — a total is just a number until you know what it bought. */}
-        <p className="mt-2.5 text-[11px] text-gh-ink-muted">
-          {searches.toLocaleString("en-US")} searches run
-          {spent > 0 && (
-            <>
-              {" · "}
-              <span className="tabular font-medium text-gh-ink-secondary">
-                ${spent.toFixed(2)} spent
-              </span>
-              {icpFit > 0 && ` · $${(spent / icpFit).toFixed(3)} per lead`}
-            </>
-          )}
-          .
-        </p>
-      </section>
+      {/* The three quick-link cards that sat here are gone. They were "Run a
+          search", "All leads" and "Settings" — the sidebar, rendered a second
+          time, four inches below the sidebar. So was the spend line under
+          them, which repeated the searches count and the per-lead figure the
+          tiles already carry.
+
+          Seen side by side in a screenshot, this page was saying its numbers
+          three times: tiles, then the funnel, then a footer. Cutting the
+          repeats is what made it visual — not more decoration, less of the
+          same thing. */}
     </div>
   );
 }

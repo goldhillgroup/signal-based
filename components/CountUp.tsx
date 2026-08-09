@@ -17,9 +17,19 @@ import { useEffect, useRef } from "react";
  * Server-rendered output is the final value, so the number is correct with no
  * JS, and correct immediately under prefers-reduced-motion.
  */
-export function CountUp({ value, duration = 900 }: { value: number; duration?: number }) {
+export function CountUp({
+  value,
+  duration = 900,
+  decimals = 0,
+}: {
+  value: number;
+  duration?: number;
+  /** Money needs 2, counts need 0. Without this a spend of $1.89 counts to "2". */
+  decimals?: number;
+}) {
   const ref = useRef<HTMLSpanElement>(null);
-  const fmt = (n: number) => n.toLocaleString("en-US");
+  const fmt = (n: number) =>
+    n.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 
   useEffect(() => {
     const node = ref.current;
@@ -35,12 +45,15 @@ export function CountUp({ value, duration = 900 }: { value: number; duration?: n
       const t = Math.min((now - start) / duration, 1);
       // easeOutExpo — fast start, gentle landing.
       const eased = t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
-      node.textContent = fmt(Math.round(eased * value));
+      // Rounded to the requested precision, not to an integer — rounding to a
+      // whole number here made a $1.89 total tick up as "$1, $1, $2".
+      const f = Math.pow(10, decimals);
+      node.textContent = fmt(Math.round(eased * value * f) / f);
       if (t < 1) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [value, duration]);
+  }, [value, duration, decimals]);
 
   // The rendered value is the FINAL one — the effect animates up to it from 0.
   // That keeps SSR output, no-JS output and reduced-motion output all correct.

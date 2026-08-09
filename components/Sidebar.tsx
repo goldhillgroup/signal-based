@@ -3,7 +3,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { RadarIcon, FolderIcon, SettingsIcon, InboxIcon, UsersIcon } from "./icons";
+import { useSearches } from "@/lib/searches-store";
+import { RadarIcon, FolderIcon, SettingsIcon, GridIcon, UsersIcon } from "./icons";
 import { SignOutButton } from "./SignOutButton";
 
 // Two real destinations — "Crawl Runs" and "Reports" were placeholders from
@@ -30,7 +31,7 @@ import { SignOutButton } from "./SignOutButton";
 // per PERSON, not per company, and it applies across searches, so burying it
 // one folder deep both hid it and made it look like part of searching.
 const NAV_ITEMS = [
-  { label: "Overview", icon: InboxIcon, href: "/dashboard/overview" },
+  { label: "Overview", icon: GridIcon, href: "/dashboard/overview" },
   { label: "Signal Radar", icon: RadarIcon, href: "/dashboard" },
   { label: "Enrichment", icon: UsersIcon, href: "/dashboard/enrichment" },
   { label: "All Leads", icon: FolderIcon, href: "/dashboard/all-leads" },
@@ -39,18 +40,43 @@ const NAV_ITEMS = [
 
 export function Sidebar({ userEmail }: { userEmail: string | null }) {
   const pathname = usePathname();
+  const { folders } = useSearches();
+
+  // Live counts on the nav itself. A sidebar of five identical text rows makes
+  // you open a page to find out whether anything is there; a number next to
+  // "Enrichment" answers "is there work waiting" without the trip. Only shown
+  // when non-zero — a row of zeroes is noise that trains you to ignore the
+  // one time it says something.
+  const readyToEnrich = folders.filter(
+    (f) => f.status === "complete" && f.enrichmentStatus === "idle" &&
+      f.qualifiedCount + f.verifyCount + f.fitOnlyCount > 0
+  ).length;
+  const badges: Record<string, number> = {
+    "/dashboard/all-leads": folders.length,
+    "/dashboard/enrichment": readyToEnrich,
+  };
 
   return (
-    <aside className="hidden h-full w-64 shrink-0 flex-col overflow-hidden bg-gh-navy text-white lg:flex">
-      <div className="flex h-16 items-center gap-2.5 border-b border-white/10 px-5">
-        <Image
-          src="/brand/goldhill-mark.png"
-          alt=""
-          width={28}
-          height={28}
-          className="shrink-0"
+    <aside className="hidden h-full w-64 shrink-0 flex-col overflow-hidden bg-gh-sidebar text-white lg:flex">
+      {/* The brand block, given some weight. It was a logo and two lines of
+          text on a flat field — correct and completely inert. A soft wash of
+          brand colour bleeding from the top corner and a slow halo on the mark
+          give the top of the rail somewhere for the eye to start, without
+          adding anything that has to be read. */}
+      <div className="relative flex h-16 shrink-0 items-center gap-2.5 overflow-hidden border-b border-white/10 px-5">
+        <span
+          aria-hidden
+          className="pointer-events-none absolute -left-10 -top-16 h-32 w-32 rounded-full opacity-25 blur-2xl"
+          style={{ background: "radial-gradient(circle, var(--gh-sky), transparent 70%)" }}
         />
-        <div className="leading-tight">
+        <span className="relative shrink-0">
+          <Image src="/brand/goldhill-mark.png" alt="" width={28} height={28} />
+          <span
+            aria-hidden
+            className="pulse-ring absolute -inset-1 rounded-full border border-gh-sky/50"
+          />
+        </span>
+        <div className="relative leading-tight">
           <p className="font-display text-[13px] font-semibold tracking-wide">
             GOLDHILL GROUP
           </p>
@@ -66,16 +92,43 @@ export function Sidebar({ userEmail }: { userEmail: string | null }) {
           // while on /dashboard/lists/[id] — "All Leads" only lights up on
           // its own exact route.
           const active = pathname === href;
-          const className = `flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-            active
-              ? "bg-white/10 text-white"
-              : "text-white/60 hover:bg-white/5 hover:text-white/90"
-          }`;
+          const badge = badges[href] ?? 0;
           return (
-            <Link key={label} href={href} className={className}>
-              <Icon className="h-4.5 w-4.5" />
-              {label}
-              {active && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-gh-sky" />}
+            <Link
+              key={label}
+              href={href}
+              aria-current={active ? "page" : undefined}
+              className={`group relative flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
+                active
+                  ? "bg-white/10 text-white"
+                  : "text-white/55 hover:bg-white/5 hover:text-white"
+              }`}
+            >
+              {/* A rail on the active item rather than a dot at the far end.
+                  The dot sat past the label where nothing else lives, so the
+                  eye had to travel to find out where it was; a bar on the edge
+                  reads at a glance and survives a long label. */}
+              <span
+                aria-hidden
+                className={`absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-gh-sky transition-all duration-200 ${
+                  active ? "opacity-100" : "opacity-0 group-hover:opacity-40"
+                }`}
+              />
+              <Icon
+                className={`h-4.5 w-4.5 shrink-0 transition-transform duration-200 ${
+                  active ? "scale-110" : "group-hover:scale-110"
+                }`}
+              />
+              <span className="flex-1">{label}</span>
+              {badge > 0 && (
+                <span
+                  className={`tabular rounded-full px-1.5 py-0.5 text-[10px] font-semibold transition-colors ${
+                    active ? "bg-white/20 text-white" : "bg-white/10 text-white/60"
+                  }`}
+                >
+                  {badge}
+                </span>
+              )}
             </Link>
           );
         })}

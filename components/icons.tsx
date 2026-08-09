@@ -124,15 +124,19 @@ export function DotIcon({ className }: IconProps) {
   );
 }
 
+// A real gear ring, not a circle with straight rays. The rays version was
+// indistinguishable from a sun at 16px, which stopped being a stylistic
+// question the moment a light/dark toggle put an actual sun in the same
+// sidebar — two different controls rendering the same glyph.
 export function SettingsIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden>
-      <circle cx="10" cy="10" r="2.6" stroke="currentColor" strokeWidth={base} />
+      <circle cx="10" cy="10" r="2.4" stroke="currentColor" strokeWidth={base} />
       <path
-        d="M10 3v1.6M10 15.4V17M17 10h-1.6M4.6 10H3M14.9 5.1l-1.1 1.1M6.2 13.7l-1.1 1.1M14.9 14.9l-1.1-1.1M6.2 6.2L5.1 5.1"
+        d="M10 2.6l1.1 1.7 2-.3.4 2 1.8.9-.9 1.8.9 1.8-1.8.9-.4 2-2-.3L10 17.4l-1.1-1.7-2 .3-.4-2-1.8-.9.9-1.8-.9-1.8 1.8-.9.4-2 2 .3L10 2.6z"
         stroke="currentColor"
         strokeWidth={base}
-        strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   );
@@ -222,6 +226,18 @@ export function LogOutIcon({ className }: IconProps) {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+    </svg>
+  );
+}
+
+// "Overview" was using the inbox tray, which reads as mail, not as a summary.
+export function GridIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden>
+      <rect x="3" y="3" width="6" height="6" rx="1.4" stroke="currentColor" strokeWidth={base} />
+      <rect x="11" y="3" width="6" height="6" rx="1.4" stroke="currentColor" strokeWidth={base} />
+      <rect x="3" y="11" width="6" height="6" rx="1.4" stroke="currentColor" strokeWidth={base} />
+      <rect x="11" y="11" width="6" height="6" rx="1.4" stroke="currentColor" strokeWidth={base} />
     </svg>
   );
 }

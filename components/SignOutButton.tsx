@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -24,6 +23,9 @@ import { LogOutIcon } from "./icons";
  * problem from the user's side.
  */
 export function SignOutButton({ userEmail }: { userEmail: string | null }) {
+  // userEmail still arrives from the server layout, and is still worth showing
+  // — but as the confirmation's subject line, where it answers "which account
+  // am I about to leave", rather than as a permanent nameplate.
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -47,31 +49,28 @@ export function SignOutButton({ userEmail }: { userEmail: string | null }) {
         onConfirm={handleSignOut}
         onCancel={() => setConfirming(false)}
         body={
-          <p>
-            Any search already running keeps going on the server, and everything
-            found so far is saved. You will need your email and password to get
-            back in.
-          </p>
+          <>
+            <p>
+              Signing out of{" "}
+              <strong className="font-semibold text-gh-ink">
+                {userEmail ?? "this account"}
+              </strong>
+              .
+            </p>
+            <p className="mt-2">
+              Any search already running keeps going on the server, and
+              everything found so far is saved.
+            </p>
+          </>
         }
       />
 
-      <div className="flex items-center gap-3 px-1">
-        <Image
-          src="/brand/jonathan-goldhill.jpg"
-          alt=""
-          width={36}
-          height={36}
-          className="h-9 w-9 shrink-0 rounded-full object-cover ring-2 ring-white/15"
-        />
-        <div className="min-w-0 leading-tight">
-          <p className="truncate text-[13px] font-semibold text-white">Jonathan Goldhill</p>
-          <p className="truncate text-[11px] text-white/50">{userEmail ?? "Founder & Coach"}</p>
-        </div>
-      </div>
-
-      <div className="mt-3">
-        <ThemeToggle />
-      </div>
+      {/* No portrait, no name, no email.
+          A photograph of the client at the foot of his own dashboard tells him
+          something he already knows, and the block cost three lines of vertical
+          space to say it. What belongs at the bottom of a rail is the way out
+          and the way to change how it looks. */}
+      <ThemeToggle />
 
       <button
         type="button"

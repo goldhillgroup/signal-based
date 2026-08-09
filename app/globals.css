@@ -25,6 +25,18 @@
   --gh-navy: #001a57;
   --gh-navy-2: #09276f;
   --gh-navy-3: #0c1f3f;
+
+  /*
+   * The sidebar's own surface, separate from --gh-navy.
+   *
+   * They were the same token, and dark mode broke on it: navy is LIGHTENED in
+   * dark so that buttons and links stay legible on a dark page, which turned
+   * the sidebar — the one place navy is a large surface rather than an accent
+   * — into a bright blue slab glowing next to a near-black app. Splitting the
+   * roles lets the accent get lighter while the surface gets darker, which is
+   * what each one actually needs.
+   */
+  --gh-sidebar: #001a57;
   --gh-sky: #0fa5e1;
   --gh-lime: #b3d137;
   --gh-gold: #fde428;
@@ -94,6 +106,7 @@
     --gh-navy: #2d5bd7;
     --gh-navy-2: #3f6ce8;
     --gh-navy-3: #05070c;
+    --gh-sidebar: #0a0e15;
 
     --gh-seq-100: #142e5f;
     --gh-seq-200: #1b3e80;
@@ -121,6 +134,7 @@
   --gh-navy: #2d5bd7;
   --gh-navy-2: #3f6ce8;
   --gh-navy-3: #05070c;
+  --gh-sidebar: #0a0e15;
 
   --gh-seq-100: #142e5f;
   --gh-seq-200: #1b3e80;
@@ -142,6 +156,7 @@
   --color-gh-ink: var(--gh-ink);
   --color-gh-ink-secondary: var(--gh-ink-secondary);
   --color-gh-ink-muted: var(--gh-ink-muted);
+  --color-gh-sidebar: var(--gh-sidebar);
   --color-gh-navy: var(--gh-navy);
   --color-gh-navy-2: var(--gh-navy-2);
   --color-gh-navy-3: var(--gh-navy-3);
