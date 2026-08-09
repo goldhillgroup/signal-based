@@ -136,9 +136,13 @@ function leadCount(f: SearchFolder): number {
 }
 
 function summarize(f: SearchFolder): string {
-  const parts = [`${f.qualifiedCount} qualified`];
-  if (f.verifyCount > 0) parts.push(`${f.verifyCount} to verify`);
-  if (f.mode !== "signal" && f.fitOnlyCount > 0) parts.push(`${f.fitOnlyCount} ICP fits`);
+  // Same plain two-number story as the folder card: how many leads, and how
+  // many of them carry a signal — not the old qualified / verify / ICP-fit
+  // split.
+  const leads = f.qualifiedCount + f.verifyCount + f.fitOnlyCount;
+  const withSignal = f.qualifiedCount + f.verifyCount;
+  const parts = [`${leads} lead${leads === 1 ? "" : "s"} found`];
+  if (withSignal > 0) parts.push(`${withSignal} with signal`);
   parts.push(`${f.companiesScanned} checked`);
   // The honest footnote: a short result can mean "nothing left out there" or
   // "we ran out of runway", and those are very different facts.

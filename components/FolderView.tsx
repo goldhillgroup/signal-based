@@ -8,17 +8,16 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import {
   getSummaryStats,
   getIndustryBreakdown,
-  getConfidenceBreakdown,
   getDailyTrend,
 } from "@/lib/stats";
-import { INDUSTRY_META, CONFIDENCE_META } from "@/lib/signal-meta";
+import { INDUSTRY_META } from "@/lib/signal-meta";
 import { downloadCompaniesCsv } from "@/lib/csv-export";
 import { StatCard } from "./StatCard";
 import { SignalTrendChart } from "./SignalTrendChart";
 import { BreakdownBars } from "./BreakdownBars";
 import { CompaniesTable } from "./CompaniesTable";
 import { CompanyDrawer } from "./CompanyDrawer";
-import { ArrowLeftIcon, RadarIcon, ZapIcon, InboxIcon, UsersIcon, BuildingIcon, DownloadIcon } from "./icons";
+import { ArrowLeftIcon, RadarIcon, ZapIcon, InboxIcon, UsersIcon, DownloadIcon } from "./icons";
 
 export function FolderView({ folder: folderProp, companies: companiesProp }: { folder: SearchFolder; companies: Company[] }) {
   const { fetchFolder, fetchCompanies, startEnrichment } = useSearches();
@@ -97,18 +96,6 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
         color: INDUSTRY_META[r.key].color,
         count: r.count,
         pct: r.pct,
-      })),
-    [companies]
-  );
-  const confidenceRows = useMemo(
-    () =>
-      getConfidenceBreakdown(companies).map((r) => ({
-        key: r.key,
-        label: CONFIDENCE_META[r.key].label,
-        color: CONFIDENCE_META[r.key].color,
-        count: r.count,
-        pct: r.pct,
-        description: CONFIDENCE_META[r.key].description,
       })),
     [companies]
   );
@@ -244,30 +231,25 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
         </button>
       </div>
 
-      <div className={`grid grid-cols-1 gap-4 sm:grid-cols-2 ${folder.mode === "signal" ? "lg:grid-cols-4" : "lg:grid-cols-5"}`}>
+      {/* Two numbers about the result, then two about the work behind it.
+          "Leads found" is everything this run got; "With a signal" is the
+          subset actually backed by a signal. The old qualified / verify-flagged
+          / fit-only split was three cards saying one thing three ways. */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          label="Qualified"
-          value={stats.qualified}
-          subtext="High or medium confidence"
+          label="Leads found"
+          value={stats.accepted}
+          subtext="Companies this search got you"
           icon={RadarIcon}
           accent="#0b7a0b"
         />
         <StatCard
-          label="Verify-flagged"
-          value={stats.verify}
-          subtext="Borderline, worth a look"
+          label="With a signal"
+          value={stats.qualified + stats.verify}
+          subtext="Backed by a real signal"
           icon={ZapIcon}
           accent="#9a4a1f"
         />
-        {folder.mode !== "signal" && (
-          <StatCard
-            label="Fit only"
-            value={stats.fitOnly}
-            subtext="Fits the ICP, no signal found"
-            icon={BuildingIcon}
-            accent="#3d5a80"
-          />
-        )}
         {/* Was "Rejected / 67 / Cut, kept, and labeled with a reason". Replaced
             rather than deleted: the run's thoroughness is the useful half of
             that number and the rejects themselves are not, so this says how
@@ -283,13 +265,13 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
         <StatCard
           label="Contacts verified"
           value={stats.contactsVerified}
-          subtext={`${stats.contactsFound} found of ${stats.accepted} accepted`}
+          subtext={`${stats.contactsFound} found of ${stats.accepted} leads`}
           icon={UsersIcon}
           accent="#0fa5e1"
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="rounded-xl border border-gh-border bg-gh-surface p-5 lg:col-span-2">
           <div className="mb-4">
             <h2 className="font-display text-sm font-semibold text-gh-ink">
@@ -307,21 +289,11 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
         <div className="rounded-xl border border-gh-border bg-gh-surface p-5">
           <div className="mb-4">
             <h2 className="font-display text-sm font-semibold text-gh-ink">
-              Qualified, by industry
+              Leads by industry
             </h2>
             <p className="text-xs text-gh-ink-muted">Landscaping vs. home builders</p>
           </div>
           <BreakdownBars rows={industryRows} />
-        </div>
-
-        <div className="rounded-xl border border-gh-border bg-gh-surface p-5">
-          <div className="mb-4">
-            <h2 className="font-display text-sm font-semibold text-gh-ink">
-              Qualified, by confidence
-            </h2>
-            <p className="text-xs text-gh-ink-muted">Hover a row for what it means</p>
-          </div>
-          <BreakdownBars rows={confidenceRows} />
         </div>
       </div>
 

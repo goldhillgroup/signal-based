@@ -1,5 +1,4 @@
 import { Company } from "./company";
-import { Confidence } from "./supabase/types";
 
 // A 'filter'/'hybrid' company accepted on ICP fit alone (no signal found) is
 // still status: 'qualified' in the DB (see orchestrator.ts) — confidence:
@@ -38,20 +37,6 @@ export function getIndustryBreakdown(companies: Company[]) {
     { key: "landscaping" as const, count: counts.landscaping, pct: Math.round((counts.landscaping / total) * 100) },
     { key: "home_builder" as const, count: counts.home_builder, pct: Math.round((counts.home_builder / total) * 100) },
   ];
-}
-
-export function getConfidenceBreakdown(companies: Company[]) {
-  const pool = companies.filter((c) => c.status === "qualified" && c.confidence);
-  const counts: Record<Confidence, number> = { high: 0, medium: 0, verify: 0 };
-  pool.forEach((c) => {
-    if (c.confidence) counts[c.confidence] += 1;
-  });
-  const total = pool.length || 1;
-  return (["high", "medium", "verify"] as Confidence[]).map((key) => ({
-    key,
-    count: counts[key],
-    pct: Math.round((counts[key] / total) * 100),
-  }));
 }
 
 // Daily discovery volume (first_seen_at) for the trend chart. firstSeenAt may

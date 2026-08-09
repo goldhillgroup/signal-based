@@ -9,15 +9,17 @@ export function FolderCard({ folder }: { folder: SearchFolder }) {
   const router = useRouter();
   const isRunning = folder.status === "running";
   const isFailed = folder.status === "failed";
-  // Same mode-aware accounting as SearchProgress/orchestrator's
-  // countsTowardTarget() — 'filter'/'hybrid' runs mostly land in
-  // fitOnlyCount, not qualified/verify, so a shortfall check or total that
-  // ignores it would misreport an on-target filter/hybrid run as falling
-  // short.
-  const found =
-    folder.mode === "signal"
-      ? folder.qualifiedCount + folder.verifyCount
-      : folder.qualifiedCount + folder.verifyCount + folder.fitOnlyCount;
+  // Two numbers, plain: how many leads this got, and how many of those carry a
+  // real signal. The old card broke "got" into qualified / verify / fit-only —
+  // three shades of the same idea that made a good run read like an audit.
+  // 'leadsFound' is every accepted company (a 'signal'-mode run has no
+  // fit-only, so the third term is simply zero there); 'withSignal' is the
+  // subset actually backed by a signal.
+  const leadsFound =
+    folder.qualifiedCount + folder.verifyCount + folder.fitOnlyCount;
+  const withSignal = folder.qualifiedCount + folder.verifyCount;
+  // Keep the shortfall/cost math reading the same total the card now shows.
+  const found = leadsFound;
 
   return (
     <button
@@ -48,16 +50,15 @@ export function FolderCard({ folder }: { folder: SearchFolder }) {
           <StatChip value="Failed" label="" color="#a3272a" bg="#fbdcdc" />
         ) : (
           <>
-            <StatChip value={folder.qualifiedCount} label="qualified" color="#0b7a0b" bg="#e2f6e2" />
-            <StatChip value={folder.verifyCount} label="verify" color="#9a4a1f" bg="#fbe4d7" />
-            {folder.mode !== "signal" && (
-              <StatChip value={folder.fitOnlyCount} label="fit only" color="#3d5a80" bg="#e1e9f2" />
+            <StatChip value={leadsFound} label="leads found" color="#0b7a0b" bg="#e2f6e2" />
+            {withSignal > 0 && (
+              <StatChip value={withSignal} label="with signal" color="#9a4a1f" bg="#fbe4d7" />
             )}
             {/* No "rejected" chip. This card is a summary of what he GOT, and
                 the cut count was the widest number on it — a folder reading
-                "1 qualified · 15 fit only · 67 rejected" leads with the 67 and
-                makes a good run look like a bad one. How much was checked lives
-                in the folder itself. */}
+                "1 lead found · 67 rejected" leads with the 67 and makes a good
+                run look like a bad one. How much was checked lives in the
+                folder itself. */}
           </>
         )}
       </div>

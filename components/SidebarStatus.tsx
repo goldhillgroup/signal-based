@@ -12,7 +12,7 @@ import { ZapIcon } from "./icons";
  * the ones that change and that change what you do next:
  *
  *   - is something running RIGHT NOW (so: do not start another)
- *   - how many real signals exist (the payload; the reason the tool exists)
+ *   - how many leads exist so far (the payload; the reason the tool exists)
  *
  * Both are already in the store from the folder list, so this costs no extra
  * query. The running row only appears while something runs, and disappears
@@ -24,7 +24,13 @@ export function SidebarStatus() {
   if (loading) return null;
 
   const running = folders.filter((f) => f.status === "running");
-  const signals = folders.reduce((n, f) => n + f.qualifiedCount + f.verifyCount, 0);
+  // The headline number, matching every card and the folder page: total leads
+  // found across all searches (every accepted company), not the narrower
+  // signal-only count this used to show.
+  const leads = folders.reduce(
+    (n, f) => n + f.qualifiedCount + f.verifyCount + f.fitOnlyCount,
+    0
+  );
 
   return (
     <div className="px-3 pb-3">
@@ -45,19 +51,19 @@ export function SidebarStatus() {
         </Link>
       )}
 
-      {signals > 0 && (
+      {leads > 0 && (
         <div className="rounded-lg border border-white/10 px-3 py-2.5">
           <div className="flex items-center gap-2">
             <ZapIcon className="h-3.5 w-3.5 shrink-0 text-gh-lime" />
             <span className="tabular font-display text-lg font-semibold leading-none text-white">
-              {signals}
+              {leads}
             </span>
             <span className="text-[10px] uppercase tracking-wide text-white/40">
-              signal{signals === 1 ? "" : "s"}
+              lead{leads === 1 ? "" : "s"} found
             </span>
           </div>
           <p className="mt-1.5 text-[10px] leading-snug text-white/35">
-            founder and successor, both confirmed
+            across all your searches
           </p>
         </div>
       )}
