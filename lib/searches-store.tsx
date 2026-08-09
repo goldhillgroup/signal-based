@@ -286,10 +286,25 @@ export function SearchesProvider({ children }: { children: ReactNode }) {
     // fit-only, see orchestrator.ts) belong in the combined view; a
     // rejected candidate from search A shouldn't clutter "all of Jonathan's
     // leads" just because it happened to get scanned.
+    //
+    // search_id NOT NULL is the other half, and it is not optional.
+    // reset-leads.mts empties the dashboard by DETACHING companies rather than
+    // deleting them — that is what preserves cross-search memory, the recheck
+    // schedule and the channel priors, and its whole safety argument is that
+    // "the UI only ever shows leads through a folder, so a company with no
+    // folder is invisible while remaining fully known".
+    //
+    // This query was the one place that was not true. It counted every
+    // qualified row in the database, so All Leads announced "80 leads across 1
+    // folder, open one to see them" while the only folder held 28 and the other
+    // 52 were detached memory with no folder to open. The sidebar and the
+    // folder tile both said 28, because they aggregate folder counts — so the
+    // dashboard disagreed with itself on its headline number.
     const { data, error } = await supabase
       .from("companies")
       .select("*, signal_evidence(*), contacts(*)")
       .eq("status", "qualified")
+      .not("search_id", "is", null)
       .order("last_crawled_at", { ascending: false });
     if (error || !data) return [];
     return bySignalFirst((data as unknown as CompanyJoinRow[]).map(mapCompanyRow));
