@@ -155,6 +155,21 @@ export interface Candidate {
   // per-channel yield table can measure it against the paid ones; it is the
   // only source whose discovery cost is zero.
   channel: "maps" | "web_search" | "directory" | "licensing" | "recheck";
+  /**
+   * Which requested state's search surfaced this candidate.
+   *
+   * The company row used to record `states[0]` for every result — the FIRST
+   * state asked for, regardless of where the business actually is. On a
+   * "California, New York, Texas, Florida" search every lead was labelled
+   * California, including the New York ones, so the state column was not
+   * merely imprecise but wrong, and it made a working multi-state search
+   * impossible to tell apart from a broken one.
+   *
+   * Stamped in discoverCandidates, which is the only place that knows which
+   * state group issued the call. Null for the recheck channel, where the
+   * company already has a state on file worth more than a re-derived guess.
+   */
+  state?: string | null;
 }
 
 export function hostnameOf(url: string): string | null {
@@ -662,7 +677,14 @@ export async function discoverCandidates(params: {
   for (let ch = 0; ch < CHANNELS.length; ch++) {
     const forChannel = groups.map((_, g) => settled[g * CHANNELS.length + ch]);
     const ok = forChannel.filter((r) => r.status === "fulfilled");
-    ok.forEach((r) => raw.push(...(r as PromiseFulfilledResult<Candidate[]>).value));
+    // Stamp the state of the group that issued the call. This is the only
+    // point in the pipeline that still knows it — by the time a candidate
+    // reaches the orchestrator the groups have been merged into one list.
+    forChannel.forEach((r, g) => {
+      if (r.status !== "fulfilled") return;
+      const stateOfGroup = groups[g].length === 1 ? groups[g][0] : null;
+      raw.push(...r.value.map((c) => ({ ...c, state: c.state ?? stateOfGroup })));
+    });
 
     failedEverywhere.push(ok.length === 0);
     if (ok.length === 0) {
@@ -697,7 +719,13 @@ export async function discoverCandidates(params: {
     const host = hostnameOf(r.url);
     if (!host || isBlocked(host) || seen.has(host)) continue;
     seen.add(host);
-    candidates.push({ domain: host, url: r.url, title: r.title || host, channel: r.channel });
+    candidates.push({
+      domain: host,
+      url: r.url,
+      title: r.title || host,
+      channel: r.channel,
+      state: r.state ?? null,
+    });
   }
 
   // NO cut at `limit` here — everything above was already paid for (Maps

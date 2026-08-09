@@ -354,7 +354,7 @@ export async function runSearchPipeline(
       const nowIso2 = new Date().toISOString();
       const { data: due } = await supabase
         .from("companies")
-        .select("domain, source_url")
+        .select("domain, source_url, state")
         .eq("industry", industry)
         .in("state", states)
         .lt("recheck_after", nowIso2)
@@ -369,6 +369,10 @@ export async function runSearchPipeline(
           url: r.source_url ?? `https://${r.domain}`,
           title: "",
           channel: "recheck",
+          // Carry the state already on file. A re-checked company must not
+          // silently change state just because it came back through a search
+          // that happens to list a different one first.
+          state: r.state ?? null,
         });
       }
       recheckSeeded = pending.length;
@@ -563,7 +567,15 @@ export async function runSearchPipeline(
         const base = {
           search_id: searchId,
           domain: candidate.domain,
-          state: states[0] ?? null,
+          // The state whose search actually surfaced this company, not
+          // `states[0]`. That old default labelled every result on a
+          // "California, New York, Texas, Florida" search as California — the
+          // New York ones too. It made the state column wrong rather than
+          // merely vague, and it hid whether a multi-state search was working
+          // at all, because a genuinely broken run and a healthy one produced
+          // identical output. Falls back to states[0] only for candidates that
+          // carry no state of their own (the recheck channel).
+          state: candidate.state ?? states[0] ?? null,
           source_url: page?.url ?? candidate.url,
           discovery_channel: candidate.channel ?? null,
           first_seen_at: new Date().toISOString(),

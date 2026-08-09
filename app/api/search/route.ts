@@ -23,6 +23,19 @@ const VALID_MODES: SearchMode[] = ["signal", "filter", "hybrid"];
 const VALID_STATE_CODES = new Set(US_STATES.map((s) => s.code));
 
 export async function POST(req: Request) {
+  // AUTH FIRST, before the body is even read. It used to sit after all the
+  // parameter validation, so an unauthenticated caller got
+  // "industry must be 'landscaping' or 'home_builder'" — a 400 that quietly
+  // taught them the API's shape and confirmed the endpoint exists. Nothing
+  // about a request should be answered before knowing who is asking.
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
   const body = (await req.json().catch(() => ({}))) as {
     industry?: string;
     state?: string;
@@ -70,14 +83,6 @@ export async function POST(req: Request) {
     Math.max(Math.round(body.targetSignals ?? 20), MIN_TARGET),
     MAX_TARGET
   );
-
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  }
 
   // Refuse BEFORE creating the folder. A search that starts without enough
   // credit to finish produces a half-populated folder that looks like a real
