@@ -212,6 +212,7 @@ interface SearchesContextValue {
   }) => Promise<{ id: string; label: string }>;
   startEnrichment: (searchId: string, scope?: "signals" | "all") => Promise<void>;
   deleteSearch: (searchId: string) => Promise<void>;
+  renameSearch: (searchId: string, label: string) => Promise<void>;
 }
 
 const SearchesContext = createContext<SearchesContextValue | null>(null);
@@ -330,6 +331,27 @@ export function SearchesProvider({ children }: { children: ReactNode }) {
     [refreshFolders]
   );
 
+  const renameSearch = useCallback(
+    async (searchId: string, label: string) => {
+      // Optimistic: the new name is on screen before the round trip, because a
+      // rename that visibly lags reads as a rename that failed and invites a
+      // second attempt. Reconciled by refreshFolders below.
+      setFolders((prev) => prev.map((f) => (f.id === searchId ? { ...f, label } : f)));
+      const res = await fetch(`/api/search/${searchId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        await refreshFolders(); // put the old name back
+        throw new Error(body?.error ?? "Could not rename this folder.");
+      }
+      await refreshFolders();
+    },
+    [refreshFolders]
+  );
+
   const deleteSearch = useCallback(
     async (searchId: string) => {
       const res = await fetch(`/api/search/${searchId}`, { method: "DELETE" });
@@ -357,8 +379,9 @@ export function SearchesProvider({ children }: { children: ReactNode }) {
       createSearch,
       startEnrichment,
       deleteSearch,
+      renameSearch,
     }),
-    [folders, loading, refreshFolders, getFolder, fetchFolder, fetchCompanies, fetchAllCompanies, createSearch, startEnrichment, deleteSearch]
+    [folders, loading, refreshFolders, getFolder, fetchFolder, fetchCompanies, fetchAllCompanies, createSearch, startEnrichment, deleteSearch, renameSearch]
   );
 
   return <SearchesContext.Provider value={value}>{children}</SearchesContext.Provider>;

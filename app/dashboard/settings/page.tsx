@@ -1,6 +1,5 @@
 import { getSetting, SETTINGS_KEYS } from "@/lib/settings";
 import { SettingsForm } from "@/components/SettingsForm";
-import { VendorUsage } from "@/components/VendorUsage";
 import { WeeklySchedule } from "@/components/WeeklySchedule";
 import { getSchedule } from "@/lib/pipeline/schedule";
 
@@ -49,26 +48,26 @@ export default async function SettingsPage() {
       <div>
         <h1 className="font-display text-2xl font-semibold text-gh-ink">Settings</h1>
         <p className="mt-1 text-sm text-gh-ink-secondary">
-          What each vendor has left, and the keys the search pipeline uses to
-          get there.
+          Everything the pipeline needs to keep running, in one place.
         </p>
       </div>
-
-      {/* Usage first, keys second. Keys get edited maybe once a month; "can I
-          run another search today?" is the question this page actually gets
-          opened for. */}
-      <VendorUsage />
 
       {/* Above the keys: switching the schedule on is the decision that
           changes what this system spends, and it is the only control here
           that acts on its own. */}
       <WeeklySchedule initial={schedule} cronConfigured={Boolean(process.env.CRON_SECRET)} />
 
+      {/* ONE list, not two. Balances and keys were separate sections on this
+          page, so "Apify is empty, where do I paste the new token" meant
+          scrolling between two lists that never referred to each other. Each
+          vendor is now a single card: what it does, what it has left, and the
+          field that fixes it. */}
       <section>
-        <h2 className="font-display text-lg font-semibold text-gh-ink">API keys</h2>
+        <h2 className="font-display text-lg font-semibold text-gh-ink">Vendors</h2>
         <p className="mt-0.5 mb-3 text-sm text-gh-ink-secondary">
-          Saved here take effect on the very next search, no redeploy needed.
-          Leave a field blank to keep whatever&apos;s already set.
+          What each one has left, and the key it uses. A key saved here takes
+          effect on the very next search, no redeploy. Leave a field blank to
+          keep whatever is already set.
         </p>
         <SettingsForm rows={rows} />
       </section>

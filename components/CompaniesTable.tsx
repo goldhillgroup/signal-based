@@ -256,6 +256,10 @@ export function CompaniesTable({
                 )}
               </div>
             )}
+            {/* No cap here on purpose. This is the working list — he is
+                looking for a specific company, and a hidden tail is a lead he
+                cannot find. Only the Overview trims, because that page is a
+                summary and a summary that never ends is not one. */}
             <div className="space-y-2.5">
               {g.rows.map((c, i) => (
                 <div key={c.id} style={{ animationDelay: `${Math.min(i, 12) * 40}ms` }}>

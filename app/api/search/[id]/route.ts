@@ -70,3 +70,53 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
 
   return NextResponse.json({ id, label: search.label, companiesDeleted: companyCount ?? 0 });
 }
+
+/**
+ * Rename a folder.
+ *
+ * The label is generated from the structured inputs ("Landscaping companies in
+ * Texas"), which is a fine default and a poor name for work. Once there are a
+ * dozen folders the useful name is his, not the generator's — "Houston round 2",
+ * "for the Tuesday call" — and the label is the only thing distinguishing one
+ * folder from another in the list.
+ *
+ * The QUERY is deliberately not touched. That is the record of what was
+ * actually searched, and it is what a re-run would repeat; letting a rename
+ * rewrite it would make the folder claim to be something it is not.
+ */
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  const body = (await req.json().catch(() => ({}))) as { label?: string };
+  const label = (body.label ?? "").trim();
+
+  if (!label) {
+    return NextResponse.json({ error: "A folder needs a name." }, { status: 400 });
+  }
+  // Long enough for a real sentence, short enough that the list stays readable
+  // and one pasted paragraph cannot wreck every card's layout.
+  if (label.length > 120) {
+    return NextResponse.json({ error: "Keep the name under 120 characters." }, { status: 400 });
+  }
+
+  const service = createServiceRoleClient();
+  const { data, error } = await service
+    .from("searches")
+    .update({ label })
+    .eq("id", id)
+    .select("id, label")
+    .single();
+
+  if (error || !data) {
+    return NextResponse.json({ error: "That search no longer exists." }, { status: 404 });
+  }
+  return NextResponse.json(data);
+}

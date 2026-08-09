@@ -56,6 +56,81 @@
   --foreground: var(--gh-ink);
 }
 
+/*
+ * DARK MODE.
+ *
+ * Only the tokens are redefined; not one component knows this exists. That is
+ * the whole reason the palette was built as variables, and it is why this is a
+ * short block rather than a rewrite.
+ *
+ * Three states, in the order they must resolve:
+ *   1. no attribute      -> follow the operating system (the block below)
+ *   2. data-theme="light" -> stay light even if the OS is dark
+ *   3. data-theme="dark"  -> go dark even if the OS is light
+ * The media query is guarded on :not([data-theme="light"]) so an explicit
+ * light choice wins over a dark OS, which it otherwise would not.
+ *
+ * Surfaces are near-black rather than pure black, and lift as they come
+ * forward (page < surface < sunken), because a flat black loses the depth the
+ * whole layout is built on. Brand navy is LIGHTENED here — #001a57 on a dark
+ * page is a hole, not a colour — while sky and the status colours are kept,
+ * since they are already legible on both grounds and re-tuning them would make
+ * "critical" mean two different reds.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --gh-page: #0d1117;
+    --gh-surface: #161b22;
+    --gh-surface-sunken: #1c2230;
+    --gh-border: #2a3140;
+    --gh-border-strong: #3b4455;
+
+    --gh-ink: #e8ecf3;
+    --gh-ink-secondary: #a4b0c2;
+    --gh-ink-muted: #7a8699;
+
+    --gh-navy: #2d5bd7;
+    --gh-navy-2: #3f6ce8;
+    --gh-navy-3: #05070c;
+
+    --gh-seq-100: #142e5f;
+    --gh-seq-200: #1b3e80;
+    --gh-seq-300: #2451a4;
+    --gh-seq-400: #5488d3;
+    --gh-seq-500: #86ace3;
+    --gh-seq-600: #b9cdef;
+    --gh-seq-700: #dce6f7;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --gh-page: #0d1117;
+  --gh-surface: #161b22;
+  --gh-surface-sunken: #1c2230;
+  --gh-border: #2a3140;
+  --gh-border-strong: #3b4455;
+
+  --gh-ink: #e8ecf3;
+  --gh-ink-secondary: #a4b0c2;
+  --gh-ink-muted: #7a8699;
+
+  --gh-navy: #2d5bd7;
+  --gh-navy-2: #3f6ce8;
+  --gh-navy-3: #05070c;
+
+  --gh-seq-100: #142e5f;
+  --gh-seq-200: #1b3e80;
+  --gh-seq-300: #2451a4;
+  --gh-seq-400: #5488d3;
+  --gh-seq-500: #86ace3;
+  --gh-seq-600: #b9cdef;
+  --gh-seq-700: #dce6f7;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

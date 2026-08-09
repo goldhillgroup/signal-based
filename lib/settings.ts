@@ -84,11 +84,24 @@ export interface SettingKeyMeta {
   link: string | null;
   linkLabel?: string;
   advanced?: boolean;
+  /**
+   * The vendor-usage card this key belongs to (see lib/vendor-usage.ts).
+   *
+   * Balance and key used to be two separate lists on the same page — "what is
+   * left" at the top, "what the key is" at the bottom — so answering "Apify is
+   * empty, where do I paste the new token" meant scrolling between two places
+   * that never named each other. Joined by this, one card per vendor says what
+   * it does, what it has left, and where the key goes.
+   *
+   * Absent for the model overrides: a model is not a vendor and has no balance.
+   */
+  usageId?: string;
 }
 
 export const SETTINGS_KEYS: readonly SettingKeyMeta[] = [
   {
     key: "OPENROUTER_API_KEY",
+    usageId: "openrouter-1",
     label: "OpenRouter",
     envFallback: "OPENROUTER_API_KEY",
     what: "Reads every company page and decides whether it shows a real succession signal. Nothing works without this one.",
@@ -98,6 +111,7 @@ export const SETTINGS_KEYS: readonly SettingKeyMeta[] = [
   },
   {
     key: "APIFY_TOKEN",
+    usageId: "apify-1",
     label: "Apify",
     envFallback: "APIFY_TOKEN",
     what: "Finds companies through Google Maps and web search, and fetches pages other methods cannot reach.",
@@ -107,6 +121,7 @@ export const SETTINGS_KEYS: readonly SettingKeyMeta[] = [
   },
   {
     key: "TAVILY_API_KEY",
+    usageId: "tavily",
     label: "Tavily",
     envFallback: "TAVILY_API_KEY",
     what: "Finds the industry directories and association member lists that companies are listed on.",
@@ -116,6 +131,7 @@ export const SETTINGS_KEYS: readonly SettingKeyMeta[] = [
   },
   {
     key: "FIRECRAWL_API_KEY",
+    usageId: "firecrawl",
     label: "Firecrawl",
     envFallback: "FIRECRAWL_API_KEY",
     what: "Reads pages that only render with JavaScript, which a plain fetch sees as empty.",
@@ -125,6 +141,7 @@ export const SETTINGS_KEYS: readonly SettingKeyMeta[] = [
   },
   {
     key: "ANYMAILFINDER_API_KEY",
+    usageId: "anymailfinder",
     label: "Anymailfinder",
     envFallback: "ANYMAILFINDER_API_KEY",
     what: "Finds an email address for the person behind a company. Only runs when you press Find emails.",
@@ -134,6 +151,7 @@ export const SETTINGS_KEYS: readonly SettingKeyMeta[] = [
   },
   {
     key: "MILLIONVERIFIER_API_KEY",
+    usageId: "millionverifier",
     label: "MillionVerifier",
     envFallback: "MILLIONVERIFIER_API_KEY",
     what: "Checks a found email is deliverable before it reaches your list.",
@@ -143,6 +161,7 @@ export const SETTINGS_KEYS: readonly SettingKeyMeta[] = [
   },
   {
     key: "APIFY_TOKEN_4",
+    usageId: "apify-4",
     label: "Apify: second account",
     envFallback: "APIFY_TOKEN_4",
     what: "An optional second Apify account, used before the main one. Leave blank unless you are deliberately keeping spend off the primary.",
