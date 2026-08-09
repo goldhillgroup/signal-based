@@ -157,7 +157,7 @@ const QUESTION_BUILDERS: Record<
     ],
     skipLabel: `Use ${labelFor(d.industry)}`,
   }),
-  states: (d) => ({
+  states: () => ({
     field: "states",
     question: "Where should I look?",
     options: [

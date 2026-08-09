@@ -507,15 +507,16 @@ async function discoverViaMaps(
   industry: Industry | null,
   states: string[],
   limit: number,
-  round: number,
-  share = 1
+  round: number
 ): Promise<Candidate[]> {
   const allTerms = searchTermsFor(industry);
   const locationQuery = locationForRound(states, round);
 
-  // The round budget, divided by however many states are being covered in
-  // parallel (see `share` in discoverCandidates). Searching four states must
-  // cost about what searching one costs, not four times as much.
+  // The round budget, already divided by however many states are covered in
+  // parallel — `limit` arrives as perGroupLimit, so searching four states costs
+  // about what searching one costs rather than four times as much. (There was a
+  // separate `share` parameter doing this second; it was always passed 1 and
+  // never read, because the division had moved into the caller.)
   // Never buy more than this call could feed to the reader. `limit` is the
   // round's per-group share of ROUND_SIZE, so this is the actual ceiling on
   // how many of these places can be classified before the run moves on.
@@ -869,7 +870,7 @@ export async function discoverCandidates(params: {
       // low-yield backstop channel needs. share is 1 because this call now
       // owns the entire budget rather than a slice of it.
       g === mapsGroup
-        ? discoverViaMaps(industry, group, perGroupLimit, round, 1)
+        ? discoverViaMaps(industry, group, perGroupLimit, round)
         : Promise.resolve([] as Candidate[]),
     ])
   );

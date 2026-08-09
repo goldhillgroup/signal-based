@@ -94,16 +94,50 @@ function crewsOf(v: string): "own_crews" | "subcontract" | "mixed" | null {
   return null;
 }
 
-const existing = new Set<string>();
+// Domain -> what the DATABASE currently believes about it. Presence alone is
+// not enough: the point of reconciling is comparing the two verdicts.
+const existing = new Map<string, { id: string; status: string; reason: string | null }>();
 for (let from = 0; ; from += 1000) {
-  const { data } = await sb.from("companies").select("domain").range(from, from + 999);
+  const { data } = await sb
+    .from("companies")
+    .select("id, domain, status, rejection_reason")
+    .range(from, from + 999);
   if (!data || data.length === 0) break;
-  data.forEach((d) => d.domain && existing.add(d.domain));
+  data.forEach((d) => {
+    if (d.domain) existing.set(d.domain, { id: d.id, status: d.status, reason: d.rejection_reason });
+  });
   if (data.length < 1000) break;
 }
 
 const fresh = rows.filter((r) => r.domain && !existing.has(r.domain));
 const skipped = rows.length - fresh.length;
+
+/**
+ * Domains the crawler reached first, where its verdict CONTRADICTS the audit.
+ *
+ * The old rule was "skip anything already present", which silently ranked the
+ * machine above the person — in a script whose own header calls the audit "the
+ * acceptance benchmark for the crawler". Five of the 72 had been reached by a
+ * crawler run, and four of those the auditor had REJECTED were sitting in the
+ * database as qualified leads.
+ *
+ * Only this direction is reconciled. Audit says rejected + database says lead
+ * is the case that puts a company Jonathan personally threw out back on his
+ * call list. The reverse — audit accepted it, the crawler cut it — is left
+ * alone deliberately: the crawler reads the live site and the audit is a
+ * snapshot, so a fresh rejection there is usually new information.
+ */
+const contradicted = rows.filter((r) => {
+  if (!r.domain) return false;
+  const db = existing.get(r.domain);
+  if (db === undefined || r.verdict !== "REJECTED") return false;
+  // Wrong verdict, OR the right verdict stored as a RAW AUDIT CODE. The codes
+  // ("no_founder_and_nextgen") are the JSON's internal vocabulary; the UI
+  // groups rejections by matching prose, and shows the reason verbatim on the
+  // card, so a raw code both falls through to "Other" and gets printed at the
+  // client. REJECTION_TEXT is the prose, and it belongs on every row.
+  return db.status !== "rejected" || (db.reason !== null && db.reason in REJECTION_TEXT);
+});
 
 const counts = { qualified: 0, verify: 0, rejected: 0 };
 for (const r of fresh) {
@@ -115,8 +149,43 @@ for (const r of fresh) {
 console.log(`${rows.length} audited companies, ${skipped} already present, ${fresh.length} to add`);
 console.log(`  ${counts.qualified} qualified · ${counts.verify} needs a check · ${counts.rejected} rejected`);
 
+if (contradicted.length > 0) {
+  console.log(`\n${contradicted.length} already in the database as a LEAD that the audit rejected:`);
+  for (const r of contradicted) {
+    console.log(`  ${r.company || r.domain}  (${r.domain}) — audit: REJECTED, db: ${existing.get(r.domain)!.status}`);
+  }
+  console.log("  these will be corrected to match the audit");
+}
+
 if (!write) {
   console.log("\nDry run. Nothing written. Re-run with --write to insert.");
+  process.exit(0);
+}
+
+// Correct the contradictions BEFORE inserting, so a failure here cannot leave
+// the run half-applied with new rows added and old ones still wrong.
+for (const r of contradicted) {
+  const db = existing.get(r.domain)!;
+  const { error } = await sb
+    .from("companies")
+    .update({
+      status: "rejected",
+      rejection_reason:
+        REJECTION_TEXT[r.reject_reason] ??
+        db.reason ??
+        "Cut by the hand audit.",
+    })
+    .eq("id", db.id);
+  if (error) console.warn(`  could not correct ${r.domain}: ${error.message}`);
+}
+if (contradicted.length > 0) console.log(`corrected ${contradicted.length} to match the audit`);
+
+// Nothing to insert means nothing to put in a folder. Without this guard a
+// reconcile-only run (every domain already present, which is the normal case
+// once seeded) still created an empty "Hand-audited proof list" beside the real
+// one — a dead card on his dashboard for every re-run.
+if (fresh.length === 0) {
+  console.log("\nNothing new to insert.");
   process.exit(0);
 }
 

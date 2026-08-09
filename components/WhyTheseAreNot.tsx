@@ -39,7 +39,12 @@ function groupReason(reason: string | null): string {
     return "Not a real trading company";
   if (/outside the|not a landscaping|wrong industry|supplier|hvac|roofing|plumbing/i.test(r))
     return "Wrong trade";
-  if (/could not be fetched|404|not found|empty|no content|placeholder/i.test(r))
+  // "could BE fetched", not "could NOT be" — the pipeline writes "No
+  // About/Team/Leadership page could be fetched from this domain", carrying the
+  // negation in the leading "No". The old pattern required the word "not"
+  // inside the phrase, so the single most common fetch failure fell through to
+  // "Other" and the bucket built for it only ever caught the thin-page variant.
+  if (/could(?: not)? be fetched|404|not found|empty|no content|placeholder/i.test(r))
     return "Site could not be read";
   return "Other";
 }
@@ -48,6 +53,13 @@ export function WhyTheseAreNot({ searchId, count }: { searchId: string; count: n
   const { fetchRejected } = useSearches();
   const [open, setOpen] = useState(false);
   const [rejected, setRejected] = useState<Company[]>([]);
+  // Whether the fetch has COME BACK, which is a different question from
+  // whether it returned anything. fetchRejected swallows its error and returns
+  // [], and the header only renders at all when count > 0 — so an empty array
+  // after a completed fetch means the query failed. Without this distinction
+  // the panel sat on the word "Loading…" forever against a promised count of
+  // 39, with nothing to say the request was over.
+  const [settled, setSettled] = useState(false);
 
   // Fetched only when it is opened, and only once. These rows are excluded
   // from every lead view by design, so loading them up front would mean a
@@ -56,7 +68,12 @@ export function WhyTheseAreNot({ searchId, count }: { searchId: string; count: n
     if (!open || rejected.length > 0) return;
     let cancelled = false;
     fetchRejected(searchId).then((r) => {
-      if (!cancelled) setRejected(r);
+      if (cancelled) return;
+      setRejected(r);
+      // Set here rather than in the effect body: a synchronous setState during
+      // an effect costs a second render pass, and this is the moment the answer
+      // actually arrives.
+      setSettled(true);
     });
     return () => {
       cancelled = true;
@@ -77,7 +94,12 @@ export function WhyTheseAreNot({ searchId, count }: { searchId: string; count: n
     <section className="rounded-xl border border-gh-border bg-gh-surface">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          // Reopening after a failure should read as "Loading…" again rather
+          // than showing the previous failure while the retry is in flight.
+          if (!open) setSettled(false);
+          setOpen(!open);
+        }}
         aria-expanded={open}
         className="flex w-full cursor-pointer items-start gap-3 p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 sm:p-5"
       >
@@ -109,8 +131,22 @@ export function WhyTheseAreNot({ searchId, count }: { searchId: string; count: n
       <div className="gh-collapse" data-open={open ? "true" : "false"} inert={!open}>
         <div>
           <div className="space-y-4 border-t border-gh-border p-4 sm:p-5">
-          {rejected.length === 0 && (
+          {rejected.length === 0 && !settled && (
             <p className="text-xs text-gh-ink-muted">Loading…</p>
+          )}
+          {rejected.length === 0 && settled && (
+            // Collapsing and reopening re-runs the effect, so the button is a
+            // real retry rather than just an apology.
+            <p className="text-xs text-gh-ink-muted">
+              Could not load these right now.{" "}
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="cursor-pointer font-semibold text-gh-sky underline-offset-2 hover:underline"
+              >
+                Close and try again
+              </button>
+            </p>
           )}
           {ordered.map(([reason, list]) => (
             <div key={reason}>

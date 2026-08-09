@@ -118,8 +118,12 @@ export async function GET(req: Request) {
         status: "running",
         mode: schedule.mode,
         target_signals: schedule.targetPerRun,
-        revenue_min_musd: null,
-        revenue_max_musd: null,
+        // The REAL band, not null. runSearchPipeline below is already passed
+        // schedule.revenueMinMusd/MaxMusd, so hardcoding null here recorded the
+        // run as unbounded while it ran bounded — which makes a correctly
+        // applied band look like it was never set when anyone checks later.
+        revenue_min_musd: schedule.revenueMinMusd,
+        revenue_max_musd: schedule.revenueMaxMusd,
         created_by: null, // no user, this run belongs to the schedule
       })
       .select("id, label")
