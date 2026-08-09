@@ -231,7 +231,18 @@ export function SearchesProvider({ children }: { children: ReactNode }) {
     setLoading(false);
   }, [supabase]);
 
+  // Load once on mount. The rule this silences is about setState called
+  // SYNCHRONOUSLY in an effect body causing a cascading render; refreshFolders
+  // is async and every setState inside it happens after an await, in a later
+  // tick, which is the "subscribe to an external system and set state in a
+  // callback" shape the rule explicitly allows. The linter cannot see through
+  // the indirection to know that.
+  //
+  // The alternatives are worse: fetching during render is not allowed, and a
+  // Suspense-based read would make the whole dashboard shell wait on a query
+  // that only some of it needs.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     refreshFolders();
   }, [refreshFolders]);
 

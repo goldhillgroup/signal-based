@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useState } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -19,11 +19,13 @@ function LoginForm() {
   const [resetSent, setResetSent] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
 
-  useEffect(() => {
-    if (params.get("error") === "auth") {
-      setError("Your session expired. Please sign in again.");
-    }
-  }, [params]);
+  // DERIVED, not synced. This was an effect that called setError when the URL
+  // carried ?error=auth — a value copied out of one source of truth into
+  // another, which is the exact case React's own guidance says not to use an
+  // effect for. Reading it during render also fixes a real bug: the effect
+  // version could not be dismissed, because any setError("") was immediately
+  // overwritten on the next render.
+  const sessionExpired = params.get("error") === "auth";
 
   if (!isSupabaseConfigured) {
     return <SupabaseNotConfigured />;
@@ -128,7 +130,13 @@ function LoginForm() {
               />
             </div>
 
-            {error && <p className="text-xs font-medium text-gh-critical">{error}</p>}
+            {/* A submit error wins over the session-expired notice: if he has
+                just tried and failed, that is the more useful sentence. */}
+            {(error || sessionExpired) && (
+              <p className="text-xs font-medium text-gh-critical">
+                {error || "Your session expired. Please sign in again."}
+              </p>
+            )}
 
             <button
               type="submit"

@@ -8,20 +8,25 @@
  * asserting something about a family that may not be true.
  */
 import { toLead, signalTypeOf, scoreFactors, SIGNAL_TYPE_META } from "./lib/lead-signal.js";
+import type { Company, Evidence, Contact } from "./lib/company.js";
+import type { Confidence } from "./lib/supabase/types.js";
 import { explainFit } from "./lib/fit-explanation.js";
 
 const base = {
   id: "1", domain: "acme.com", name: "Acme Landscaping", industry: "landscaping" as const,
   state: "CA", city: "San Diego", revenueBand: "$3-8M (est.)", employeeBand: "10-50",
-  status: "qualified" as const, confidence: null as any, rejectionReason: null,
+  status: "qualified" as const, confidence: null as Confidence | null, rejectionReason: null,
   founderName: null as string | null, founderTitle: null as string | null,
   nextGenName: null as string | null, nextGenTitle: null as string | null,
   sourceUrl: "https://acme.com/about", hasSignal: false as boolean | null,
   discoveryChannel: "web_search", operatingModel: "own_crews",
   firstSeenAt: "2026-08-01T10:00:00Z", lastCrawledAt: "2026-08-09T10:00:00Z",
-  evidence: null as any, contact: null as any,
+  evidence: null as Evidence | null, contact: null as Contact | null,
 };
-const make = (o: Partial<typeof base>) => ({ ...base, ...o }) as any;
+// Typed as Company rather than `any`: these fixtures are the only place the
+// shape is asserted by hand, so a field renamed in the real type should break
+// the test rather than silently pass.
+const make = (o: Partial<Company>): Company => ({ ...base, ...o }) as Company;
 
 let pass = 0;
 const fails: string[] = [];
@@ -51,7 +56,7 @@ ok("a fit-only lead claims no signal", /No succession signal/.test(fitText));
 
 // ── scores are ordered the way the leads are valuable ─────────────────────
 const strong = make({ hasSignal: true, confidence: "high", nextGenName: "Sean",
-  evidence: { quote: "joined by his son Sean", sourceUrl: "https://acme.com/about", pageType: "about", disproveNotes: null },
+  evidence: { quote: "joined by his son Sean", sourceUrl: "https://acme.com/about", pageType: "about", disproveNotes: undefined },
   contact: { name: "Sean", nameInferred: false, title: "VP", email: "sean@acme.com", findStatus: "found", verificationStatus: "valid" } });
 const weak = make({ hasSignal: false });
 ok("a confirmed, contactable pair outscores a bare fit", scoreFactors(strong).score > scoreFactors(weak).score);

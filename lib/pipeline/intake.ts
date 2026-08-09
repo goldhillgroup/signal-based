@@ -21,7 +21,7 @@
  */
 
 import { chat, extractJson, getExtractModel } from "./openrouter";
-import { US_STATES, AGREED_STATES, stateNameFor } from "./us-states";
+import { AGREED_STATES, stateNameFor } from "./us-states";
 import type { Industry, SearchMode } from "../supabase/types";
 import {
   VALID_STATE_CODES,
