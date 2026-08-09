@@ -1,7 +1,7 @@
 import type { Industry } from "../supabase/types";
 import { stateNameFor } from "./us-states";
 import { chat, extractJson, getExtractModel } from "./openrouter";
-import { tavilySearch } from "./tavily";
+import { tavilySearch, takeTavilyFailure } from "./tavily";
 import { firecrawlScrape } from "./firecrawl";
 import { hostnameOf, isBlocked, fetchSingleUrl, decodeEntities, type Candidate } from "./apify";
 import { createServiceRoleClient } from "../supabase/server";
@@ -131,7 +131,23 @@ interface DirectoryResult {
 // separately again.
 async function searchOneAngle(angle: string, stateName: string): Promise<DirectoryResult> {
   const results = await tavilySearch(`${angle} in ${stateName}, USA`, { maxResults: 6 });
-  if (results.length === 0) return { sourceUrl: null, companies: [] };
+  if (results.length === 0) {
+    // Distinguish "searched, found nothing" from "could not search". The second
+    // means this channel is dark and the run must say so — reported by throwing,
+    // which discoverCandidates turns into a channel error on the search row
+    // rather than a quietly smaller result set.
+    const why = takeTavilyFailure();
+    if (why) {
+      throw new Error(
+        why === "no_key"
+          ? "Directory search is unavailable: no Tavily key is configured."
+          : why === "rate_limited"
+            ? "Directory search is unavailable: Tavily is rate-limited or out of credit."
+            : "Directory search is unavailable: Tavily could not be reached."
+      );
+    }
+    return { sourceUrl: null, companies: [] };
+  }
 
   // Drop the aggregators BEFORE taking the top 4, not inside the loop. Blocked
   // hosts used to burn a read attempt each, and they cluster: on the real NC

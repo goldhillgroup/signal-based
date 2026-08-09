@@ -38,12 +38,40 @@ export interface TavilyResult {
  * no way to tell whether Tavily had answered at all. Never do that again — a
  * failed lookup costs a whole directory angle for that search.
  */
+/**
+ * Why the last search returned nothing, when it returned nothing.
+ *
+ * "Tavily searched and found no directory" and "Tavily could not be reached"
+ * are the same empty array to the caller, and they mean opposite things: the
+ * first is a fact about Georgia, the second is a fact about our account. With
+ * no way to tell them apart the directory channel could go completely dark —
+ * out of credit, revoked key, an outage — and the run would simply report
+ * fewer companies, with nothing anywhere saying a whole channel never looked.
+ *
+ * Firecrawl cannot cover this. It RENDERS a page once you know its URL; it
+ * does not SEARCH. Tavily is the only thing that answers "which page lists
+ * these companies", so when it is down that channel has no fallback and the
+ * only honest response is to say so.
+ */
+export type TavilyFailure = "no_key" | "unreachable" | "rate_limited" | null;
+let lastFailure: TavilyFailure = null;
+
+/** Reads and clears the reason the most recent search failed, if it did. */
+export function takeTavilyFailure(): TavilyFailure {
+  const f = lastFailure;
+  lastFailure = null;
+  return f;
+}
+
 export async function tavilySearch(
   query: string,
   opts: { maxResults?: number; depth?: "basic" | "advanced"; includeRaw?: boolean } = {}
 ): Promise<TavilyResult[]> {
   const key = await getTavilyKey();
-  if (!key) return [];
+  if (!key) {
+    lastFailure = "no_key";
+    return [];
+  }
 
   const body = JSON.stringify({
     query,
@@ -88,6 +116,7 @@ export async function tavilySearch(
     }
 
     if (res?.ok) {
+      lastFailure = null;
       // Meter only a response that actually came back — the counter is meant
       // to answer "what did this run BUY", and an attempt that 4xx'd or timed
       // out bought nothing. Recording before the fetch inflated every run's
@@ -108,6 +137,7 @@ export async function tavilySearch(
       continue;
     }
 
+    lastFailure = res && (res.status === 429 || res.status === 402) ? "rate_limited" : "unreachable";
     if (res) {
       const errBody = await res.text().catch(() => "");
       console.warn(
