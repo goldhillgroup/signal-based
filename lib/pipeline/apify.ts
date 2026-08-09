@@ -310,6 +310,13 @@ function isListicleTitle(title: string | undefined): boolean {
 // candidates, and Maps is one of three channels supplying them.
 const MAPS_PLACES_PER_ROUND = 30;
 
+/**
+ * Fewest places worth buying for one trade term. Below this a query returns
+ * too little to be worth its own actor run, so a tight budget spends on FEWER
+ * terms rather than on all of them shallowly.
+ */
+const PER_TERM_MIN = 5;
+
 // Rotating the LOCATION each round is what replaces scraping deeper. A
 // different metro returns genuinely different businesses at the same cost,
 // where a bigger `maxCrawledPlacesPerSearch` on the same query just re-buys
@@ -351,14 +358,34 @@ async function discoverViaMaps(
   industry: Industry | null,
   states: string[],
   limit: number,
-  round: number
+  round: number,
+  share = 1
 ): Promise<Candidate[]> {
-  const searchTerms = searchTermsFor(industry);
+  const allTerms = searchTermsFor(industry);
   const locationQuery = locationForRound(states, round);
-  // Split the flat round budget across however many trade terms there are,
-  // rather than a fixed count per term — which silently multiplied cost every
-  // time a term was added. Widening trade coverage stays free.
-  const perTerm = Math.max(5, Math.floor(MAPS_PLACES_PER_ROUND / searchTerms.length));
+
+  // The round budget, divided by however many states are being covered in
+  // parallel (see `share` in discoverCandidates). Searching four states must
+  // cost about what searching one costs, not four times as much.
+  const placeBudget = Math.max(PER_TERM_MIN, Math.floor(MAPS_PLACES_PER_ROUND / share));
+
+  // How many trade terms this call can afford AT A USEFUL DEPTH, then WHICH
+  // ones. The old line was `perTerm = Math.max(5, floor(budget / terms))`,
+  // and that floor made the budget a suggestion: an industry-less search has
+  // ten terms, so it bought 10 x 5 = 50 places against a budget of 30. Under
+  // a narrower per-state share it would have been far worse.
+  //
+  // Capping the term COUNT instead keeps the spend honest and each query deep
+  // enough to be worth issuing. Rotating which terms by round means a narrow
+  // budget still covers the whole trade family over several rounds rather than
+  // re-buying "landscaping company" forever.
+  const termCount = Math.max(1, Math.min(allTerms.length, Math.floor(placeBudget / PER_TERM_MIN)));
+  const start = ((round - 1) * termCount) % allTerms.length;
+  const searchTerms = Array.from(
+    { length: termCount },
+    (_, i) => allTerms[(start + i) % allTerms.length]
+  );
+  const perTerm = Math.max(1, Math.floor(placeBudget / searchTerms.length));
   const timeoutSecs = Math.min(280, 60 + perTerm * searchTerms.length * 1.5);
 
   const items = (await runActorSync(
@@ -509,7 +536,8 @@ async function discoverViaWebSearch(
   industry: Industry | null,
   states: string[],
   limit: number,
-  round = 1
+  round = 1,
+  share = 1
 ): Promise<Candidate[]> {
   // Rotate which state this call covers — states[0] alone meant a
   // "Texas + Oklahoma" search never web-searched Oklahoma at all.
@@ -523,7 +551,19 @@ async function discoverViaWebSearch(
   // than round 2 re-asking round 1's exact SERP, which is what happened
   // before. Decoupling the two indexes would be a change to state rotation,
   // and state rotation is not the thing that's broken.
-  const queries = successionTermsFor(industry, round)
+  // Billed one SERP page per query, so the query COUNT is the cost. Divided
+  // by how many states run in parallel this round (see `share`), which is what
+  // keeps a four-state search from costing four times a one-state search.
+  // Rotating the starting offset means the phrasings the budget cannot afford
+  // this round are the ones it reaches for next round, rather than being
+  // permanently unreachable.
+  const allQueries = successionTermsFor(industry, round);
+  const queryCount = Math.max(1, Math.min(allQueries.length, Math.floor(allQueries.length / share)));
+  const qStart = ((round - 1) * queryCount) % allQueries.length;
+  const queries = Array.from(
+    { length: queryCount },
+    (_, i) => allQueries[(qStart + i) % allQueries.length]
+  )
     .map((q) => `${q} ${stateName}`.trim())
     .join("\n");
 
@@ -580,23 +620,65 @@ export async function discoverCandidates(params: {
 }): Promise<{ candidates: Candidate[]; channelErrors: string[] }> {
   const { industry, states, limit, round = 1, excludeDomains } = params;
 
-  const [dirResult, licResult, webResult, mapsResult] = await Promise.allSettled([
-    discoverViaDirectories(industry, states, limit, round),
-    discoverViaLicensing(industry, states, limit, round),
-    discoverViaWebSearch(industry, states, limit, round),
-    discoverViaMaps(industry, states, limit, round),
-  ]);
+  // EVERY REQUESTED STATE, EVERY CALL — in parallel, sharing one budget.
+  //
+  // The state used to be picked by `locationForRound(states, round)`, one per
+  // call, and `round` here is `discoveryCalls`, which only advances when the
+  // orchestrator's candidate buffer EMPTIES. A single call that returned a
+  // deep buffer therefore pinned the whole run to state one. That is not a
+  // theory: a live "California, New York, Texas, Florida" run read 83
+  // companies and every one of them was Californian. New York, Texas and
+  // Florida were never searched at all, and nothing in the UI said so.
+  //
+  // Now each requested state gets its own set of channel calls, all issued
+  // concurrently, with the per-round budget DIVIDED between them rather than
+  // multiplied by them (see `share`). Four states cost about what one state
+  // cost; each simply goes less deep per round, and depth accumulates over
+  // rounds because the term and phrasing rotations advance independently.
+  //
+  // A single-state search is unchanged: one group, share of 1, same budget.
+  const groups = states.length > 1 ? states.map((s) => [s]) : [states];
+  const share = groups.length;
+  const perGroupLimit = Math.max(1, Math.ceil(limit / share));
 
+  const settled = await Promise.allSettled(
+    groups.flatMap((group) => [
+      discoverViaDirectories(industry, group, perGroupLimit, round),
+      discoverViaLicensing(industry, group, perGroupLimit, round),
+      discoverViaWebSearch(industry, group, perGroupLimit, round, share),
+      discoverViaMaps(industry, group, perGroupLimit, round, share),
+    ])
+  );
+
+  // Rebuilt per channel across all state groups, so "did the web search
+  // channel work" still has a single answer even though it now ran four
+  // times. A channel counts as failed only when it failed for EVERY state —
+  // one state's timeout must not condemn a channel that worked elsewhere.
+  const CHANNELS = ["Directory", "Licensing", "Web search", "Maps"] as const;
   const channelErrors: string[] = [];
   const raw: Candidate[] = [];
-  if (dirResult.status === "fulfilled") raw.push(...dirResult.value);
-  else channelErrors.push(`Directory channel failed: ${dirResult.reason?.message?.slice(0, 150) ?? dirResult.reason}`);
-  if (licResult.status === "fulfilled") raw.push(...licResult.value);
-  else channelErrors.push(`Licensing channel failed: ${licResult.reason?.message?.slice(0, 150) ?? licResult.reason}`);
-  if (webResult.status === "fulfilled") raw.push(...webResult.value);
-  else channelErrors.push(`Web search channel failed: ${webResult.reason?.message?.slice(0, 150) ?? webResult.reason}`);
-  if (mapsResult.status === "fulfilled") raw.push(...mapsResult.value);
-  else channelErrors.push(`Maps channel failed: ${mapsResult.reason?.message?.slice(0, 150) ?? mapsResult.reason}`);
+  const failedEverywhere: boolean[] = [];
+
+  for (let ch = 0; ch < CHANNELS.length; ch++) {
+    const forChannel = groups.map((_, g) => settled[g * CHANNELS.length + ch]);
+    const ok = forChannel.filter((r) => r.status === "fulfilled");
+    ok.forEach((r) => raw.push(...(r as PromiseFulfilledResult<Candidate[]>).value));
+
+    failedEverywhere.push(ok.length === 0);
+    if (ok.length === 0) {
+      const first = forChannel[0] as PromiseRejectedResult;
+      channelErrors.push(
+        `${CHANNELS[ch]} channel failed: ${first?.reason?.message?.slice(0, 150) ?? first?.reason}`
+      );
+    } else if (ok.length < forChannel.length) {
+      const failed = forChannel
+        .map((r, g) => (r.status === "rejected" ? groups[g].join("/") : null))
+        .filter(Boolean);
+      channelErrors.push(`${CHANNELS[ch]} channel failed for ${failed.join(", ")} only`);
+    }
+  }
+
+  const [dirFailed, , webFailed, mapsFailed] = failedEverywhere;
 
   // Deliberately still the THREE searching channels, not all four. Licensing
   // returns [] rather than throwing for a state with no free enumerable source
@@ -605,11 +687,7 @@ export async function discoverCandidates(params: {
   // with zero candidates instead of raising. That silent-partial-answer failure
   // is the exact thing channel-health.ts exists to prevent. A licensing
   // rejection still lands in channelErrors above and surfaces as a warning.
-  if (
-    dirResult.status === "rejected" &&
-    webResult.status === "rejected" &&
-    mapsResult.status === "rejected"
-  ) {
+  if (dirFailed && webFailed && mapsFailed) {
     throw new Error(channelErrors.join(" | "));
   }
 
