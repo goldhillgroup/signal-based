@@ -97,5 +97,5 @@ export function shouldRunNow(
 export function weeklyLabel(industry: Industry, now: Date): string {
   const when = now.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const what = industry === "home_builder" ? "Home builders" : "Landscaping";
-  return `Weekly harvest, ${what}, ${when}`;
+  return `Weekly harvest: ${what}, ${when}`;
 }

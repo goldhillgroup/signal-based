@@ -102,8 +102,8 @@ eq("isoDay pads single digits", isoDay(new Date(2026, 0, 5, 12)), "2026-01-05");
 eq("isoDay is local not UTC", isoDay(new Date(2026, 7, 10, 23, 30)), "2026-08-10");
 
 // ── Folder labels: topic first, date as a specification ────────────────────
-eq("label names the vertical", weeklyLabel("landscaping", MON), "Weekly harvest — Landscaping, Aug 10");
-eq("label for builders", weeklyLabel("home_builder", MON), "Weekly harvest — Home builders, Aug 10");
+eq("label names the vertical", weeklyLabel("landscaping", MON), "Weekly harvest: Landscaping, Aug 10");
+eq("label for builders", weeklyLabel("home_builder", MON), "Weekly harvest: Home builders, Aug 10");
 {
   const a = weeklyLabel("landscaping", MON);
   const b = weeklyLabel("home_builder", MON);
