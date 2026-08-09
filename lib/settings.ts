@@ -59,36 +59,119 @@ export async function resolveSetting(key: string, envFallback?: string): Promise
 
 // The keys this app actually uses, in one place — the Settings page and the
 // pipeline modules both read off this list so they can't drift apart.
-export const SETTINGS_KEYS = [
-  // Two Apify accounts, down from four (2026-08-07). Tokens 2 and 3 were
-  // $5/mo free-tier accounts opened purely to keep test spend off the client's
-  // own, and both ran fully dry within a day of being added. They are removed
-  // rather than left in the chain: a dead token in a fallback list is not
-  // free — every run still resolves it, and a chain that silently rotates onto
-  // an exhausted account turns a billing problem into a mysterious 402 in the
-  // middle of a search. This ends at one account; token 4 is the working one
-  // today, and APIFY_TOKEN is the client's own, which is where it lands.
+/**
+ * Every key the Settings page shows, with what it is FOR in plain words.
+ *
+ * `what` exists because a label alone left two rows unexplainable: "Model:
+ * classify + disprove" told nobody anything, and a setting nobody understands
+ * is a setting nobody dares touch. `logo` and `link` exist so getting or
+ * topping up a key is one click rather than a search.
+ *
+ * `advanced: true` folds a row behind a disclosure. The two model IDs are not
+ * secrets and not needed for the product to run; they are an escape hatch for
+ * changing which model does the reading, and they belong out of the way of
+ * the six keys that actually have to be filled in.
+ */
+export interface SettingKeyMeta {
+  key: string;
+  label: string;
+  envFallback: string;
+  /** One sentence: what breaks without it, or what it changes. */
+  what: string;
+  /** Local file in /public/vendor, or null for non-vendor settings. */
+  logo: string | null;
+  /** Where to get or top up this key. */
+  link: string | null;
+  linkLabel?: string;
+  advanced?: boolean;
+}
+
+export const SETTINGS_KEYS: readonly SettingKeyMeta[] = [
   {
-    key: "APIFY_TOKEN_4",
-    // Label has to track BUDGET_CAP_USD in lib/pipeline/apify.ts or it
-    // contradicts the Vendor usage card above it.
-    label: "Apify: active token ($29/mo plan, code-capped at $10)",
-    envFallback: "APIFY_TOKEN_4",
+    key: "OPENROUTER_API_KEY",
+    label: "OpenRouter",
+    envFallback: "OPENROUTER_API_KEY",
+    what: "Reads every company page and decides whether it shows a real succession signal. Nothing works without this one.",
+    logo: "/vendor/openrouter.png",
+    link: "https://openrouter.ai/settings/credits",
+    linkLabel: "Top up credits",
   },
   {
     key: "APIFY_TOKEN",
-    label: "Apify: client's own account (code-capped at $10)",
+    label: "Apify",
     envFallback: "APIFY_TOKEN",
+    what: "Finds companies through Google Maps and web search, and fetches pages other methods cannot reach.",
+    logo: "/vendor/apify.png",
+    link: "https://console.apify.com/billing",
+    linkLabel: "Billing",
   },
-  { key: "OPENROUTER_API_KEY", label: "OpenRouter", envFallback: "OPENROUTER_API_KEY" },
-  { key: "OPENROUTER_API_KEY_2", label: "OpenRouter: fallback key ($5 capped)", envFallback: "OPENROUTER_API_KEY_2" },
-  { key: "ANYMAILFINDER_API_KEY", label: "Anymailfinder", envFallback: "ANYMAILFINDER_API_KEY" },
-  { key: "MILLIONVERIFIER_API_KEY", label: "MillionVerifier", envFallback: "MILLIONVERIFIER_API_KEY" },
-  { key: "TAVILY_API_KEY", label: "Tavily (directory search)", envFallback: "TAVILY_API_KEY" },
-  { key: "FIRECRAWL_API_KEY", label: "Firecrawl (JS-rendered page fallback)", envFallback: "FIRECRAWL_API_KEY" },
-  // Model IDs, not secrets — same mechanism so they're switchable without a
-  // redeploy. Flip CLASSIFY_MODEL to anthropic/claude-haiku-4.5 once the
-  // 72-company benchmark proves it holds.
-  { key: "CLASSIFY_MODEL", label: "Model: classify + disprove", envFallback: "CLASSIFY_MODEL" },
-  { key: "EXTRACT_MODEL", label: "Model: directory extraction", envFallback: "EXTRACT_MODEL" },
+  {
+    key: "TAVILY_API_KEY",
+    label: "Tavily",
+    envFallback: "TAVILY_API_KEY",
+    what: "Finds the industry directories and association member lists that companies are listed on.",
+    logo: "/vendor/tavily.png",
+    link: "https://app.tavily.com",
+    linkLabel: "Dashboard",
+  },
+  {
+    key: "FIRECRAWL_API_KEY",
+    label: "Firecrawl",
+    envFallback: "FIRECRAWL_API_KEY",
+    what: "Reads pages that only render with JavaScript, which a plain fetch sees as empty.",
+    logo: "/vendor/firecrawl.png",
+    link: "https://www.firecrawl.dev/app",
+    linkLabel: "Dashboard",
+  },
+  {
+    key: "ANYMAILFINDER_API_KEY",
+    label: "Anymailfinder",
+    envFallback: "ANYMAILFINDER_API_KEY",
+    what: "Finds an email address for the person behind a company. Only runs when you press Find emails.",
+    logo: "/vendor/anymailfinder.png",
+    link: "https://app.anymailfinder.com",
+    linkLabel: "Dashboard",
+  },
+  {
+    key: "MILLIONVERIFIER_API_KEY",
+    label: "MillionVerifier",
+    envFallback: "MILLIONVERIFIER_API_KEY",
+    what: "Checks a found email is deliverable before it reaches your list.",
+    logo: "/vendor/millionverifier.png",
+    link: "https://app.millionverifier.com",
+    linkLabel: "Dashboard",
+  },
+  {
+    key: "APIFY_TOKEN_4",
+    label: "Apify: second account",
+    envFallback: "APIFY_TOKEN_4",
+    what: "An optional second Apify account, used before the main one. Leave blank unless you are deliberately keeping spend off the primary.",
+    logo: "/vendor/apify.png",
+    link: "https://console.apify.com/billing",
+    linkLabel: "Billing",
+    advanced: true,
+  },
+  // Model IDs, not secrets. Same storage mechanism so they are switchable
+  // without a redeploy. Flip the classifier to a cheaper model only once the
+  // 72-company benchmark says it holds; that is what the eval harness is for.
+  {
+    key: "CLASSIFY_MODEL",
+    label: "Judging model",
+    envFallback: "CLASSIFY_MODEL",
+    what: "Which AI model reads company pages and decides if a succession signal is real. Blank uses Claude Sonnet, which is what the accuracy was measured on. Changing it changes the quality of every lead.",
+    logo: null,
+    link: "https://openrouter.ai/models",
+    linkLabel: "Browse models",
+    advanced: true,
+  },
+  {
+    key: "EXTRACT_MODEL",
+    label: "List-reading model",
+    envFallback: "EXTRACT_MODEL",
+    what: "Which AI model pulls company names out of directory pages. A cheaper, simpler job than judging. Blank uses Claude Haiku.",
+    logo: null,
+    link: "https://openrouter.ai/models",
+    linkLabel: "Browse models",
+    advanced: true,
+  },
 ] as const;

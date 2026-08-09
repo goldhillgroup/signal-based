@@ -23,12 +23,17 @@ function mask(value: string): string {
 export default async function SettingsPage() {
   const schedule = await getSchedule();
   const rows = await Promise.all(
-    SETTINGS_KEYS.map(async ({ key, label, envFallback }) => {
+    SETTINGS_KEYS.map(async ({ key, label, envFallback, what, logo, link, linkLabel, advanced }) => {
       const dbValue = await getSetting(key);
       const envValue = process.env[envFallback];
       return {
         key,
         label,
+        what,
+        logo,
+        link,
+        linkLabel,
+        advanced,
         status: dbValue
           ? ("db" as const)
           : envValue
