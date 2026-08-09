@@ -71,7 +71,7 @@ export interface Lead {
    */
   surfacedAt: string;
   location: string;
-  /** 1-10, from named factors — see scoreFactors. */
+  /** Sort key only. Never rendered — see scoreFactors. */
   score: number;
   factors: string[];
   sourceUrl: string | null;
@@ -90,15 +90,23 @@ export function signalTypeOf(c: Company): SignalType {
 }
 
 /**
- * 1-10, and every point is attributable.
+ * A SORT KEY. Never shown, and that is the point.
  *
- * A score nobody can explain is worse than no score: it gets trusted for a
- * week and then quietly ignored forever, and there is no way to argue with it.
- * So the factors that produced it travel with it and are shown next to it.
+ * This was a 1-10 score printed on every card and every table row. Measured
+ * against the real database it produced: 30 of 33 leads at 4 or below, median
+ * 3, and a ceiling of 9 reachable only with a confirmed founder-and-successor
+ * pair AND a verified deliverable email.
  *
- * Weighted by what actually decides whether a call happens. A confirmed
- * founder-and-successor pair is the product; a reachable verified address is
- * what turns it into a conversation this week rather than a research task.
+ * So the client opens the list he paid for and reads a column of 2s and 3s out
+ * of 10. Those are correctly-qualified family-owned companies in his own
+ * territory — the product working exactly as intended — and the number tells
+ * him they are failures. The scale was measuring distance from a perfect lead
+ * rather than the value of a real one, and almost nothing is a perfect lead.
+ *
+ * The ordering it produces is genuinely useful, so it stays and drives the
+ * default sort. It is simply never rendered: the row already shows the signal
+ * type and the email status, which are the two things the number was made of,
+ * stated as facts rather than compressed into a grade.
  */
 export function scoreFactors(c: Company): { score: number; factors: string[] } {
   const factors: string[] = [];

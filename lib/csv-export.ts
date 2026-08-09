@@ -57,8 +57,6 @@ const COLUMNS: { header: string; get: (c: Company) => string }[] = [
       return s?.email ? (isSharedInbox(s.email) ? "shared_inbox" : "named_person") : "";
     },
   },
-  { header: "score", get: (c) => String(toLead(c).score) },
-  { header: "score_reasons", get: (c) => toLead(c).factors.join("; ") },
   { header: "website", get: (c) => c.domain },
   { header: "industry", get: (c) => (c.industry === "landscaping" ? "Landscaping" : "Home Builder") },
   { header: "revenue_band", get: (c) => c.revenueBand },

@@ -42,8 +42,9 @@ export function LeadCard({
   return (
     <article className="fade-up rounded-xl border border-gh-border bg-gh-surface transition-colors duration-200 hover:border-gh-sky/50">
       <div className="p-4 sm:p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
+        {/* No flex row any more: it existed to push the score to the right,
+            and with the score gone the header is a single column. */}
+        <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <span
                 className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold"
@@ -69,20 +70,8 @@ export function LeadCard({
             >
               {company.name}
             </button>
-            <p className="mt-0.5 text-[11px] text-gh-ink-muted">{company.domain}</p>
-          </div>
+          <p className="mt-0.5 text-[11px] text-gh-ink-muted">{company.domain}</p>
 
-          {/* The score, with its reasons on hover rather than as a bare number
-              nobody can argue with. */}
-          <div
-            className="shrink-0 text-right"
-            title={lead.factors.join("\n")}
-          >
-            <span className="tabular block font-display text-2xl font-semibold leading-none text-gh-navy">
-              {lead.score}
-            </span>
-            <span className="block text-[10px] text-gh-ink-muted">of 10</span>
-          </div>
         </div>
 
         {/* THE SIGNAL — the company's own words where there are any. */}

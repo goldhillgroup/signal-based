@@ -142,6 +142,14 @@ ok("the CSV marks it shared_inbox", sharedCsv.includes("shared_inbox"));
 ok("the CSV marks a person named_person",
    companiesToCsv([personVerified]).split("\r\n")[1].includes("named_person"));
 ok("the CSV has a phone column", companiesToCsv([personVerified]).split("\r\n")[0].includes("phone"));
+// The 1-10 score is a sort key now, never a rendered or exported figure: on
+// real data 30 of 33 leads scored 4 or below, so printing it told the client
+// his own leads were failures.
+const hdr = companiesToCsv([personVerified]).split("\r\n")[0];
+ok("the CSV does not export a score", !hdr.includes("score"));
+ok("nor the score reasons", !hdr.includes("score_reasons"));
+ok("but the ranking still orders leads",
+   scoreFactors(personVerified).score > scoreFactors(make({})).score);
 
 console.log(`${pass}/${pass + fails.length} lead-format assertions passed (incl. parked + shared)`);
 for (const f of fails) console.log("  ✗ " + f);

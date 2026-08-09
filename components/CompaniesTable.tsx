@@ -122,9 +122,19 @@ function buildGroups(rows: Company[], by: GroupBy): Group[] {
 export function CompaniesTable({
   companies,
   onRowClick,
+  defaultView = "cards",
 }: {
   companies: Company[];
   onRowClick: (company: Company) => void;
+  /**
+   * All Leads opens as a table; a folder opens as cards.
+   *
+   * Different jobs. A folder is one search you have just run and are reading
+   * through — cards, one lead at a time, the quote in full. All Leads is every
+   * lead you have ever had, which is a comparing-and-finding job, and rows win
+   * for that.
+   */
+  defaultView?: "cards" | "table";
 }) {
   // ALWAYS "All leads". It used to open on the first tab with results, which
   // sounds helpful and meant the opening view changed shape between folders —
@@ -140,7 +150,7 @@ export function CompaniesTable({
   const [groupBy, setGroupBy] = useState<GroupBy>("signal");
   // Cards read one lead well; rows compare many. Neither is "the" view —
   // they answer different questions, so both exist and neither is hidden.
-  const [view, setView] = useState<"cards" | "table">("cards");
+  const [view, setView] = useState<"cards" | "table">(defaultView);
 
   const counts = useMemo(
     () =>

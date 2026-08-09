@@ -275,6 +275,7 @@ export default function AllLeadsPage() {
           key={openFolder.id}
           companies={visible}
           onRowClick={(c) => setSelectedId(c.id)}
+          defaultView="table"
         />
 
         <CompanyDrawer company={selected} onClose={() => setSelectedId(null)} />

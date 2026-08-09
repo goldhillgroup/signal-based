@@ -42,18 +42,33 @@ export function explainFit(company: Company): FitExplanation | null {
   if (company.status !== "qualified") return null;
 
   const trade = INDUSTRY_META[company.industry]?.label ?? titleCase(company.industry);
-  const where = [company.city, company.state ? stateNameFor(company.state) : null]
+  // "-" is the store's placeholder for a null city, and it is TRUTHY — so a
+  // plain filter(Boolean) let it through and produced "a landscaping business
+  // in -, Tennessee". Same placeholder-printed-as-data bug that made the
+  // drawer header read "-, TN · Size not stated". Filter on real content, not
+  // on presence.
+  const real = (v: string | null | undefined) => (v && v !== "-" ? v : null);
+  const where = [real(company.city), real(company.state) ? stateNameFor(company.state) : null]
     .filter(Boolean)
     .join(", ");
 
+  // ORDERED BY HOW MUCH EACH ONE DISTINGUISHES THIS COMPANY.
+  //
+  // The two universal facts — family-owned, and the right trade in the right
+  // state — are true of EVERY accepted row by definition: they are hard gates,
+  // so anything that failed them is a rejection and never reaches this list.
+  // Leading with them made every row in a table column open with the same
+  // sentence. They still belong here, at the end, where they confirm the match
+  // without crowding out what actually differs.
   const points: string[] = [];
 
-  points.push(`A ${trade.toLowerCase()} business${where ? ` in ${where}` : ""}, which is the trade and territory you asked for.`);
+  if (company.founderName) {
+    const who = company.founderTitle
+      ? `${company.founderName}, ${company.founderTitle}`
+      : company.founderName;
+    points.push(`Names a decision-maker on the page: ${who}.`);
+  }
 
-  // Family ownership is a hard gate — a company the classifier read as acquired
-  // or consolidated is rejected, so surviving to here means the page still
-  // reads as family-held.
-  points.push("Reads as still family-owned on its own site, not acquired or rolled up.");
 
   // Size, and what it means when there isn't any.
   //
@@ -81,12 +96,16 @@ export function explainFit(company: Company): FitExplanation | null {
     points.push("Runs a mix of its own crews and subcontractors.");
   }
 
-  if (company.founderName) {
-    const who = company.founderTitle
-      ? `${company.founderName}, ${company.founderTitle}`
-      : company.founderName;
-    points.push(`Names a decision-maker on the page: ${who}.`);
-  }
+  // Both universal, both last — see the ordering note above.
+  points.push("Reads as still family-owned on its own site, not acquired or rolled up.");
+
+  // Ordered MOST-DISTINGUISHING FIRST. Every company in a folder shares the
+  // trade and the territory — that is what the search asked for — so leading
+  // with it makes every row read identically in a table column. The facts that
+  // actually differ (size, how it operates, who is named) come first, and the
+  // shared context sits at the end where it still confirms the match without
+  // crowding out the differences.
+  points.push(`A ${trade.toLowerCase()} business${where ? ` in ${where}` : ""}, which is the trade and territory you asked for.`);
 
   // The signal itself, or its absence. hasSignal is authoritative here — it is
   // what the confidence rating and the whole 'signal' mode key off.
