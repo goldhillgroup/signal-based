@@ -26,12 +26,33 @@ async function getCounts() {
   const supabase = await createClient();
   const head = { count: "exact" as const, head: true };
 
+  // EVERY count here is scoped to companies that still belong to a folder.
+  //
+  // Unscoped, these counted the whole table — including the 149 companies that
+  // reset-leads.mts DETACHED to preserve cross-search memory. Those rows are
+  // deliberately unreachable: every lead surface drops `!c.searchId`. So the
+  // Overview announced "Fit the ICP 80" and "Real signals 31" while the only
+  // folder in the product held 28 and 15, and its tiles linked to a page that
+  // contradicted them with no route to the difference.
+  //
+  // The funnel is a claim about what Jonathan HAS. Memory he cannot open is
+  // not that, however real it is to the crawler.
+  const attached = () => supabase.from("companies").select("*", head).not("search_id", "is", null);
+
   const [searches, scanned, icpFit, signals, contacts, costs] = await Promise.all([
     supabase.from("searches").select("*", head),
-    supabase.from("companies").select("*", head),
-    supabase.from("companies").select("*", head).eq("status", "qualified"),
-    supabase.from("companies").select("*", head).eq("has_signal", true),
-    supabase.from("contacts").select("*", head).not("email", "is", null),
+    attached(),
+    attached().eq("status", "qualified"),
+    attached().eq("has_signal", true),
+    // find_status too: a 'not_attempted' row is an address scraped free off the
+    // page at classify time, not one that was looked up. Counting them under
+    // "leads with an email found" overstated the vendor's yield by 35%.
+    supabase
+      .from("contacts")
+      .select("*, companies!inner(search_id)", head)
+      .not("email", "is", null)
+      .neq("find_status", "not_attempted")
+      .not("companies.search_id", "is", null),
     // Not head-only — this one needs the values, not the count.
     supabase.from("searches").select("cost_estimate_usd"),
   ]);

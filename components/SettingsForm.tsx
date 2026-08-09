@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import type { VendorUsage, WarnLevel } from "@/lib/vendor-usage";
-import { ChevronDownIcon } from "./icons";
 
 type Row = {
   key: string;
@@ -66,10 +65,6 @@ export function SettingsForm({ rows: initialRows }: { rows: Row[] }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Record<string, string>>({});
-  // The six vendor keys are the job. The model overrides and the spare Apify
-  // account are an escape hatch, and putting them in the same flat list made
-  // the page read as ten equally-important things to fill in.
-  const [showAdvanced, setShowAdvanced] = useState(false);
 
   async function save(key: string) {
     const value = (drafts[key] ?? "").trim();
@@ -101,8 +96,12 @@ export function SettingsForm({ rows: initialRows }: { rows: Row[] }) {
     }
   }
 
-  const main = rows.filter((r) => !r.advanced);
-  const advanced = rows.filter((r) => r.advanced);
+  // Was `rows.filter(r => !r.advanced)` against a second `advanced` list behind
+  // a disclosure. The model pickers and the spare Apify account were the only
+  // rows ever marked advanced and both were removed at the client's request, so
+  // the filter matched nothing, the disclosure could never render, and its
+  // comment still described controls that no longer exist.
+  const main = rows;
 
   const renderRow = (row: Row) => {
     const meta = STATUS_META[row.status];
@@ -236,32 +235,6 @@ export function SettingsForm({ rows: initialRows }: { rows: Row[] }) {
     <div className="space-y-3">
       {main.map(renderRow)}
 
-      {advanced.length > 0 && (
-        <>
-          <button
-            type="button"
-            onClick={() => setShowAdvanced((v) => !v)}
-            aria-expanded={showAdvanced}
-            className="flex cursor-pointer items-center gap-1.5 rounded px-1 py-1.5 text-xs font-semibold text-gh-ink-muted transition-colors duration-200 hover:text-gh-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
-          >
-            <ChevronDownIcon
-              className={`h-3.5 w-3.5 transition-transform duration-200 ${showAdvanced ? "rotate-180" : ""}`}
-            />
-            {showAdvanced ? "Hide advanced" : `Advanced (${advanced.length})`}
-          </button>
-          <div className="gh-collapse" data-open={showAdvanced ? "true" : "false"} inert={!showAdvanced}>
-            <div>
-              <div className="space-y-3">
-                <p className="px-1 text-xs leading-relaxed text-gh-ink-muted">
-                  Optional. Everything works without these, and changing the
-                  judging model changes the quality of every lead.
-                </p>
-                {advanced.map(renderRow)}
-              </div>
-            </div>
-          </div>
-        </>
-      )}
     </div>
   );
 }

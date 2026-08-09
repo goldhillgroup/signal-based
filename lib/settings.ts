@@ -66,11 +66,6 @@ export async function resolveSetting(key: string, envFallback?: string): Promise
  * classify + disprove" told nobody anything, and a setting nobody understands
  * is a setting nobody dares touch. `logo` and `link` exist so getting or
  * topping up a key is one click rather than a search.
- *
- * `advanced: true` folds a row behind a disclosure. The two model IDs are not
- * secrets and not needed for the product to run; they are an escape hatch for
- * changing which model does the reading, and they belong out of the way of
- * the six keys that actually have to be filled in.
  */
 export interface SettingKeyMeta {
   key: string;
@@ -83,7 +78,6 @@ export interface SettingKeyMeta {
   /** Where to get or top up this key. */
   link: string | null;
   linkLabel?: string;
-  advanced?: boolean;
   /**
    * The vendor-usage card this key belongs to (see lib/vendor-usage.ts).
    *

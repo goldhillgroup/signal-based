@@ -21,8 +21,31 @@ function mask(value: string): string {
 
 export default async function SettingsPage() {
   const schedule = await getSchedule();
+
+  /**
+   * Which Apify balance to show against the one Apify key row.
+   *
+   * SETTINGS_KEYS pins it to "apify-1", the client's own $29 plan. But
+   * getApifyToken() tries APIFY_TOKEN_4 FIRST and only falls through to the
+   * client's token when that is unset — so while the dev account is in play,
+   * the page reported $29 of headroom on an account that is not spending,
+   * while the token that IS spending would refuse at its own $14 ceiling.
+   * A balance that belongs to a different account than the one being charged
+   * is worse than no balance.
+   *
+   * Resolved the same way the pipeline resolves it, so the two cannot disagree.
+   * In production APIFY_TOKEN_4 is absent and this lands back on "apify-1",
+   * which is the intended end state.
+   */
+  const apifyDevActive = Boolean(
+    (await getSetting("APIFY_TOKEN_4")) ?? process.env.APIFY_TOKEN_4
+  );
   const rows = await Promise.all(
-    SETTINGS_KEYS.map(async ({ key, label, envFallback, what, logo, link, linkLabel, advanced }) => {
+    // usageId included. It was dropped here while SettingsForm keys the entire
+    // balance panel off it, so every row arrived with usageId === undefined and
+    // no vendor balance has ever rendered on this page — not even the
+    // "Balance unavailable" fallback, which was unreachable for the same reason.
+    SETTINGS_KEYS.map(async ({ key, label, envFallback, what, logo, link, linkLabel, usageId }) => {
       const dbValue = await getSetting(key);
       const envValue = process.env[envFallback];
       return {
@@ -32,7 +55,7 @@ export default async function SettingsPage() {
         logo,
         link,
         linkLabel,
-        advanced,
+        usageId: key === "APIFY_TOKEN" && apifyDevActive ? "apify-4" : usageId,
         status: dbValue
           ? ("db" as const)
           : envValue
