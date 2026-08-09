@@ -280,29 +280,34 @@ export function CompaniesTable({
           record" (industry, status, last checked) rather than "why am I
           calling this one". The CSV export keeps the column shape, which is
           where columns are the right answer. */}
-      <div className="space-y-5 p-4">
-        {groups.map((g) => (
-          <section key={g.key}>
-            {groupBy !== "none" && (
-              <div className="mb-2 flex items-baseline gap-2">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-gh-ink-secondary">
-                  {g.label}
-                </h3>
-                <span className="tabular text-[11px] text-gh-ink-muted">{g.rows.length}</span>
-                {g.blurb && (
-                  <span className="hidden text-[11px] text-gh-ink-muted sm:inline">
-                    · {g.blurb}
-                  </span>
-                )}
-              </div>
-            )}
-            {/* No cap here on purpose. This is the working list — he is
-                looking for a specific company, and a hidden tail is a lead he
-                cannot find. Only the Overview trims, because that page is a
-                summary and a summary that never ends is not one. */}
-            {view === "table" ? (
-              <LeadTable rows={g.rows} onOpen={onRowClick} />
-            ) : (
+      {view === "table" ? (
+        // One sheet for everything. Groups become separator rows inside it —
+        // rendering a table per group repeated the header down the page and
+        // meant no two sections shared a column grid.
+        <div className="p-4">
+          <LeadTable
+            groups={groups.map((g) => ({ key: g.key, label: g.label, rows: g.rows }))}
+            showGroupRows={groupBy !== "none"}
+            onOpen={onRowClick}
+          />
+        </div>
+      ) : (
+        <div className="space-y-5 p-4">
+          {groups.map((g) => (
+            <section key={g.key}>
+              {groupBy !== "none" && (
+                <div className="mb-2 flex items-baseline gap-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-gh-ink-secondary">
+                    {g.label}
+                  </h3>
+                  <span className="tabular text-[11px] text-gh-ink-muted">{g.rows.length}</span>
+                  {g.blurb && (
+                    <span className="hidden text-[11px] text-gh-ink-muted sm:inline">
+                      · {g.blurb}
+                    </span>
+                  )}
+                </div>
+              )}
               <div className="space-y-2.5">
                 {g.rows.map((c, i) => (
                   <div key={c.id} style={{ animationDelay: `${Math.min(i, 12) * 40}ms` }}>
@@ -310,15 +315,15 @@ export function CompaniesTable({
                   </div>
                 ))}
               </div>
-            )}
-          </section>
-        ))}
-        {filtered.length === 0 && (
-          <p className="py-10 text-center text-sm text-gh-ink-muted">
-            No leads match these filters.
-          </p>
-        )}
-      </div>
+            </section>
+          ))}
+          {filtered.length === 0 && (
+            <p className="py-10 text-center text-sm text-gh-ink-muted">
+              No leads match these filters.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -26,7 +26,7 @@ export type SignalType = "succession_pair" | "succession_verify" | "family_owned
 
 export const SIGNAL_TYPE_META: Record<
   SignalType,
-  { label: string; blurb: string; color: string; bg: string }
+  { label: string; short: string; blurb: string; color: string; bg: string }
 > = {
   // PLAIN ENGLISH, not vocabulary. These started as "Qualified", "Verify" and
   // "Fit only" — words with a precise meaning inside the classifier and none
@@ -35,18 +35,25 @@ export const SIGNAL_TYPE_META: Record<
   // was found, not what bucket the row landed in.
   succession_pair: {
     label: "Founder + successor",
+    // A table column is ~13% of the width. The full labels clipped mid-word
+    // ("Good fit, no successor ye"), which is worse than a shorter true label:
+    // the card and the tab still carry the full wording, and the table cell
+    // shows the whole short one on hover.
+    short: "Both named",
     blurb: "Both named on the site, both running it today",
     color: "#0b7a0b",
     bg: "#e2f6e2",
   },
   succession_verify: {
     label: "Probably, worth checking",
+    short: "Worth a check",
     blurb: "Reads like a handover, but the wording is not airtight",
     color: "#9a4a1f",
     bg: "#fbe4d7",
   },
   family_owned_fit: {
     label: "Good fit, no successor yet",
+    short: "No successor",
     blurb: "Right trade, right area, family-run, nobody named to take over",
     color: "#3d5a80",
     bg: "#e1e9f2",
