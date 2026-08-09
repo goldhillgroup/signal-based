@@ -8,7 +8,8 @@ import { enrichmentBlockerFor } from "@/lib/pipeline/preflight";
 // Enrichment is usually faster than discovery (no classification/disprove
 // LLM calls, just one AnymailFinder + one MillionVerifier call per company),
 // but scales the same way with result-set size, so give it the same runway.
-export const maxDuration = 300;
+// See app/api/search/route.ts for why 800 and what it requires.
+export const maxDuration = 800;
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * Closes out runs the server killed without telling anyone.
  *
  * The pipeline runs in `after()`, detached from the HTTP response, and Vercel
- * caps that at `maxDuration` (300s — see app/api/search/route.ts). When a run
+ * caps that at `maxDuration` (see app/api/search/route.ts). When a run
  * exceeds it the function is terminated mid-loop. Every completion path in the
  * orchestrator lives at the END of that loop, so nothing marks the row: it
  * stays `status='running'` forever.
@@ -25,8 +25,15 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * why it stopped early.
  */
 
-/** Must match `export const maxDuration` in app/api/search/route.ts. */
-export const RUN_CEILING_MS = 300_000;
+/**
+ * Must match `export const maxDuration` in app/api/search/route.ts.
+ *
+ * This is a hard coupling and it fails in the worst direction if broken: a
+ * reaper ceiling BELOW the platform's would mark runs dead while they are
+ * still fetching and writing, closing out a live search and stranding the
+ * companies it had not saved yet. Raised 300 -> 800 alongside the routes.
+ */
+export const RUN_CEILING_MS = 800_000;
 
 /**
  * Grace on top of the ceiling. Covers cold start, queueing before the function
@@ -81,7 +88,7 @@ export async function reapStaleRuns(
 
   if (ids.length > 0) {
     console.warn(
-      `Reaped ${ids.length} search run(s) killed by the ${RUN_CEILING_MS / 1000}s function ceiling: ${ids.join(", ")}`
+      `Reaped ${ids.length} search run(s) killed by the ${Math.round(RUN_CEILING_MS / 60000)}-minute function ceiling: ${ids.join(", ")}`
     );
   }
   return { reaped: ids.length, ids };
@@ -154,7 +161,7 @@ export async function reapStaleEnrichment(
         // next action and costs nothing to re-run, since a company that
         // already has a contact row is skipped.
         enrichment_status: "failed",
-        enrichment_error: `Stopped early: this pass hit the ${RUN_CEILING_MS / 1000 / 60} minute server limit after finding ${row.contacts_found ?? 0} email${(row.contacts_found ?? 0) === 1 ? "" : "s"}. Everything found is saved. Press Retry to pick up the rest, you are not charged twice for an address already found.`,
+        enrichment_error: `Stopped early: this pass hit the ${Math.round(RUN_CEILING_MS / 60000)} minute server limit after finding ${row.contacts_found ?? 0} email${(row.contacts_found ?? 0) === 1 ? "" : "s"}. Everything found is saved. Press Retry to pick up the rest, you are not charged twice for an address already found.`,
       })
       .eq("id", row.id)
       .eq("enrichment_status", "running");
@@ -174,7 +181,7 @@ export async function reapStaleEnrichment(
  */
 export function stoppedEarlyMessage(scanned: number, kept: number): string {
   return (
-    `Stopped early: this run hit the 5 minute server limit after checking ${scanned} ` +
+    `Stopped early: this run hit the ${Math.round(RUN_CEILING_MS / 60000)} minute server limit after checking ${scanned} ` +
     `companies. The ${kept} it had already found are saved and complete. ` +
     `Run the same search again to carry on from where it left off.`
   );

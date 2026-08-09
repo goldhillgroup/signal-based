@@ -7,14 +7,21 @@ import { stateNameFor, US_STATES, NATIONWIDE } from "@/lib/pipeline/us-states";
 import { creditBlockerFor } from "@/lib/pipeline/preflight";
 import type { Industry, SearchMode } from "@/lib/supabase/types";
 
-// Raise the ceiling where the deployment platform honors it (Vercel Pro+ with
-// Fluid compute goes up to 800s). A full run loops discover -> fetch ->
-// classify in rounds until the target signal count is hit or the safety
-// ceiling in lib/pipeline/orchestrator.ts is reached — minutes, not seconds,
-// scaling with the target. On a platform that hard-caps shorter than this
-// (e.g. Vercel Hobby's 10s), the background continuation WILL get killed
-// mid-run — self-host or upgrade the plan before relying on this in production.
-export const maxDuration = 300;
+// 800s, raised from 300 on 2026-08-09. Measured at ~5.2s per company end to
+// end (fetch + classify + disprove), a target-10 run scans up to 60 companies
+// and needs ~5 minutes — so 300s was killing ordinary searches, not just
+// oversized ones. 800s covers a target-20 run's ~10 minutes with headroom.
+//
+// REQUIRES VERCEL PRO WITH FLUID COMPUTE. 300s is the default ceiling on all
+// plans; only Pro+ honours a higher value. On a plan that caps lower this
+// number is simply ignored and runs are killed at the plan's limit — which is
+// survivable, because reapStaleRuns closes an orphaned run out honestly
+// instead of leaving it spinning forever.
+//
+// lib/pipeline/reap.ts RUN_CEILING_MS MUST MATCH. The reaper marks any run
+// older than that ceiling as dead; if it stayed at 300s while this moved to
+// 800s it would start closing out runs that are still alive and writing.
+export const maxDuration = 800;
 
 const MIN_TARGET = 1;
 const MAX_TARGET = 200; // UI-level sanity cap, see MAX_SCAN_MULTIPLIER/ABSOLUTE_SCAN_CEILING in the orchestrator for the real cost ceiling
