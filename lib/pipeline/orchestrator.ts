@@ -855,12 +855,15 @@ export async function runSearchPipeline(
         // company is LOST entirely on a database where the migration has not
         // been applied. A missing phone number is a missing field; a missing
         // company is a missing lead.
-        if (candidate.phone) {
-          const { error: phoneErr } = await supabase
+        if (candidate.phone || candidate.address) {
+          const patch: { phone?: string; address?: string } = {};
+          if (candidate.phone) patch.phone = candidate.phone;
+          if (candidate.address) patch.address = candidate.address;
+          const { error: contactErr } = await supabase
             .from("companies")
-            .update({ phone: candidate.phone })
+            .update(patch)
             .eq("id", inserted.id);
-          if (phoneErr && /phone/.test(phoneErr.message ?? "")) {
+          if (contactErr && /phone|address/.test(contactErr.message ?? "")) {
             phoneColumnMissing = true;
           }
         }
@@ -955,7 +958,7 @@ export async function runSearchPipeline(
     // and produces a genuine status: 'failed'.
     if (phoneColumnMissing) {
       console.warn(
-        `Search ${searchId}: phone numbers were discovered but not saved, the companies.phone column does not exist. Apply supabase/migrations/20260809010000_company_phone.sql.`
+        `Search ${searchId}: phone/address were discovered but not saved, a column is missing. Apply supabase/migrations/20260809010000_company_phone.sql.`
       );
     }
 

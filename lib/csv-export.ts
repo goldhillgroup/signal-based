@@ -38,6 +38,7 @@ const COLUMNS: { header: string; get: (c: Company) => string }[] = [
   { header: "next_gen", get: (c) => c.nextGenName ?? "" },
   { header: "next_gen_title", get: (c) => c.nextGenTitle ?? "" },
   { header: "phone", get: (c) => c.phone ?? "" },
+  { header: "address", get: (c) => c.address ?? "" },
   { header: "contact_name", get: (c) => settledContact(c)?.name ?? "" },
   { header: "contact_email", get: (c) => settledContact(c)?.email ?? "" },
   {

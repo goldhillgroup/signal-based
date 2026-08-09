@@ -55,6 +55,7 @@ export interface Company {
   state: string;
   city: string;
   phone: string | null;
+  address: string | null;
   revenueBand: string;
   employeeBand: string;
   status: CompanyStatus;

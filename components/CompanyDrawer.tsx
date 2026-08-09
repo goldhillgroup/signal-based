@@ -84,9 +84,20 @@ export function CompanyDrawer({
                 <h2 className="font-display text-xl font-semibold text-gh-ink">
                   {company.name}
                 </h2>
+                {/* Joined from what is actually present. City is null for every
+                    channel except Maps, and the old template printed it raw —
+                    so a web-search lead read "-, TN · Size not stated · not
+                    stated employees", four placeholders in one line. */}
                 <p className="mt-0.5 text-sm text-gh-ink-secondary">
-                  {company.city}, {company.state} &middot; {company.revenueBand} &middot;{" "}
-                  {company.employeeBand} employees
+                  {[
+                    [company.city, company.state].filter((v) => v && v !== "-").join(", "),
+                    company.revenueBand,
+                    company.employeeBand && company.employeeBand !== "not stated"
+                      ? `${company.employeeBand} employees`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </p>
               </div>
               <button
@@ -113,6 +124,27 @@ export function CompanyDrawer({
                     <span className="text-sm text-gh-ink-muted">Not yet classified</span>
                   )}
                 </InfoTile>
+                {/* Free from the Places record, and only ever shown when it
+                    is really there — an empty "Address" tile reads as a gap in
+                    the data rather than as a channel that does not supply one
+                    (web search and directories never do). */}
+                {(company.phone || company.address) && (
+                  <InfoTile label="Reach them directly">
+                    {company.phone && (
+                      <a
+                        href={`tel:${company.phone.replace(/[^+\d]/g, "")}`}
+                        className="block text-sm font-medium text-gh-sky hover:underline"
+                      >
+                        {company.phone}
+                      </a>
+                    )}
+                    {company.address && (
+                      <p className="mt-0.5 text-xs leading-snug text-gh-ink-secondary">
+                        {company.address}
+                      </p>
+                    )}
+                  </InfoTile>
+                )}
                 <InfoTile label="First seen">
                   <p className="text-sm font-medium text-gh-ink">
                     {formatRelativeDate(company.firstSeenAt)}
