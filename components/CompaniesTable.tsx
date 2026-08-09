@@ -5,25 +5,33 @@ import { Company } from "@/lib/company";
 import { INDUSTRY_META } from "@/lib/signal-meta";
 import type { Industry } from "@/lib/supabase/types";
 import { scoreFactors, signalTypeOf, SIGNAL_TYPE_META, type SignalType } from "@/lib/lead-signal";
-import { SearchIcon } from "./icons";
+import { SearchIcon, GridIcon, RowsIcon } from "./icons";
 import { LeadCard } from "./LeadCard";
+import { LeadTable } from "./LeadTable";
 
-type Tab = "all" | "qualified" | "verify" | "fit_only";
+type Tab = "all" | "signal";
 
-// No "Rejected" tab. This screen is the lead list, and the companies the
-// pipeline cut are not leads — a landscaping search that reads 83 sites and
-// keeps 16 was putting 67 rejects in front of him, four sixths of the page
-// being businesses he was explicitly told not to call.
+// FOUR TABS BECAME TWO, and they now say what the cards say.
 //
-// The rejections are NOT thrown away and this is not hiding the funnel: the
-// folder header still reports how many were checked and how many were cut, so
-// the thoroughness is still legible as a number. What is gone is the browsable
-// pile of them mixed in with real work.
-const TABS: { key: Tab; label: string }[] = [
-  { key: "all", label: "All leads" },
-  { key: "qualified", label: "Qualified" },
-  { key: "verify", label: "Verify" },
-  { key: "fit_only", label: "Fit only" },
+// They were All / Qualified / Verify / Fit only — internal vocabulary, printed
+// on the front of the product. "Qualified" and "Fit only" are indistinguishable
+// to anyone who has not read the classifier, and worse, the cards below had
+// already been relabelled to "Succession pair", "Needs a look" and
+// "Family-owned fit", so the same company was called two different things three
+// inches apart.
+//
+// Two also matches the data. A real folder ran 1 pair / 2 verify / 26 fit-only,
+// so three of the four tabs held single digits — segmentation that costs a
+// click to reach a list of one. The fine split still exists: grouping (default
+// "By signal") separates them under headings inside the list, which is where a
+// small distinction belongs.
+//
+// No "Rejected" tab either. This screen is the lead list, and the companies the
+// pipeline cut are not leads. The rejections are still stored and still drive
+// the recheck schedule; the folder header still reports how many were checked.
+const TABS: { key: Tab; label: string; hint: string }[] = [
+  { key: "all", label: "All leads", hint: "Everything that fits the profile" },
+  { key: "signal", label: "With a signal", hint: "Founder and successor both named" },
 ];
 
 // A 'filter'/'hybrid' company that fit the ICP with no signal found is
@@ -35,10 +43,9 @@ function matchesTab(c: Company, tab: Tab) {
   // return true for everything, so the default view of a folder was mostly
   // rejects and the real count was buried.
   if (tab === "all") return c.status === "qualified";
-  if (tab === "qualified") return c.status === "qualified" && (c.confidence === "high" || c.confidence === "medium");
-  if (tab === "verify") return c.status === "qualified" && c.confidence === "verify";
-  if (tab === "fit_only") return c.status === "qualified" && c.confidence === null;
-  return true;
+  // Signal covers confirmed AND needs-a-look. Both are a founder-and-successor
+  // claim; only the confidence differs, and the card says which.
+  return c.status === "qualified" && c.hasSignal === true;
 }
 
 type GroupBy = "signal" | "state" | "contact" | "none";
@@ -119,17 +126,11 @@ export function CompaniesTable({
   companies: Company[];
   onRowClick: (company: Company) => void;
 }) {
-  // Default to the first tab that actually has results — landing on an
-  // empty "Qualified" tab reads as broken.
-  //
-  // "fit_only" was missing from this list, which quietly hid most of a folder.
-  // A real run finished 0 qualified / 1 verify / 15 fit-only, so the priority
-  // fell through to "verify" and opened on ONE company out of sixteen. The
-  // other fifteen were behind a tab you had to already know to press.
-  const [tab, setTab] = useState<Tab>(() => {
-    const priority: Tab[] = ["qualified", "verify", "fit_only", "all"];
-    return priority.find((t) => companies.some((c) => matchesTab(c, t))) ?? "all";
-  });
+  // ALWAYS "All leads". It used to open on the first tab with results, which
+  // sounds helpful and meant the opening view changed shape between folders —
+  // and on one real run landed on a tab holding ONE company out of sixteen.
+  // A list that opens on everything is a list you can trust to be everything.
+  const [tab, setTab] = useState<Tab>("all");
   const [q, setQ] = useState("");
   const [industry, setIndustry] = useState<Industry | "all">("all");
   // Grouping, because a flat list of 80 leads is a list you scroll rather than
@@ -137,6 +138,9 @@ export function CompaniesTable({
   // the top under their own heading, which is the pile he actually calls, and
   // separates them from the fit-only rows that are a longer game.
   const [groupBy, setGroupBy] = useState<GroupBy>("signal");
+  // Cards read one lead well; rows compare many. Neither is "the" view —
+  // they answer different questions, so both exist and neither is hidden.
+  const [view, setView] = useState<"cards" | "table">("cards");
 
   const counts = useMemo(
     () =>
@@ -206,11 +210,37 @@ export function CompaniesTable({
             className="w-full rounded-lg border border-gh-border bg-gh-surface-sunken py-1.5 pl-8 pr-2.5 text-sm text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none focus:ring-2 focus:ring-gh-sky/20"
           />
         </div>
+        <div
+          role="group"
+          aria-label="View style"
+          className="flex items-center gap-0.5 rounded-lg bg-gh-surface-sunken p-0.5 sm:ml-auto"
+        >
+          {([
+            { key: "cards", label: "Cards", Icon: RowsIcon },
+            { key: "table", label: "Table", Icon: GridIcon },
+          ] as const).map(({ key, label, Icon }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setView(key)}
+              aria-pressed={view === key}
+              className={`flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-colors duration-200 ${
+                view === key
+                  ? "bg-gh-surface text-gh-ink shadow-sm"
+                  : "text-gh-ink-muted hover:text-gh-ink"
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {label}
+            </button>
+          ))}
+        </div>
+
         <select
           value={groupBy}
           onChange={(e) => setGroupBy(e.target.value as GroupBy)}
           aria-label="Group leads by"
-          className="rounded-lg border border-gh-border bg-gh-surface-sunken px-2.5 py-1.5 text-xs font-medium text-gh-ink-secondary focus:border-gh-sky focus:outline-none focus:ring-2 focus:ring-gh-sky/20 sm:ml-auto"
+          className="rounded-lg border border-gh-border bg-gh-surface-sunken px-2.5 py-1.5 text-xs font-medium text-gh-ink-secondary focus:border-gh-sky focus:outline-none focus:ring-2 focus:ring-gh-sky/20"
         >
           {GROUP_OPTIONS.map((o) => (
             <option key={o.key} value={o.key}>
@@ -260,13 +290,17 @@ export function CompaniesTable({
                 looking for a specific company, and a hidden tail is a lead he
                 cannot find. Only the Overview trims, because that page is a
                 summary and a summary that never ends is not one. */}
-            <div className="space-y-2.5">
-              {g.rows.map((c, i) => (
-                <div key={c.id} style={{ animationDelay: `${Math.min(i, 12) * 40}ms` }}>
-                  <LeadCard company={c} onOpen={() => onRowClick(c)} />
-                </div>
-              ))}
-            </div>
+            {view === "table" ? (
+              <LeadTable rows={g.rows} onOpen={onRowClick} />
+            ) : (
+              <div className="space-y-2.5">
+                {g.rows.map((c, i) => (
+                  <div key={c.id} style={{ animationDelay: `${Math.min(i, 12) * 40}ms` }}>
+                    <LeadCard company={c} onOpen={() => onRowClick(c)} />
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
         ))}
         {filtered.length === 0 && (

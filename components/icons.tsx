@@ -241,3 +241,12 @@ export function GridIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+export function RowsIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden>
+      <rect x="3" y="3.5" width="14" height="5" rx="1.4" stroke="currentColor" strokeWidth={base} />
+      <rect x="3" y="11.5" width="14" height="5" rx="1.4" stroke="currentColor" strokeWidth={base} />
+    </svg>
+  );
+}

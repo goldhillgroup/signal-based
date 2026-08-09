@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { WhatCountsAsSignal } from "./WhatCountsAsSignal";
 import { DAY_NAMES, type WeeklySchedule as Schedule } from "@/lib/pipeline/schedule-types";
 import { INDUSTRY_META } from "@/lib/signal-meta";
 import type { Industry } from "@/lib/supabase/types";
@@ -64,6 +65,13 @@ export function WeeklySchedule({
         Scan automatically once a week and drop the results in a new folder -
         so there are fresh leads waiting without running a search yourself.
       </p>
+
+      {/* A panel that schedules an automatic scan, without saying what it
+          scans FOR. The verticals and states describe where to look; this is
+          the only thing that says what it is looking for. */}
+      <div className="mt-3">
+        <WhatCountsAsSignal compact />
+      </div>
 
       <div className="mt-3 rounded-xl border border-gh-border bg-gh-surface p-4">
         {/* The switch, first and unmissable. */}

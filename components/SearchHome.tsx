@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSearches } from "@/lib/searches-store";
 import { AGREED_STATES, NATIONWIDE, stateNameFor } from "@/lib/pipeline/us-states";
+import { WhatCountsAsSignal } from "./WhatCountsAsSignal";
 import { INDUSTRY_META } from "@/lib/signal-meta";
 import { applyAnswer, bandLabel, labelFor, type IntakeResult } from "@/lib/pipeline/intake-types";
 import type { Industry, SearchMode } from "@/lib/supabase/types";
@@ -72,7 +73,14 @@ export function SearchHome() {
   const [resolved, setResolved] = useState<string[]>([]);
 
   // ── Manual path (unchanged, now opt-in) ─────────────────────────────────
-  const [showManual, setShowManual] = useState(false);
+  // OPEN by default. This shipped collapsed, with a free-text box as the front
+  // door and the structured form behind "Or set it up manually" — which had it
+  // backwards. The form is deterministic: four controls, no ambiguity, no
+  // parse. The text box costs an extra model call and can misread a request,
+  // and it asks someone who is not a prompt engineer to phrase one. It is a
+  // shortcut for people who already know what they want, which is what it is
+  // now — kept, and second.
+  const [showManual, setShowManual] = useState(true);
   const [industry, setIndustry] = useState<Industry | null>(null);
   // Defaults to all four agreed states — the signed scope, and the most likely
   // thing to want. It is not more expensive than picking one: the target
@@ -211,6 +219,14 @@ export function SearchHome() {
             </div>
           ))}
         </div>
+
+        {/* The form asks for vertical, states and revenue — all of which
+            describe the COMPANY. Nothing anywhere said what the crawler is
+            actually hunting for, which is the one thing that makes this
+            different from a business directory. */}
+        <div className="mx-auto mt-5 max-w-2xl text-left">
+          <WhatCountsAsSignal />
+        </div>
       </div>
 
       {/* ── Ask box ──────────────────────────────────────────────────────── */}
@@ -326,7 +342,7 @@ export function SearchHome() {
           onClick={() => setShowManual((v) => !v)}
           className="mt-2 w-full cursor-pointer rounded py-1.5 text-center text-[11px] font-medium text-gh-ink-muted underline underline-offset-2 transition-colors duration-200 hover:text-gh-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
         >
-          {showManual ? "Hide manual setup" : "Or set it up manually"}
+          {showManual ? "Hide the form, just type it" : "Set it up with the form instead"}
         </button>
       </div>
 

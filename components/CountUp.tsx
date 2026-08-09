@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 /**
  * Animated number that counts from 0 to `value` on an ease-out curve.
@@ -28,8 +28,17 @@ export function CountUp({
   decimals?: number;
 }) {
   const ref = useRef<HTMLSpanElement>(null);
-  const fmt = (n: number) =>
-    n.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  // useCallback so the effect can depend on it honestly rather than lying to
+  // the dependency array — this is redefined on every render otherwise, and
+  // `decimals` genuinely does change what it produces.
+  const fmt = useCallback(
+    (n: number) =>
+      n.toLocaleString("en-US", {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+      }),
+    [decimals]
+  );
 
   useEffect(() => {
     const node = ref.current;
@@ -53,7 +62,7 @@ export function CountUp({
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [value, duration, decimals]);
+  }, [value, duration, decimals, fmt]);
 
   // The rendered value is the FINAL one — the effect animates up to it from 0.
   // That keeps SSR output, no-JS output and reduced-motion output all correct.

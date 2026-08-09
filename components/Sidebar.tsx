@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useSearches } from "@/lib/searches-store";
 import { RadarIcon, FolderIcon, SettingsIcon, GridIcon, UsersIcon } from "./icons";
 import { SignOutButton } from "./SignOutButton";
+import { SidebarStatus } from "./SidebarStatus";
 
 // Two real destinations — "Crawl Runs" and "Reports" were placeholders from
 // an earlier design (a standing continuous-crawl model) that never got
@@ -133,6 +134,10 @@ export function Sidebar({ userEmail }: { userEmail: string | null }) {
           );
         })}
       </nav>
+
+      {/* Sits between the nav and the footer, so it fills the gap that opens up
+          on a five-item menu rather than pushing anything off-screen. */}
+      <SidebarStatus />
 
       <SignOutButton userEmail={userEmail} />
     </aside>

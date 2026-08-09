@@ -71,10 +71,21 @@ export function ThemeToggle() {
     listeners.forEach((l) => l());
   }, []);
 
-  const OPTIONS: { key: Theme; label: string; Icon: typeof SunIcon }[] = [
-    { key: "light", label: "Light", Icon: SunIcon },
-    { key: "dark", label: "Dark", Icon: MoonIcon },
-    { key: "system", label: "System", Icon: MonitorIcon },
+  // LABELLED, not icon-only. This shipped as three bare glyphs with sr-only
+  // text, and the first person to see it asked what the third one was — a
+  // monitor is not a self-evident picture of "follow the device". A sun and a
+  // moon are read instantly; anything standing for "neither, decide for me"
+  // needs a word. There is room for all three at 256px, so there was never a
+  // reason to make it a guess.
+  const OPTIONS: { key: Theme; label: string; title: string; Icon: typeof SunIcon }[] = [
+    { key: "light", label: "Light", title: "Always light", Icon: SunIcon },
+    { key: "dark", label: "Dark", title: "Always dark", Icon: MoonIcon },
+    {
+      key: "system",
+      label: "Auto",
+      title: "Match your device's light or dark setting",
+      Icon: MonitorIcon,
+    },
   ];
 
   return (
@@ -83,19 +94,19 @@ export function ThemeToggle() {
       aria-label="Colour theme"
       className="flex items-center gap-0.5 rounded-lg bg-white/5 p-0.5"
     >
-      {OPTIONS.map(({ key, label, Icon }) => (
+      {OPTIONS.map(({ key, label, title, Icon }) => (
         <button
           key={key}
           type="button"
           onClick={() => choose(key)}
           aria-pressed={theme === key}
-          title={label}
-          className={`flex h-7 flex-1 cursor-pointer items-center justify-center rounded-md transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 ${
+          title={title}
+          className={`flex h-7 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md text-[11px] font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 ${
             theme === key ? "bg-white/15 text-white" : "text-white/45 hover:text-white/80"
           }`}
         >
-          <Icon className="h-3.5 w-3.5" />
-          <span className="sr-only">{label}</span>
+          <Icon className="h-3.5 w-3.5 shrink-0" />
+          {label}
         </button>
       ))}
     </div>
