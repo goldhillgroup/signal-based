@@ -6,6 +6,8 @@ import { SupabaseNotConfigured } from "@/components/SupabaseNotConfigured";
 import { SearchesProvider } from "@/lib/searches-store";
 import { Sidebar } from "@/components/Sidebar";
 import { Topbar } from "@/components/Topbar";
+import { createServiceRoleClient } from "@/lib/supabase/server";
+import { reapStaleRuns } from "@/lib/pipeline/reap";
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
   if (!isSupabaseConfigured) {
@@ -19,6 +21,24 @@ export default async function DashboardLayout({ children }: { children: ReactNod
 
   if (!user) {
     redirect("/login");
+  }
+
+  // Close out any run the platform killed before it could mark itself finished
+  // (see lib/pipeline/reap.ts). This is the recovery path for the failure that
+  // stranded a real search at "16 of 20" forever, taking its 16 paid-for leads
+  // with it and blocking Enrich, which refuses to run on a search that is not
+  // 'complete'.
+  //
+  // Here, rather than on a cron, because this is where it matters: any page
+  // that could SHOW a stale run has just rendered. One indexed lookup that
+  // almost always matches nothing, and it self-heals without the client
+  // needing to know the failure mode exists. Never allowed to break the
+  // dashboard — a reaper that takes down the page it exists to fix is worse
+  // than the stuck row.
+  try {
+    await reapStaleRuns(createServiceRoleClient());
+  } catch (e) {
+    console.error("Stale-run reaper failed, dashboard rendering anyway:", e);
   }
 
   return (

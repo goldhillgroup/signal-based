@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useSearches, SearchFolder } from "@/lib/searches-store";
+import { RUN_CEILING_MS, REAP_GRACE_MS } from "@/lib/pipeline/reap";
 import { RadarIcon } from "./icons";
 
 interface Props {
@@ -59,9 +60,13 @@ function currentActivity(folder: SearchFolder): string {
     return `${folder.pagesFetched} of ${folder.companiesScanned} pages read`;
   }
   if (classified < folder.companiesScanned) {
+    // Counts what he is GETTING, not what is being thrown away. This used to
+    // append "· 67 cut", which is the biggest number on a healthy run and made
+    // a working search read as mostly failure. The companies-checked line
+    // below already shows the work is progressing.
     return folder.mode === "signal"
-      ? `${folder.qualifiedCount} qualified · ${folder.verifyCount} verify · ${folder.rejectedCount} cut`
-      : `${folder.qualifiedCount + folder.verifyCount + folder.fitOnlyCount} accepted · ${folder.rejectedCount} cut`;
+      ? `${folder.qualifiedCount} qualified · ${folder.verifyCount} to verify`
+      : `${folder.qualifiedCount + folder.verifyCount + folder.fitOnlyCount} accepted so far`;
   }
   return "Looking for more to check…";
 }
@@ -92,6 +97,16 @@ export function SearchProgress({ searchId, query, onComplete, onError, onDismiss
           return;
         }
 
+        // The run cannot outlive the server's function ceiling, so past it the
+        // process is gone and this row will never change again on its own.
+        // Polling it forever is what turned a killed run into a dialog frozen
+        // at "16 of 20" with no way out. Stop and hand back what it found —
+        // reapStaleRuns settles the row itself on the next dashboard load.
+        if (Date.now() - new Date(f.createdAt).getTime() > RUN_CEILING_MS + REAP_GRACE_MS) {
+          onComplete(f);
+          return;
+        }
+
         await new Promise((r) => setTimeout(r, 900));
       }
     }
@@ -103,6 +118,18 @@ export function SearchProgress({ searchId, query, onComplete, onError, onDismiss
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchId]);
 
+  // Escape closes it. A modal whose only exit is one specific button is a
+  // trap the moment that button is missing or scrolled out of reach, and
+  // Escape is the first thing anyone tries.
+  useEffect(() => {
+    if (!onDismiss) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onDismiss();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onDismiss]);
+
   if (!folder) {
     return null;
   }
@@ -113,8 +140,19 @@ export function SearchProgress({ searchId, query, onComplete, onError, onDismiss
   const stage = currentStage(folder);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-gh-navy-3/50 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl border border-gh-border bg-gh-surface p-7 shadow-2xl">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-gh-navy-3/50 p-4 backdrop-blur-sm"
+      // Clicking the backdrop closes it, the second thing anyone tries.
+      // Guarded on the target being the backdrop itself so a click that starts
+      // inside the card and drifts out does not dismiss.
+      onClick={onDismiss ? (e) => { if (e.target === e.currentTarget) onDismiss(); } : undefined}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Search in progress"
+        className="my-auto w-full max-w-md rounded-2xl border border-gh-border bg-gh-surface p-7 shadow-2xl"
+      >
         <div className="relative mx-auto flex h-20 w-20 items-center justify-center">
           <span
             className="absolute rounded-full border border-gh-sky"

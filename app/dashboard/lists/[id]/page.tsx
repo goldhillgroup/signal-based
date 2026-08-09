@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useSearches, SearchFolder } from "@/lib/searches-store";
 import { Company } from "@/lib/company";
 import { FolderView } from "@/components/FolderView";
@@ -11,6 +11,7 @@ import { ArrowLeftIcon } from "@/components/icons";
 
 export default function FolderPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const { fetchFolder, fetchCompanies } = useSearches();
   const [folder, setFolder] = useState<SearchFolder | null | "loading">("loading");
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -78,6 +79,12 @@ export default function FolderPage() {
           const refreshed = await fetchFolder(folder.id);
           setFolder(refreshed);
         }}
+        // Without this the dialog rendered with NO way out: the close button is
+        // conditional on onDismiss, and there was no Escape or backdrop either.
+        // Landing on a running folder by URL, bookmark or refresh trapped you
+        // until the run finished. The run lives on the server, so leaving is
+        // always safe.
+        onDismiss={() => router.push("/dashboard")}
       />
     );
   }
