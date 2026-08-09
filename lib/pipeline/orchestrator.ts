@@ -403,6 +403,10 @@ export async function runSearchPipeline(
     // It is monotonic (the company count only grows), per (vertical, state),
     // and self-correcting: a search that finds nothing does not advance it,
     // so the next run re-asks rather than skipping ground it never covered.
+    // Set once if the phone column is not there yet, so the run says so once
+    // at the end instead of logging per company.
+    let phoneColumnMissing = false;
+
     let rotationSeed = 0;
     try {
       const { count } = await supabase
@@ -576,6 +580,9 @@ export async function runSearchPipeline(
           // identical output. Falls back to states[0] only for candidates that
           // carry no state of their own (the recheck channel).
           state: candidate.state ?? states[0] ?? null,
+          // Free, and never captured until now: Google Places returns the city
+          // in the same response as the website URL. Zero of 106 rows had one.
+          city: candidate.city ?? null,
           source_url: page?.url ?? candidate.url,
           discovery_channel: candidate.channel ?? null,
           first_seen_at: new Date().toISOString(),
@@ -842,6 +849,22 @@ export async function runSearchPipeline(
           return;
         }
 
+        // Phone, written separately and best-effort ON PURPOSE. It needs a
+        // column this codebase cannot create (no psql, no CLI, no database
+        // password here), and folding it into the insert above would mean a
+        // company is LOST entirely on a database where the migration has not
+        // been applied. A missing phone number is a missing field; a missing
+        // company is a missing lead.
+        if (candidate.phone) {
+          const { error: phoneErr } = await supabase
+            .from("companies")
+            .update({ phone: candidate.phone })
+            .eq("id", inserted.id);
+          if (phoneErr && /phone/.test(phoneErr.message ?? "")) {
+            phoneColumnMissing = true;
+          }
+        }
+
         if (classification.quote && finalHasSignal) {
           await supabase.from("signal_evidence").insert({
             company_id: inserted.id,
@@ -930,6 +953,12 @@ export async function runSearchPipeline(
     // explains why the count may fall short of the target. Only an error
     // outside the round loop (e.g. the DB itself) reaches the outer catch
     // and produces a genuine status: 'failed'.
+    if (phoneColumnMissing) {
+      console.warn(
+        `Search ${searchId}: phone numbers were discovered but not saved, the companies.phone column does not exist. Apply supabase/migrations/20260809010000_company_phone.sql.`
+      );
+    }
+
     await bump(supabase, searchId, {
       status: "complete",
       error_message: stoppedEarlyReason,

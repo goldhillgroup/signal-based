@@ -170,6 +170,22 @@ export interface Candidate {
    * company already has a state on file worth more than a re-derived guess.
    */
   state?: string | null;
+  /**
+   * Details Google Places returns with every place we ALREADY pay for, and
+   * that were being discarded at the point of arrival.
+   *
+   * Zero of 106 companies in the database had a city — including zero of the
+   * 68 found through Maps, where the full address and phone number came back
+   * in the same $0.004 response as the website URL. A phone number for a
+   * 60-year-old founder of a landscaping company is not a lesser contact than
+   * an email; it is often the one that actually gets answered.
+   *
+   * Optional and only ever set by the maps channel; every other channel leaves
+   * them undefined rather than guessing.
+   */
+  phone?: string | null;
+  city?: string | null;
+  address?: string | null;
 }
 
 export function hostnameOf(url: string): string | null {
@@ -461,14 +477,30 @@ async function discoverViaMaps(
       skipClosedPlaces: true,
     },
     timeoutSecs
-  )) as Array<{ title?: string; website?: string | null; categoryName?: string }>;
+  )) as Array<{
+    title?: string;
+    website?: string | null;
+    categoryName?: string;
+    phone?: string | null;
+    city?: string | null;
+    address?: string | null;
+    state?: string | null;
+  }>;
 
   // This actor bills per place scraped — meter what was actually returned.
   recordCost("apify_maps_place", items.length);
 
   return items
     .filter((place) => place.website)
-    .map((place) => ({ domain: "", url: place.website!, title: place.title ?? "", channel: "maps" as const }));
+    .map((place) => ({
+      domain: "",
+      url: place.website!,
+      title: place.title ?? "",
+      channel: "maps" as const,
+      phone: place.phone ?? null,
+      city: place.city ?? null,
+      address: place.address ?? null,
+    }));
 }
 
 // Vertical-specific succession-language phrasings — the point of this
@@ -773,6 +805,9 @@ export async function discoverCandidates(params: {
       title: r.title || host,
       channel: r.channel,
       state: r.state ?? null,
+      phone: r.phone ?? null,
+      city: r.city ?? null,
+      address: r.address ?? null,
     });
   }
 

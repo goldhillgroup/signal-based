@@ -49,6 +49,9 @@ export interface Database {
           name: string;
           industry: Industry;
           state: string | null;
+          // Free, from the Google Places discovery response. Nullable: only the
+          // maps channel supplies one.
+          phone: string | null;
           city: string | null;
           revenue_band: string | null;
           employee_band: string | null;

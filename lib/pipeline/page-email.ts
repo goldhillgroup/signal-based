@@ -19,7 +19,7 @@
  */
 
 /** Shared inboxes. Real, usable, but clearly not a named person. */
-const ROLE_PREFIXES = new Set([
+export const ROLE_PREFIXES = new Set([
   "info", "contact", "hello", "sales", "office", "admin", "support", "team",
   "enquiries", "inquiries", "mail", "help", "service", "customerservice",
   "estimates", "quotes", "scheduling", "billing", "accounting", "hr", "careers",
@@ -149,4 +149,23 @@ export function bestEmailFor(
     if (hit) return hit;
   }
   return null;
+}
+
+/**
+ * Is this address a shared inbox rather than a person?
+ *
+ * Judged on the local part, not on where the address came from, because the
+ * source does not settle it: AnymailFinder usually returns a named mailbox but
+ * can return info@, and a page scrape usually returns info@ but can return the
+ * founder's own address. The mailbox name is the fact.
+ *
+ * It matters because of what this product is FOR. Jonathan opens conversations
+ * about handing a family business to a child — the most personal subject a
+ * business owner has. info@ reaches whoever screens the inbox; will@ reaches
+ * Will. Both are worth having and they are not the same lead.
+ */
+export function isSharedInbox(email: string | null | undefined): boolean {
+  if (!email) return false;
+  const local = email.split("@")[0]?.toLowerCase().replace(/[._-]/g, "") ?? "";
+  return ROLE_PREFIXES.has(local);
 }

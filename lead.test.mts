@@ -112,6 +112,37 @@ ok("the CSV says it is not enriched yet", parkedCsv.includes("not_enriched_yet")
 const foundCsv = companiesToCsv([foundRow]).split("\r\n")[1];
 ok("the CSV does export a real contact", foundCsv.includes("sean@acme.com"));
 
-console.log(`${pass}/${pass + fails.length} lead-format assertions passed (incl. parked)`);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SHARED INBOXES — kept, but never mistaken for the person.
+// ═══════════════════════════════════════════════════════════════════════════
+const { isSharedInbox } = await import("./lib/pipeline/page-email.js");
+
+ok("info@ is a shared inbox", isSharedInbox("info@acme.com"));
+ok("sales@ is a shared inbox", isSharedInbox("sales@acme.com"));
+ok("office@ is a shared inbox", isSharedInbox("office@acme.com"));
+ok("punctuation does not hide it", isSharedInbox("no-reply@acme.com"));
+ok("will@ is a person", !isSharedInbox("will@acme.com"));
+ok("marcus.kerske@ is a person", !isSharedInbox("marcus.kerske@acme.com"));
+ok("missing email is not a shared inbox", !isSharedInbox(null));
+
+const sharedVerified = make({ contact: { name: null, nameInferred: false, title: null,
+  email: "info@acme.com", findStatus: "found", verificationStatus: "valid" } });
+const personVerified = make({ contact: { name: "Will", nameInferred: false, title: null,
+  email: "will@acme.com", findStatus: "found", verificationStatus: "valid" } });
+ok("a verified shared inbox scores BELOW a verified person",
+   scoreFactors(sharedVerified).score < scoreFactors(personVerified).score,
+   `${scoreFactors(sharedVerified).score} vs ${scoreFactors(personVerified).score}`);
+ok("a shared inbox still scores above nothing",
+   scoreFactors(sharedVerified).score > scoreFactors(make({})).score);
+ok("the reason says it is shared",
+   scoreFactors(sharedVerified).factors.some((f) => /shared inbox/i.test(f)));
+const sharedCsv = companiesToCsv([sharedVerified]).split("\r\n")[1];
+ok("the CSV marks it shared_inbox", sharedCsv.includes("shared_inbox"));
+ok("the CSV marks a person named_person",
+   companiesToCsv([personVerified]).split("\r\n")[1].includes("named_person"));
+ok("the CSV has a phone column", companiesToCsv([personVerified]).split("\r\n")[0].includes("phone"));
+
+console.log(`${pass}/${pass + fails.length} lead-format assertions passed (incl. parked + shared)`);
 for (const f of fails) console.log("  ✗ " + f);
 process.exit(fails.length ? 1 : 0);

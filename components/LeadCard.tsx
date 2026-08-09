@@ -1,6 +1,7 @@
 "use client";
 
 import { settledContact, type Company } from "@/lib/company";
+import { isSharedInbox } from "@/lib/pipeline/page-email";
 import { toLead, SIGNAL_TYPE_META, leadPeople } from "@/lib/lead-signal";
 import { formatRelativeDate } from "@/lib/stats";
 import { VerificationBadge } from "./badges";
@@ -133,6 +134,11 @@ export function LeadCard({
               {contact.email}
             </a>
             <VerificationBadge status={contact.verificationStatus} />
+            {isSharedInbox(contact.email) && (
+              <span className="rounded-full bg-gh-surface-sunken px-2 py-0.5 text-[10px] font-semibold text-gh-ink-muted">
+                shared inbox
+              </span>
+            )}
             {contact.name && (
               <span className="text-[11px] text-gh-ink-muted">
                 {contact.name}
@@ -148,6 +154,15 @@ export function LeadCard({
                 ? "Contact ready, press Enrich to reveal it"
                 : "Not looked up yet"}
           </span>
+        )}
+
+        {company.phone && (
+          <a
+            href={`tel:${company.phone.replace(/[^+\d]/g, "")}`}
+            className="shrink-0 text-xs font-semibold text-gh-ink-secondary hover:text-gh-ink hover:underline"
+          >
+            {company.phone}
+          </a>
         )}
 
         {lead.sourceUrl && (

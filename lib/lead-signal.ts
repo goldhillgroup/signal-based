@@ -1,4 +1,5 @@
 import { settledContact, type Company } from "./company";
+import { isSharedInbox } from "./pipeline/page-email";
 import { explainFit } from "./fit-explanation";
 
 /**
@@ -118,14 +119,19 @@ export function scoreFactors(c: Company): { score: number; factors: string[] } {
     factors.push(`Next generation named: ${c.nextGenName}`);
   }
 
+  // A shared inbox is worth having and is NOT the same lead. A verified
+  // info@ used to score exactly as high as a verified will@, which put a
+  // screened mailbox level with the successor himself at the top of a list
+  // sorted by score. Reaching the person by name is the product.
   const settled = settledContact(c);
   const v = settled?.verificationStatus;
+  const shared = isSharedInbox(settled?.email);
   if (settled?.email && v === "valid") {
-    score += 2;
-    factors.push("Verified deliverable email");
+    score += shared ? 1 : 2;
+    factors.push(shared ? "Verified, but a shared inbox" : "Verified deliverable email");
   } else if (settled?.email) {
-    score += 1;
-    factors.push("Email found, deliverability unconfirmed");
+    score += shared ? 0 : 1;
+    factors.push(shared ? "Shared inbox, deliverability unconfirmed" : "Email found, deliverability unconfirmed");
   }
 
   return { score: Math.max(1, Math.min(10, score)), factors };

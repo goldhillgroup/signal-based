@@ -140,6 +140,9 @@ function mapCompanyRow(row: CompanyJoinRow): Company {
     industry: row.industry,
     state: row.state ?? "-",
     city: row.city ?? "-",
+    // Free from Maps discovery; null on rows found by other channels, and on
+    // any row written before the column existed.
+    phone: (row as { phone?: string | null }).phone ?? null,
     // "Size not stated" rather than "Unknown". 75% of rows have no revenue
     // figure at all — the classifier estimates size from soft textual proxies
     // and most sites give it nothing to work from — so this is the common

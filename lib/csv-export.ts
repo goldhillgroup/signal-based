@@ -1,5 +1,6 @@
 import { settledContact, type Company } from "./company";
 import { toLead, SIGNAL_TYPE_META } from "./lead-signal";
+import { isSharedInbox } from "./pipeline/page-email";
 
 // The "sheet" — a plain CSV download, opens directly in Excel/Google Sheets/
 // Numbers with no export API, no OAuth, no extra vendor. Simplest thing that
@@ -36,6 +37,7 @@ const COLUMNS: { header: string; get: (c: Company) => string }[] = [
   { header: "founder_title", get: (c) => c.founderTitle ?? "" },
   { header: "next_gen", get: (c) => c.nextGenName ?? "" },
   { header: "next_gen_title", get: (c) => c.nextGenTitle ?? "" },
+  { header: "phone", get: (c) => c.phone ?? "" },
   { header: "contact_name", get: (c) => settledContact(c)?.name ?? "" },
   { header: "contact_email", get: (c) => settledContact(c)?.email ?? "" },
   {
@@ -45,6 +47,13 @@ const COLUMNS: { header: string; get: (c: Company) => string }[] = [
       if (!settled) return c.contact?.email ? "not_enriched_yet" : "not_found";
       const v = settled.verificationStatus;
       return v === "not_attempted" ? "unverified" : v;
+    },
+  },
+  {
+    header: "contact_type",
+    get: (c) => {
+      const s = settledContact(c);
+      return s?.email ? (isSharedInbox(s.email) ? "shared_inbox" : "named_person") : "";
     },
   },
   { header: "score", get: (c) => String(toLead(c).score) },
