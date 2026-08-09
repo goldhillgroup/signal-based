@@ -75,3 +75,17 @@ export interface Company {
   evidence: Evidence | null;
   contact: Contact | null;
 }
+
+/**
+ * The contact, but only once the lookup step has actually run.
+ *
+ * A row still at 'not_attempted' holds an email parked free off the company's
+ * own page during classification. It is real, but it has not been checked for
+ * deliverability and has not yet been weighed against what AnymailFinder might
+ * return. Every surface that shows or scores a contact goes through this, so
+ * the folder, the score and the CSV can never disagree about whether a company
+ * has one.
+ */
+export function settledContact(c: Company): Contact | null {
+  return c.contact && c.contact.findStatus === "found" ? c.contact : null;
+}

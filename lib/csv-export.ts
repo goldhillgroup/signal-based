@@ -1,4 +1,4 @@
-import { Company } from "./company";
+import { settledContact, type Company } from "./company";
 import { toLead, SIGNAL_TYPE_META } from "./lead-signal";
 
 // The "sheet" — a plain CSV download, opens directly in Excel/Google Sheets/
@@ -36,13 +36,14 @@ const COLUMNS: { header: string; get: (c: Company) => string }[] = [
   { header: "founder_title", get: (c) => c.founderTitle ?? "" },
   { header: "next_gen", get: (c) => c.nextGenName ?? "" },
   { header: "next_gen_title", get: (c) => c.nextGenTitle ?? "" },
-  { header: "contact_name", get: (c) => c.contact?.name ?? "" },
-  { header: "contact_email", get: (c) => c.contact?.email ?? "" },
+  { header: "contact_name", get: (c) => settledContact(c)?.name ?? "" },
+  { header: "contact_email", get: (c) => settledContact(c)?.email ?? "" },
   {
     header: "email_status",
     get: (c) => {
-      if (!c.contact || c.contact.findStatus !== "found") return "not_found";
-      const v = c.contact.verificationStatus;
+      const settled = settledContact(c);
+      if (!settled) return c.contact?.email ? "not_enriched_yet" : "not_found";
+      const v = settled.verificationStatus;
       return v === "not_attempted" ? "unverified" : v;
     },
   },

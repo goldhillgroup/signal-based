@@ -858,6 +858,43 @@ export async function runSearchPipeline(
           return;
         }
 
+        // FREE EMAIL, PARKED, NOT SHOWN.
+        //
+        // The page this company was just judged from is still in memory, and
+        // plenty of trade sites print an address on it. Reading it here costs
+        // nothing; the same read during enrichment costs a $0.013 re-fetch,
+        // and paying AnymailFinder $0.05 for an address already sitting on the
+        // page is worse still.
+        //
+        // Written with find_status 'not_attempted', which is the honest state:
+        // we have a CANDIDATE, the lookup step has not run. The UI shows an
+        // email only at 'found', so nothing appears in the folder until he
+        // presses Enrich — the two-step flow stays true, and an unpressed
+        // Enrich button never sits above a list that already has emails in it.
+        //
+        // Only for accepted companies. A rejected one is not a lead, and a
+        // contacts row on it would make enrichment think it had been handled.
+        if (finalQualifies) {
+          const parked = bestEmailFor(extractEmails(classifyText), candidate.domain, [
+            classification.nextGenName,
+            classification.founderName,
+          ]);
+          if (parked) {
+            await supabase.from("contacts").insert({
+              company_id: inserted.id,
+              email: parked.email,
+              name: parked.matchedName,
+              name_inferred: parked.matchedName !== null,
+              title: parked.matchedName
+                ? classification.nextGenTitle ?? classification.founderTitle
+                : null,
+              find_status: "not_attempted",
+              find_source: `company-page:${parked.kind}`,
+              verification_status: "not_attempted",
+            });
+          }
+        }
+
         if (finalHasSignal) {
           if (finalConfidence === "verify") verify++;
           else qualified++;
@@ -1049,9 +1086,21 @@ export async function enrichContacts(searchId: string, scope: EnrichScope = "all
 
     const { data: existingContacts } = await supabase
       .from("contacts")
-      .select("company_id")
+      .select("company_id, email, find_status, find_source")
       .in("company_id", (companies ?? []).map((c) => c.id));
-    const alreadyEnriched = new Set((existingContacts ?? []).map((c) => c.company_id));
+
+    // A row at 'not_attempted' is a PARKED CANDIDATE scraped free off the page
+    // at classify time, not a finished lookup. Treating any contacts row as
+    // "already enriched" would have made the free scrape actively harmful:
+    // every company that happened to print an address would be skipped
+    // forever, its email never revealed and no lookup ever run.
+    const settled = (existingContacts ?? []).filter((c) => c.find_status !== "not_attempted");
+    const alreadyEnriched = new Set(settled.map((c) => c.company_id));
+    const parkedByCompany = new Map(
+      (existingContacts ?? [])
+        .filter((c) => c.find_status === "not_attempted" && c.email)
+        .map((c) => [c.company_id, c])
+    );
 
     // Reuse an email we already bought for this DOMAIN, even if it was found
     // under a different search. Companies are stored per (search, domain), so
@@ -1083,6 +1132,30 @@ export async function enrichContacts(searchId: string, scope: EnrichScope = "all
 
     for (const company of toEnrich) {
       try {
+        // A parked candidate that already belongs to the person we want —
+        // it matched the founder's or successor's name off their own page.
+        // AnymailFinder cannot beat that, so promote it and spend nothing.
+        // Verification still runs: $0.006 to know whether it delivers is
+        // worth it against $0.05 to look up an address we already have.
+        const parked = parkedByCompany.get(company.id);
+        if (parked?.email && String(parked.find_source).endsWith(":person_match")) {
+          const verification = await verifyEmail(parked.email).catch(() => "unknown" as const);
+          await supabase
+            .from("contacts")
+            .update({
+              find_status: "found",
+              verification_status: verification,
+              verification_source: "millionverifier",
+              verified_at: new Date().toISOString(),
+            })
+            .eq("company_id", company.id)
+            .eq("find_status", "not_attempted");
+          contactsFound++;
+          if (verification === "valid") contactsVerified++;
+          await bump(supabase, searchId, { contacts_found: contactsFound, contacts_verified: contactsVerified });
+          continue;
+        }
+
         // Domain already has a purchased contact — copy it forward instead of
         // paying to rediscover it.
         const known = knownByDomain.get(company.domain);
@@ -1103,6 +1176,16 @@ export async function enrichContacts(searchId: string, scope: EnrichScope = "all
           if (known.verification_status === "valid") contactsVerified++;
           await bump(supabase, searchId, { contacts_found: contactsFound, contacts_verified: contactsVerified });
           continue;
+        }
+
+        // Any parked candidate left at this point is a shared inbox or an
+        // unmatched address. AnymailFinder is still worth trying, because a
+        // named person beats info@ for someone whose whole pitch is reaching
+        // the founder by name — and it only bills on success, so the attempt
+        // is free. Whatever wins replaces the parked row rather than sitting
+        // beside it, so a company never ends up with two contacts.
+        if (parked) {
+          await supabase.from("contacts").delete().eq("company_id", company.id).eq("find_status", "not_attempted");
         }
 
         const targetName = company.next_gen_name ?? company.founder_name ?? null;
@@ -1128,11 +1211,19 @@ export async function enrichContacts(searchId: string, scope: EnrichScope = "all
           // bills only on a find) and used to end the story: a company he wants
           // to call, with no way to reach it. Read its own page before giving
           // up — most small trade sites print an address in plain text.
-          const scraped = await emailFromCompanyPage(
-            company.domain,
-            company.source_url,
-            [company.next_gen_name, company.founder_name]
-          );
+          // Prefer the candidate already read off this page at classify time.
+          // Re-fetching to learn the same address would spend $0.013 to
+          // rediscover something already in the database.
+          const scraped = parked?.email
+            ? {
+                email: parked.email,
+                kind: String(parked.find_source).split(":")[1] ?? "role",
+                matchedName: null,
+              }
+            : await emailFromCompanyPage(company.domain, company.source_url, [
+                company.next_gen_name,
+                company.founder_name,
+              ]);
           if (scraped) {
             const verification = await verifyEmail(scraped.email).catch(() => "unknown" as const);
             await supabase.from("contacts").insert({

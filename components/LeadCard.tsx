@@ -1,6 +1,6 @@
 "use client";
 
-import type { Company } from "@/lib/company";
+import { settledContact, type Company } from "@/lib/company";
 import { toLead, SIGNAL_TYPE_META, leadPeople } from "@/lib/lead-signal";
 import { formatRelativeDate } from "@/lib/stats";
 import { VerificationBadge } from "./badges";
@@ -28,7 +28,15 @@ export function LeadCard({
   const lead = toLead(company);
   const meta = SIGNAL_TYPE_META[lead.signalType];
   const { founder, nextGen } = leadPeople(company);
-  const contact = company.contact;
+  // A contact only counts once the lookup step has actually run. A row still
+  // at 'not_attempted' is a candidate parked free off the company's own page
+  // during classification — real, but not yet checked for deliverability and
+  // not yet chosen over what AnymailFinder might find. Showing it before
+  // Enrich is pressed would put emails in the folder that the two-step flow
+  // says are not there yet, and would leave the Enrich button apparently
+  // doing nothing for those rows.
+  const contact = settledContact(company);
+  const parked = company.contact?.findStatus === "not_attempted" && !!company.contact.email;
 
   return (
     <article className="fade-up rounded-xl border border-gh-border bg-gh-surface transition-colors duration-200 hover:border-gh-sky/50">
@@ -134,7 +142,11 @@ export function LeadCard({
           </div>
         ) : (
           <span className="text-[11px] text-gh-ink-muted">
-            {contact ? "No email found for this one" : "Not looked up yet"}
+            {company.contact?.findStatus === "not_found"
+              ? "No email found for this one"
+              : parked
+                ? "Contact ready, press Enrich to reveal it"
+                : "Not looked up yet"}
           </span>
         )}
 

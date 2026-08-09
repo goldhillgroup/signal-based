@@ -79,6 +79,39 @@ ok("location falls back honestly",
    toLead(make({ city: "", state: "" })).location === "Location not stated");
 ok("every signal type has a label", Object.values(SIGNAL_TYPE_META).every((m) => m.label && m.blurb));
 
-console.log(`${pass}/${pass + fails.length} lead-format assertions passed`);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PARKED CANDIDATES — an email read free off the page at classify time is a
+// candidate, not a contact. It must not appear, score, or export until the
+// lookup step has actually run.
+// ═══════════════════════════════════════════════════════════════════════════
+const { settledContact } = await import("./lib/company.js");
+const { companiesToCsv } = await import("./lib/csv-export.js");
+
+const parkedRow = make({
+  contact: { name: null, nameInferred: false, title: null, email: "info@acme.com",
+             findStatus: "not_attempted", verificationStatus: "not_attempted" },
+});
+const foundRow = make({
+  contact: { name: "Sean", nameInferred: false, title: "VP", email: "sean@acme.com",
+             findStatus: "found", verificationStatus: "valid" },
+});
+
+is("a parked candidate is not a contact", settledContact(parkedRow), null);
+ok("a completed lookup is a contact", settledContact(foundRow)?.email === "sean@acme.com");
+ok("a parked candidate does not raise the score",
+   scoreFactors(parkedRow).score === scoreFactors(make({})).score,
+   `${scoreFactors(parkedRow).score} vs ${scoreFactors(make({})).score}`);
+ok("a real contact does raise the score", scoreFactors(foundRow).score > scoreFactors(make({})).score);
+ok("no score reason mentions an email for a parked row",
+   !scoreFactors(parkedRow).factors.some((f) => /email/i.test(f)));
+
+const parkedCsv = companiesToCsv([parkedRow]).split("\r\n")[1];
+ok("the CSV does not leak a parked email", !parkedCsv.includes("info@acme.com"), parkedCsv.slice(0, 80));
+ok("the CSV says it is not enriched yet", parkedCsv.includes("not_enriched_yet"));
+const foundCsv = companiesToCsv([foundRow]).split("\r\n")[1];
+ok("the CSV does export a real contact", foundCsv.includes("sean@acme.com"));
+
+console.log(`${pass}/${pass + fails.length} lead-format assertions passed (incl. parked)`);
 for (const f of fails) console.log("  ✗ " + f);
 process.exit(fails.length ? 1 : 0);

@@ -1,4 +1,4 @@
-import type { Company } from "./company";
+import { settledContact, type Company } from "./company";
 import { explainFit } from "./fit-explanation";
 
 /**
@@ -118,11 +118,12 @@ export function scoreFactors(c: Company): { score: number; factors: string[] } {
     factors.push(`Next generation named: ${c.nextGenName}`);
   }
 
-  const v = c.contact?.verificationStatus;
-  if (c.contact?.email && v === "valid") {
+  const settled = settledContact(c);
+  const v = settled?.verificationStatus;
+  if (settled?.email && v === "valid") {
     score += 2;
     factors.push("Verified deliverable email");
-  } else if (c.contact?.email) {
+  } else if (settled?.email) {
     score += 1;
     factors.push("Email found, deliverability unconfirmed");
   }
