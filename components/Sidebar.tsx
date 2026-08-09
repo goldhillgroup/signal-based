@@ -130,7 +130,7 @@ function SidebarBody({
               href={href}
               onClick={onNavigate}
               aria-current={active ? "page" : undefined}
-              className={`group relative flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
+              className={`group relative flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-[color,background-color] duration-200 ${
                 active
                   ? "bg-white/10 text-white"
                   : "text-white/55 hover:bg-white/5 hover:text-white"
@@ -142,7 +142,7 @@ function SidebarBody({
                   reads at a glance and survives a long label. */}
               <span
                 aria-hidden
-                className={`absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-gh-sky transition-all duration-200 ${
+                className={`absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-gh-sky transition-[opacity,transform] duration-[var(--gh-dur)] ease-[var(--gh-ease-out)] ${
                   active ? "opacity-100" : "opacity-0 group-hover:opacity-40"
                 }`}
               />

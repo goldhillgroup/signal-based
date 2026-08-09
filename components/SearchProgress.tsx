@@ -148,7 +148,7 @@ export function SearchProgress({ searchId, query, onComplete, onError, onDismiss
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-gh-navy-3/50 p-4 backdrop-blur-sm"
+      className="fade-in fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-gh-navy-3/50 p-4 backdrop-blur-sm"
       // Clicking the backdrop closes it, the second thing anyone tries.
       // Guarded on the target being the backdrop itself so a click that starts
       // inside the card and drifts out does not dismiss.
@@ -158,7 +158,7 @@ export function SearchProgress({ searchId, query, onComplete, onError, onDismiss
         role="dialog"
         aria-modal="true"
         aria-label="Search in progress"
-        className="my-auto w-full max-w-md rounded-2xl border border-gh-border bg-gh-surface p-7 shadow-2xl"
+        className="scale-in my-auto w-full max-w-md rounded-2xl border border-gh-border bg-gh-surface p-7 shadow-2xl"
       >
         <div className="relative mx-auto flex h-20 w-20 items-center justify-center">
           <span

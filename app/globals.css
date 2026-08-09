@@ -187,52 +187,6 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* ── Motion ────────────────────────────────────────────────────────────────
-   Two loops and one hover, borrowed from the vid-app so the two dashboards
-   move the same way. Both loops run forever, so both are switched off
-   wholesale for anyone who has asked the OS for less motion — see the
-   prefers-reduced-motion block at the end of this file. */
-
-/* Halo behind the one stage that carries the product's payload. */
-@keyframes ghPulseRing {
-  0%   { transform: scale(1);    opacity: 0.30; }
-  70%  { transform: scale(1.45); opacity: 0;    }
-  100% { transform: scale(1.45); opacity: 0;    }
-}
-.pulse-ring {
-  animation: ghPulseRing 2.4s cubic-bezier(0.16, 1, 0.3, 1) infinite;
-}
-
-/* Dash pattern travelling along a funnel connector — direction of flow. */
-@keyframes ghFlowDash {
-  to { stroke-dashoffset: -22; }
-}
-.flow-dash {
-  stroke-dasharray: 4 7;
-  animation: ghFlowDash 1.4s linear infinite;
-}
-
-/* Springy lift on the funnel nodes. Transform only — never layout. */
-.hover-spring {
-  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-.hover-spring:hover {
-  transform: translateY(-3px) scale(1.04);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .pulse-ring,
-  .flow-dash {
-    animation: none !important;
-  }
-  .hover-spring {
-    transition: none !important;
-  }
-  .hover-spring:hover {
-    transform: none;
-  }
-}
-
 /* ── Interaction affordances ───────────────────────────────────────────────
    Tailwind v4's preflight resets buttons to `cursor: default`, so every button
    in the app looked unclickable unless someone remembered `cursor-pointer` on
@@ -283,6 +237,164 @@ summary {
   }
 }
 
+/* ── The motion system ─────────────────────────────────────────────────────
+   Before this, the app's entire animation vocabulary was `transition-colors
+   duration-200`, 63 times. Hover states faded; everything structural SNAPPED.
+   Rows appeared fully-formed, panels teleported in, sections jumped open, and
+   nothing ever animated out — it read as a page redrawing itself rather than
+   an interface responding.
+
+   One rhythm, defined once. Every duration and curve in the app resolves to a
+   token here, so the whole product moves the same way and a change to the feel
+   is a change to four numbers rather than a sweep through forty components. */
+:root {
+  /* Micro — colour, small state flips. Below ~120ms motion stops reading as
+     motion and starts reading as a glitch. */
+  --gh-dur-fast: 140ms;
+  /* Standard — hover lift, toggles, the common case. */
+  --gh-dur: 220ms;
+  /* Entrances — panels, drawers, rows arriving. */
+  --gh-dur-slow: 320ms;
+  /* Exits run at ~60% of their entrance. Leaving should feel like getting out
+     of the way; matching the entrance duration feels like the UI is reluctant
+     to let go. */
+  --gh-dur-exit: 180ms;
+
+  /* Decisive arrival: fast start, long settle. The house curve. */
+  --gh-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Slight overshoot, for things the user physically acted on. */
+  --gh-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* Accelerating departure. */
+  --gh-ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+/* ── Entrances ─────────────────────────────────────────────────────────── */
+
+@keyframes ghFadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes ghFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+/* Modals scale from slightly small — the standard "arriving from the surface
+   below" cue. 0.96 not 0.8: a big scale jump reads as a bounce, not a panel. */
+@keyframes ghScaleIn {
+  from { opacity: 0; transform: scale(0.96) translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Every entrance reads its delay from an inherited custom property, so a
+   stagger set on a container reaches the animated element even when a layout
+   wrapper sits between them — see .stagger below. */
+.fade-up  { animation: ghFadeUp  var(--gh-dur-slow) var(--gh-ease-out) both; animation-delay: var(--gh-delay, 0ms); }
+.fade-in  { animation: ghFadeIn  var(--gh-dur)      var(--gh-ease-out) both; animation-delay: var(--gh-delay, 0ms); }
+.scale-in { animation: ghScaleIn var(--gh-dur-slow) var(--gh-ease-out) both; animation-delay: var(--gh-delay, 0ms); }
+
+/* ── Stagger ───────────────────────────────────────────────────────────────
+   The reason the old entrances barely registered: ten rows sharing one
+   animation all arrive on the same frame, which is visually indistinguishable
+   from them simply appearing. The cascade IS the effect.
+
+   Set as an INHERITED CUSTOM PROPERTY rather than animation-delay directly.
+   That distinction is the whole reason this works. The lead grid renders
+   `<div style={{animationDelay}}><LeadCard/></div>` — a layout wrapper holding
+   the delay while the card inside it holds the animation, so the delay applied
+   to an element that never animated and the stagger was silently inert.
+   Custom properties inherit; animation-delay does not. Setting --gh-delay on
+   the wrapper cascades into whatever descendant actually animates.
+
+   Done with nth-child rather than a per-row inline style so callers get it by
+   adding one class to the container — no index threading, and impossible to
+   forget on the next list.
+
+   40ms steps, capped at 10. Past ~400ms of accumulated delay the last row
+   reads as late rather than sequenced, so everything from the tenth child on
+   arrives together. That cap is what keeps a 200-row table from taking eight
+   seconds to finish appearing. */
+.stagger > *:nth-child(1)  { --gh-delay: 0ms; }
+.stagger > *:nth-child(2)  { --gh-delay: 40ms; }
+.stagger > *:nth-child(3)  { --gh-delay: 80ms; }
+.stagger > *:nth-child(4)  { --gh-delay: 120ms; }
+.stagger > *:nth-child(5)  { --gh-delay: 160ms; }
+.stagger > *:nth-child(6)  { --gh-delay: 200ms; }
+.stagger > *:nth-child(7)  { --gh-delay: 240ms; }
+.stagger > *:nth-child(8)  { --gh-delay: 280ms; }
+.stagger > *:nth-child(9)  { --gh-delay: 320ms; }
+.stagger > *:nth-child(n+10) { --gh-delay: 360ms; }
+
+/* ── Hover and press ───────────────────────────────────────────────────────
+   Cards previously changed only their border colour on hover. A 1px colour
+   shift is a weak affordance; a small lift says "this is a surface you can
+   pick up" without touching layout. */
+.lift {
+  transition: transform var(--gh-dur) var(--gh-ease-out),
+              box-shadow var(--gh-dur) var(--gh-ease-out),
+              border-color var(--gh-dur) var(--gh-ease-out);
+}
+.lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px -8px rgb(0 0 0 / 0.18);
+}
+/* Settles back to flat on click — the surface being pressed down. */
+.lift:active { transform: translateY(0); transition-duration: var(--gh-dur-fast); }
+
+/* Springy lift on the funnel nodes. Transform only — never layout. */
+.hover-spring { transition: transform var(--gh-dur) var(--gh-ease-spring); }
+.hover-spring:hover { transform: translateY(-3px) scale(1.04); }
+
+/* Tactile press on every control. Apple's and Material's shared rule is that a
+   tap must acknowledge itself within 100ms; on touch there is no hover to do
+   that job, so without this a button looks identical before and after being
+   pressed and the user taps it twice. */
+/* .lift is excluded deliberately. FolderCard is a <button> carrying .lift, and
+   `button:not(:disabled):active` out-specifies `.lift:active` — so the global
+   scale would win, replacing the card's settle-back-to-flat with a shrink and
+   throwing away the lift mid-press. Excluding the class costs one selector and
+   lets each surface own its own press. */
+button:not(:disabled):not(.lift):active,
+[role="switch"]:not([aria-disabled="true"]):active {
+  transform: scale(0.97);
+}
+button, [role="switch"] {
+  transition: transform var(--gh-dur-fast) var(--gh-ease-out);
+}
+
+/* ── Disclosure ────────────────────────────────────────────────────────────
+   Collapsible sections used to jump between heights, which is the single most
+   jarring transition in the app because it shoves everything below it.
+
+   grid-template-rows 0fr -> 1fr animates to the content's OWN height with no
+   JS measurement and no magic max-height that clips long content. The child
+   needs min-height:0 or it refuses to shrink below its intrinsic size. */
+.collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--gh-dur-slow) var(--gh-ease-out);
+}
+.collapse[data-open="true"] { grid-template-rows: 1fr; }
+.collapse > * { overflow: hidden; min-height: 0; }
+
+/* ── Loops ─────────────────────────────────────────────────────────────── */
+
+/* Halo behind the one stage that carries the product's payload. */
+@keyframes ghPulseRing {
+  0%   { transform: scale(1);    opacity: 0.30; }
+  70%  { transform: scale(1.45); opacity: 0;    }
+  100% { transform: scale(1.45); opacity: 0;    }
+}
+.pulse-ring { animation: ghPulseRing 2.4s var(--gh-ease-out) infinite; }
+
+/* Dash pattern travelling along a funnel connector — direction of flow. */
+@keyframes ghFlowDash {
+  to { stroke-dashoffset: -22; }
+}
+.flow-dash {
+  stroke-dasharray: 4 7;
+  animation: ghFlowDash 1.4s linear infinite;
+}
+
 /* Live indicator on the active pipeline stage. Distinguishes "working" from
    "frozen" when a progress bar legitimately sits still for a minute. */
 @keyframes ghPulseDot {
@@ -290,21 +402,49 @@ summary {
   50%      { opacity: 0.25; }
 }
 .pulse-dot { animation: ghPulseDot 1.4s ease-in-out infinite; }
-@media (prefers-reduced-motion: reduce) {
-  .pulse-dot { animation: none !important; }
-}
 
-/* Entrance for list rows and cards. Staggered by the caller via
-   animation-delay so the eye is drawn down in reading order rather than
-   everything appearing at once. Transform + opacity only, so it cannot
-   cause layout shift. */
-@keyframes ghFadeUp {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: none; }
+/* Indeterminate sweep for a bar that is working but cannot know its own
+   percentage — a discovery round that has not reported back yet. */
+@keyframes ghShimmer {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(100%); }
 }
-.fade-up {
-  animation: ghFadeUp 380ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
+.shimmer { animation: ghShimmer 1.6s ease-in-out infinite; }
+
+/* ── Reduced motion ────────────────────────────────────────────────────────
+   One block, covering everything above. This is an accessibility requirement,
+   not a nicety: vestibular disorders make transform-based motion genuinely
+   unpleasant, and the OS-level request is the user telling us directly.
+
+   Note what is NOT killed: opacity-only transitions on colour and background
+   stay. The guidance is to remove MOTION, and stripping every visual response
+   leaves an interface that feels broken. Anything that moves in space is
+   reduced to nothing; anything that merely changes appearance survives. */
 @media (prefers-reduced-motion: reduce) {
-  .fade-up { animation: none !important; opacity: 1; transform: none; }
+  .pulse-ring,
+  .flow-dash,
+  .pulse-dot,
+  .shimmer {
+    animation: none !important;
+  }
+  .fade-up,
+  .fade-in,
+  .scale-in {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+  }
+  .hover-spring,
+  .hover-spring:hover,
+  .lift,
+  .lift:hover,
+  .lift:active,
+  button:active,
+  [role="switch"]:active {
+    transform: none !important;
+    transition: none !important;
+  }
+  /* Snap open instead of growing. Instant is the correct behaviour here — the
+     alternative is the layout shove this exists to smooth, just faster. */
+  .collapse { transition: none !important; }
 }

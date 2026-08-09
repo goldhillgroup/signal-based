@@ -25,7 +25,7 @@ export function FolderCard({ folder }: { folder: SearchFolder }) {
     <button
       type="button"
       onClick={() => router.push(`/dashboard/lists/${folder.id}`)}
-      className="group flex flex-col items-start rounded-xl border border-gh-border bg-gh-surface p-5 text-left transition-all hover:-translate-y-0.5 hover:border-gh-sky/40 hover:shadow-md"
+      className="fade-up lift group flex flex-col items-start rounded-xl border border-gh-border bg-gh-surface p-5 text-left hover:border-gh-sky/40"
     >
       <div className="flex w-full items-start justify-between">
         <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-gh-navy/[0.06] text-gh-navy">

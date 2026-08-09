@@ -44,7 +44,7 @@ export function EnrichProgress({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-gh-navy-3/50 p-4 backdrop-blur-sm"
+      className="fade-in fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-gh-navy-3/50 p-4 backdrop-blur-sm"
       onClick={(e) => {
         if (e.target === e.currentTarget) onDismiss();
       }}
@@ -53,7 +53,7 @@ export function EnrichProgress({
         role="dialog"
         aria-modal="true"
         aria-label="Looking up contacts"
-        className="my-auto w-full max-w-md rounded-2xl border border-gh-border bg-gh-surface p-7 shadow-2xl"
+        className="scale-in my-auto w-full max-w-md rounded-2xl border border-gh-border bg-gh-surface p-7 shadow-2xl"
       >
         <div className="relative mx-auto flex h-20 w-20 items-center justify-center">
           {!done && (

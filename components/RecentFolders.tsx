@@ -62,7 +62,7 @@ export function RecentFolders({ rows }: { rows: RecentRow[] }) {
   }
 
   return (
-    <div className="space-y-2">
+    <div className="stagger space-y-2">
       {rows.map((r, i) => {
         const accepted = r.qualified_count + r.verify_count + r.fit_only_count;
         const signals = r.qualified_count + r.verify_count;
@@ -71,7 +71,7 @@ export function RecentFolders({ rows }: { rows: RecentRow[] }) {
           <Link
             key={r.id}
             href={`/dashboard/lists/${r.id}`}
-            className="fade-up group flex items-center gap-3 rounded-xl border border-gh-border bg-gh-surface px-4 py-3 transition-colors duration-200 hover:border-gh-sky/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+            className="fade-up lift group flex items-center gap-3 rounded-xl border border-gh-border bg-gh-surface px-4 py-3 hover:border-gh-sky/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
             style={{ animationDelay: `${i * 60}ms` }}
           >
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gh-navy/[0.06] text-gh-navy">

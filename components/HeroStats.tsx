@@ -28,7 +28,7 @@ export interface HeroStat {
 
 export function HeroStats({ stats }: { stats: HeroStat[] }) {
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <div className="stagger grid grid-cols-2 gap-3 lg:grid-cols-4">
       {stats.map((s, i) => (
         <div
           key={s.label}

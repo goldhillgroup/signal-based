@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useSearches } from "@/lib/searches-store";
 import { AGREED_STATES, NATIONWIDE, stateNameFor } from "@/lib/pipeline/us-states";
 import { WhatCountsAsSignal } from "./WhatCountsAsSignal";
-import { MODE_META, MODE_ORDER, BAND_OPTIONS } from "@/lib/search-options";
+import { MODE_META, MODE_ORDER, BAND_OPTIONS, REFINEMENT_EXAMPLES } from "@/lib/search-options";
 import type { Suggestion } from "@/lib/pipeline/suggestions";
 import { INDUSTRY_META } from "@/lib/signal-meta";
 import { applyAnswer, bandLabel, labelFor, type IntakeResult } from "@/lib/pipeline/intake-types";
@@ -17,11 +17,6 @@ import { StatePicker } from "./StatePicker";
 import { BuildingIcon, CheckIcon, SearchIcon, UsersIcon, ZapIcon } from "./icons";
 
 const TARGET_OPTIONS = [10, 20, 50, 100];
-const REFINEMENT_EXAMPLES = [
-  "succession signals",
-  "founder retiring",
-  "second generation taking over",
-];
 
 // Shown under the ask box. Deliberately span the shapes the old regex parser
 // silently mishandled — a multi-state request, a region, a metro — so the
@@ -501,7 +496,7 @@ export function SearchHome({ suggestions = [] }: { suggestions?: Suggestion[] })
             No searches yet, run your first one above.
           </p>
         )}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="stagger grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {folders.map((folder) => (
             <FolderCard key={folder.id} folder={folder} />
           ))}

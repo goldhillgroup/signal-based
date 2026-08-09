@@ -40,7 +40,7 @@ export function LeadCard({
   const parked = company.contact?.findStatus === "not_attempted" && !!company.contact.email;
 
   return (
-    <article className="fade-up flex h-full flex-col rounded-xl border border-gh-border bg-gh-surface transition-colors duration-200 hover:border-gh-sky/50">
+    <article className="fade-up lift flex h-full flex-col rounded-xl border border-gh-border bg-gh-surface hover:border-gh-sky/50">
       <div className="flex-1 p-4 sm:p-5">
         {/* No flex row any more: it existed to push the score to the right,
             and with the score gone the header is a single column. */}

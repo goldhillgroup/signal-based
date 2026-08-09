@@ -316,9 +316,9 @@ export function CompaniesTable({
                   items-stretch so cards in a row match height rather than each
                   one shrinking to its own content, which is what makes a grid
                   of cards read as a grid rather than as debris. */}
-              <div className="grid items-stretch gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {g.rows.map((c, i) => (
-                  <div key={c.id} className="h-full" style={{ animationDelay: `${Math.min(i, 12) * 40}ms` }}>
+              <div className="stagger grid items-stretch gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {g.rows.map((c) => (
+                  <div key={c.id} className="h-full">
                     <LeadCard company={c} onOpen={() => onRowClick(c)} />
                   </div>
                 ))}

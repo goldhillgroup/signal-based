@@ -72,7 +72,7 @@ export function ConfirmDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-gh-navy-3/50 p-4 backdrop-blur-sm"
+      className="fade-in fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-gh-navy-3/50 p-4 backdrop-blur-sm"
       onClick={(e) => {
         if (e.target === e.currentTarget) onCancel();
       }}
@@ -81,7 +81,7 @@ export function ConfirmDialog({
         role="alertdialog"
         aria-modal="true"
         aria-label={title}
-        className="fade-up my-auto w-full max-w-sm rounded-2xl border border-gh-border bg-gh-surface p-6 shadow-2xl"
+        className="scale-in my-auto w-full max-w-sm rounded-2xl border border-gh-border bg-gh-surface p-6 shadow-2xl"
       >
         <p className="font-display text-base font-semibold text-gh-ink">{title}</p>
         <div className="mt-2 text-xs leading-relaxed text-gh-ink-secondary">{body}</div>

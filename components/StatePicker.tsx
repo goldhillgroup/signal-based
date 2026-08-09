@@ -114,8 +114,9 @@ export function StatePicker({
         {showOthers ? "Hide other states" : `Other states${extraSelected.length ? ` (${extraSelected.length} selected)` : ""}`}
       </button>
 
-      {showOthers && (
-        <div className="mt-2 max-h-52 overflow-y-auto rounded-lg border border-gh-border bg-gh-surface-sunken p-2">
+      <div className="collapse" data-open={showOthers ? "true" : "false"} inert={!showOthers}>
+        <div>
+          <div className="mt-2 max-h-52 overflow-y-auto rounded-lg border border-gh-border bg-gh-surface-sunken p-2">
           <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
             {US_STATES.filter((s) => !AGREED_STATES.includes(s.code)).map((s) => {
               const on = selected.has(s.code);
@@ -134,9 +135,10 @@ export function StatePicker({
                 </button>
               );
             })}
+            </div>
           </div>
         </div>
-      )}
+      </div>
 
       {/* Only for states picked inside the collapsed list, those would
           otherwise vanish the moment the disclosure closes, leaving a search

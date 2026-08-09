@@ -63,14 +63,14 @@ export function CompanyDrawer({
   return (
     <>
       <div
-        className={`fixed inset-0 z-30 bg-gh-navy-3/40 transition-opacity ${
+        className={`fixed inset-0 z-30 bg-gh-navy-3/40 transition-opacity duration-[var(--gh-dur)] ease-[var(--gh-ease-out)] ${
           open ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
         onClick={onClose}
         aria-hidden
       />
       <aside
-        className={`fixed right-0 top-0 z-40 h-full w-full max-w-md transform overflow-y-auto bg-gh-surface shadow-2xl transition-transform duration-200 ${
+        className={`fixed right-0 top-0 z-40 h-full w-full max-w-md transform overflow-y-auto bg-gh-surface shadow-2xl transition-transform duration-[var(--gh-dur-slow)] ease-[var(--gh-ease-out)] ${
           open ? "translate-x-0" : "translate-x-full"
         }`}
         aria-hidden={!open}

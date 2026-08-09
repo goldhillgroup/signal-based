@@ -249,15 +249,17 @@ export function SettingsForm({ rows: initialRows }: { rows: Row[] }) {
             />
             {showAdvanced ? "Hide advanced" : `Advanced (${advanced.length})`}
           </button>
-          {showAdvanced && (
-            <>
-              <p className="px-1 text-xs leading-relaxed text-gh-ink-muted">
-                Optional. Everything works without these, and changing the
-                judging model changes the quality of every lead.
-              </p>
-              {advanced.map(renderRow)}
-            </>
-          )}
+          <div className="collapse" data-open={showAdvanced ? "true" : "false"} inert={!showAdvanced}>
+            <div>
+              <div className="space-y-3">
+                <p className="px-1 text-xs leading-relaxed text-gh-ink-muted">
+                  Optional. Everything works without these, and changing the
+                  judging model changes the quality of every lead.
+                </p>
+                {advanced.map(renderRow)}
+              </div>
+            </div>
+          </div>
         </>
       )}
     </div>

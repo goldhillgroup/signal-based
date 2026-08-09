@@ -477,7 +477,7 @@ function FolderTile({
 }) {
   return (
     <div
-      className="fade-up group relative rounded-xl border border-gh-border bg-gh-surface transition-colors duration-200 hover:border-gh-sky/50"
+      className="fade-up lift group relative rounded-xl border border-gh-border bg-gh-surface hover:border-gh-sky/50"
       style={{ animationDelay: `${Math.min(index, 12) * 50}ms` }}
     >
       <div className="p-4">
