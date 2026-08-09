@@ -159,38 +159,26 @@ export const SETTINGS_KEYS: readonly SettingKeyMeta[] = [
     link: "https://app.millionverifier.com",
     linkLabel: "Dashboard",
   },
-  {
-    key: "APIFY_TOKEN_4",
-    usageId: "apify-4",
-    label: "Apify: second account",
-    envFallback: "APIFY_TOKEN_4",
-    what: "An optional second Apify account, used before the main one. Leave blank unless you are deliberately keeping spend off the primary.",
-    logo: "/vendor/apify.png",
-    link: "https://console.apify.com/billing",
-    linkLabel: "Billing",
-    advanced: true,
-  },
-  // Model IDs, not secrets. Same storage mechanism so they are switchable
-  // without a redeploy. Flip the classifier to a cheaper model only once the
-  // 72-company benchmark says it holds; that is what the eval harness is for.
-  {
-    key: "CLASSIFY_MODEL",
-    label: "Judging model",
-    envFallback: "CLASSIFY_MODEL",
-    what: "Which AI model reads company pages and decides if a succession signal is real. Blank uses Claude Sonnet, which is what the accuracy was measured on. Changing it changes the quality of every lead.",
-    logo: null,
-    link: "https://openrouter.ai/models",
-    linkLabel: "Browse models",
-    advanced: true,
-  },
-  {
-    key: "EXTRACT_MODEL",
-    label: "List-reading model",
-    envFallback: "EXTRACT_MODEL",
-    what: "Which AI model pulls company names out of directory pages. A cheaper, simpler job than judging. Blank uses Claude Haiku.",
-    logo: null,
-    link: "https://openrouter.ai/models",
-    linkLabel: "Browse models",
-    advanced: true,
-  },
+  // APIFY_TOKEN_4 is not offered either. It is a developer escape hatch — a
+  // second Apify account used before the client's own plan, so spend can be
+  // kept off his card during testing. Nothing about the product he is buying
+  // needs it, and a settings page listing "second account" invites the
+  // question of why there is one. Still read by getApifyToken via
+  // resolveSetting, so it works exactly as before when the env var is set.
+
+  // THE TWO MODEL PICKERS ARE GONE FROM THIS LIST, deliberately.
+  //
+  // They offered a free-text box for the model that reads every company page
+  // and decides whether a succession signal is real — with a caption admitting
+  // "changing it changes the quality of every lead". That is a control whose
+  // own description says not to touch it, in front of a client whose entire
+  // purchase is that judgement. A typo silently degrades every future search,
+  // and nothing in the product would report it.
+  //
+  // The capability is unchanged: getClassifyModel/getExtractModel still read
+  // CLASSIFY_MODEL and EXTRACT_MODEL through resolveSetting, so the model can
+  // still be switched by setting the env var or writing the row directly. It
+  // is simply not a button on a page he uses to top up credit. Benchmark
+  // first — eval-labeled.mts runs the 72-company set — then change it
+  // deliberately, not from a settings screen.
 ] as const;

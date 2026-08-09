@@ -25,6 +25,10 @@ import { isSharedInbox } from "@/lib/pipeline/page-email";
  *     shows sections, so every row stays in one grid
  *   - zebra striping, because tracking a row across nine columns without it is
  *     what makes wide tables tiring
+ *   - 14px text and real row height. Dense is not the same as SMALL: the first
+ *     pass went to 12px with 6px padding, which fixed the wrapping and made
+ *     the result something you have to lean into to read. Google Sheets itself
+ *     is ~14px
  *   - a sticky header, so the columns are still named after the first screen
  *
  * The card view still exists for reading one lead properly — the quote and the
@@ -61,9 +65,9 @@ export function LeadTable({
 
   return (
     <div className="overflow-x-auto rounded-xl border border-gh-border">
-      <table className="w-full min-w-[1100px] table-fixed border-collapse text-left text-xs">
+      <table className="w-full min-w-[1180px] table-fixed border-collapse text-left text-sm">
         <thead className="sticky top-0 z-10">
-          <tr className="bg-gh-surface-sunken text-[11px] font-semibold uppercase tracking-wide text-gh-ink-muted">
+          <tr className="bg-gh-surface-sunken text-xs font-semibold uppercase tracking-wide text-gh-ink-secondary">
             <Th className="w-[15%]">Company</Th>
             <Th className="w-[4%]">State</Th>
             <Th className="w-[11%]">Signal</Th>
@@ -83,7 +87,7 @@ export function LeadTable({
                 <tr>
                   <td
                     colSpan={COLS}
-                    className="border-y border-gh-border bg-gh-surface-sunken/70 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-gh-ink-secondary"
+                    className="border-y border-gh-border bg-gh-surface-sunken px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gh-ink-secondary"
                   >
                     {g.label}
                     <span className="ml-1.5 font-normal text-gh-ink-muted">{g.rows.length}</span>
@@ -113,7 +117,7 @@ export function LeadTable({
                     <Td>{c.state && c.state !== "-" ? c.state : "-"}</Td>
                     <Td title={`${meta.label} — ${meta.blurb}`}>
                       <span
-                        className="inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold"
+                        className="inline-block rounded px-2 py-0.5 text-xs font-semibold"
                         style={{ color: meta.color, background: meta.bg }}
                       >
                         {meta.short}
@@ -218,7 +222,7 @@ export function LeadTable({
 
 function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <th className={`border-b border-gh-border px-3 py-2 font-semibold ${className}`}>{children}</th>
+    <th className={`border-b border-gh-border px-3 py-2.5 font-semibold ${className}`}>{children}</th>
   );
 }
 
@@ -239,7 +243,7 @@ function Td({
   className?: string;
 }) {
   return (
-    <td title={title} className={`truncate px-3 py-1.5 text-gh-ink-secondary ${className}`}>
+    <td title={title} className={`truncate px-3 py-2.5 text-gh-ink-secondary ${className}`}>
       {children}
     </td>
   );

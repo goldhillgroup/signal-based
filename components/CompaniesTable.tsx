@@ -308,9 +308,17 @@ export function CompaniesTable({
                   )}
                 </div>
               )}
-              <div className="space-y-2.5">
+              {/* A GRID, not a stack. Full-width cards made every lead a long
+                  thin band with a paragraph of empty space to the right of the
+                  quote, and three leads filled the screen. Two or three to a
+                  row puts a comparable number in view and gives the prose a
+                  column width it can actually use.
+                  items-stretch so cards in a row match height rather than each
+                  one shrinking to its own content, which is what makes a grid
+                  of cards read as a grid rather than as debris. */}
+              <div className="grid items-stretch gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {g.rows.map((c, i) => (
-                  <div key={c.id} style={{ animationDelay: `${Math.min(i, 12) * 40}ms` }}>
+                  <div key={c.id} className="h-full" style={{ animationDelay: `${Math.min(i, 12) * 40}ms` }}>
                     <LeadCard company={c} onOpen={() => onRowClick(c)} />
                   </div>
                 ))}

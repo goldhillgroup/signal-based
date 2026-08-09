@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Company } from "@/lib/company";
 import { SearchFolder, useSearches } from "@/lib/searches-store";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { EnrichProgress } from "./EnrichProgress";
 import {
   getSummaryStats,
   getIndustryBreakdown,
@@ -31,6 +32,12 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
   const [companies, setCompanies] = useState(companiesProp);
   const [enrichError, setEnrichError] = useState("");
   const [confirmEnrich, setConfirmEnrich] = useState(false);
+  // Watch the run the way the search does. The Enrichment page has had this
+  // since it was built; the in-folder button never did — pressing it here
+  // greyed out to "Enriching…" and gave no count, no percentage and no way to
+  // tell a working pass from a dead one. Same job, same server-side run, so it
+  // gets the same dialog.
+  const [watchingEnrich, setWatchingEnrich] = useState(false);
   const stopPollRef = useRef(false);
 
   // Reset local override state when the parent hands us a different search
@@ -82,6 +89,7 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
     try {
       await startEnrichment(folder.id);
       setFolder({ ...folder, enrichmentStatus: "running" });
+      setWatchingEnrich(true);
     } catch (e) {
       setEnrichError((e as Error).message || "Could not start enrichment.");
     }
@@ -104,6 +112,14 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
+      {watchingEnrich && (
+        <EnrichProgress
+          folder={folder}
+          target={stats.qualified + stats.verify}
+          onDismiss={() => setWatchingEnrich(false)}
+        />
+      )}
+
       <ConfirmDialog
         open={confirmEnrich}
         title="Look up these emails?"

@@ -40,8 +40,8 @@ export function LeadCard({
   const parked = company.contact?.findStatus === "not_attempted" && !!company.contact.email;
 
   return (
-    <article className="fade-up rounded-xl border border-gh-border bg-gh-surface transition-colors duration-200 hover:border-gh-sky/50">
-      <div className="p-4 sm:p-5">
+    <article className="fade-up flex h-full flex-col rounded-xl border border-gh-border bg-gh-surface transition-colors duration-200 hover:border-gh-sky/50">
+      <div className="flex-1 p-4 sm:p-5">
         {/* No flex row any more: it existed to push the score to the right,
             and with the score gone the header is a single column. */}
         <div className="min-w-0">
@@ -113,7 +113,7 @@ export function LeadCard({
       </div>
 
       {/* THE CONTACT TO START WITH — on the card, not one click away. */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gh-border px-4 py-2.5 sm:px-5">
+      <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-gh-border px-4 py-2.5 sm:px-5">
         {contact?.email ? (
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <a
