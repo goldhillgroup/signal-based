@@ -1,12 +1,15 @@
 /**
- * "Anywhere in the United States" as a real, positive choice.
+ * Geography handling, against the signed scope.
  *
- * The pipeline always supported an empty states array — every channel has a
- * no-state branch — but POST /api/search rejected it, so the capability was
- * unreachable. These pin the two things that make it safe: nationwide must be
- * DISTINGUISHABLE from "the form sent nothing", and it must still ROTATE,
- * because a single fixed location has no rotation axis and dries up after one
- * round.
+ * Phase 1 is "a custom crawler for one narrow niche in ONE GEOGRAPHY you
+ * pick", so a named geography is required and an empty one is a 400 — never
+ * silently reinterpreted as "everywhere", which would spend more money to
+ * produce weaker evidence than the deliverable asks for.
+ *
+ * Nationwide remains reachable by asking for it BY NAME, because the crawler
+ * is his to reuse. When it is used it must still ROTATE: a single fixed
+ * location has no rotation axis, so round 2 re-buys round 1 and the run
+ * declares the pool dry after one call.
  */
 import { NATIONWIDE, stateNameFor } from "./lib/pipeline/us-states.js";
 
@@ -25,14 +28,17 @@ is("sentinel is US", NATIONWIDE, "US");
 ok("US is not a real state code", stateNameFor("US") !== "United States" || true);
 
 // ── the API's interpretation ──────────────────────────────────────────────
-function apiStates(requested: string[]) {
-  const nationwide = requested.includes(NATIONWIDE) || requested.length === 0;
-  return nationwide ? [] : Array.from(new Set(requested));
+function apiStates(requested: string[]): string[] | "400" {
+  const nationwide = requested.includes(NATIONWIDE);
+  const states = nationwide ? [] : Array.from(new Set(requested));
+  if (!nationwide && states.length === 0) return "400";
+  return states;
 }
-is("US becomes nationwide", apiStates(["US"]), []);
-is("empty becomes nationwide", apiStates([]), []);
+is("nationwide only when asked for by name", apiStates(["US"]), []);
+is("EMPTY IS REJECTED, never reinterpreted", apiStates([]), "400");
 is("named states pass through", apiStates(["CA", "NY"]), ["CA", "NY"]);
 is("duplicates collapse", apiStates(["CA", "CA"]), ["CA"]);
+is("one geography is the normal case", apiStates(["TN"]), ["TN"]);
 
 // ── the folder label never renders a blank location ───────────────────────
 function label(states: string[]) {
@@ -64,14 +70,12 @@ ok("rotation wraps rather than running off the end", loc(21) === loc(1));
 ok("every metro names its state, so the row can record it",
    NATIONAL_METROS.every((m) => m.includes(", ")));
 
-// ── nationwide and a named state are alternatives, never both ─────────────
-function toggle(value: string[], code: string) {
-  const without = value.filter((c) => c !== NATIONWIDE);
-  return without.includes(code) ? without.filter((c) => c !== code) : [...without, code];
-}
-is("picking a state clears nationwide", toggle(["US"], "CA"), ["CA"]);
-is("picking nationwide clears states", (["CA","NY"].includes(NATIONWIDE) ? [] : [NATIONWIDE]), ["US"]);
-ok("no selection can hold both", !toggle(["US"], "CA").includes(NATIONWIDE));
+// ── the UI never produces nationwide, so Phase 1 cannot drift into it ─────
+import fsx from "node:fs";
+const picker = fsx.readFileSync("./components/StatePicker.tsx", "utf8");
+ok("the picker offers no nationwide control", !picker.includes("toggleNationwide"));
+ok("the picker imports no nationwide sentinel", !/NATIONWIDE/.test(picker.replace(/\/\*[\s\S]*?\*\//g, "")));
+ok("the picker still demands a state", picker.includes("Pick at least one state"));
 
 console.log(`${pass}/${pass + fails.length} nationwide assertions passed`);
 for (const f of fails) console.log("  ✗ " + f);

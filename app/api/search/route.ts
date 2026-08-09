@@ -3,7 +3,7 @@ import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { runSearchPipeline } from "@/lib/pipeline/orchestrator";
 import { industryLabel } from "@/lib/pipeline/intake-types";
-import { stateNameFor, US_STATES } from "@/lib/pipeline/us-states";
+import { stateNameFor, US_STATES, NATIONWIDE } from "@/lib/pipeline/us-states";
 import { creditBlockerFor } from "@/lib/pipeline/preflight";
 import type { Industry, SearchMode } from "@/lib/supabase/types";
 
@@ -64,22 +64,27 @@ export async function POST(req: Request) {
   const requested = (body.states?.length ? body.states : [body.state ?? ""])
     .map((s) => (s ?? "").trim().toUpperCase())
     .filter(Boolean);
-  // "US" means nationwide, and an empty list means the same thing. The
-  // pipeline has always supported it — every channel has a no-state branch
-  // (national metro rotation for Maps, an unsuffixed query for web search,
-  // "the United States" for directories) — but this route rejected it, so the
-  // capability existed and was unreachable.
+  // A geography is REQUIRED, and empty is never silently reinterpreted.
   //
-  // Whether to name a state is a real choice, not an oversight to guard
-  // against. Web search is the highest-yield channel and its succession
-  // phrasing works nationally, so pinning it to one state shrinks an already
-  // thin pool for no gain. Kept explicit rather than inferred from an empty
-  // field, so "he wants the whole country" and "the form failed to send a
-  // state" stay distinguishable.
-  const nationwide = requested.includes("US") || requested.length === 0;
-  const states = nationwide
-    ? []
-    : Array.from(new Set(requested));
+  // Phase 1 of the signed scope is "a custom crawler for one narrow niche in
+  // one geography you pick", and the deliverable is a list dense enough to
+  // prove the signal is real in a named territory. A run with no geography
+  // produces a thin national scatter — worse evidence, from more money — so
+  // the scope's "one geography" is a product decision, not a limitation to
+  // work around. Reuse on other geographies means running it again for the
+  // next one.
+  //
+  // NATIONWIDE ("US") is still accepted, because the pipeline supports it and
+  // the crawler is his to reuse however he likes, but it is not offered in the
+  // UI and it has to be asked for BY NAME. Inferring it from an empty list
+  // would make "search the whole country" and "the form failed to send a
+  // state" the same request, and a silent nationwide run is the expensive
+  // half of that pair.
+  const nationwide = requested.includes(NATIONWIDE);
+  const states = nationwide ? [] : Array.from(new Set(requested));
+  if (!nationwide && states.length === 0) {
+    return NextResponse.json({ error: "state is required (2-letter code)" }, { status: 400 });
+  }
 
   const unknown = states.filter((s) => !VALID_STATE_CODES.has(s));
   if (unknown.length > 0) {
