@@ -88,49 +88,63 @@ export async function reapStaleRuns(
 }
 
 /**
- * The same rescue for enrichment, which fails the same way.
+ * The same rescue for enrichment, which fails the same way and strands the
+ * folder harder: the enrich route refuses to start a second pass while one is
+ * running, so a killed pass makes a folder permanently un-enrichable with
+ * whatever contacts it already paid for stuck behind a spinner.
  *
- * A killed pass leaves enrichment_status = 'running' forever, and the enrich
- * route refuses to start a second pass while one is running — so the folder
- * becomes permanently un-enrichable, with whatever contacts it had already
- * bought stranded behind a spinner.
+ * NO NEW COLUMN, AND NO MIGRATION. Discovery could be dated from created_at
+ * because a search row is written immediately before its run starts. Enrichment
+ * has no such timestamp — it begins minutes or days after the search finished —
+ * and the obvious fix, adding enrichment_started_at, needs DDL nobody can apply
+ * from here and leaves the feature dark until someone remembers to paste it.
  *
- * Dated from enrichment_started_at rather than created_at: enrichment begins
- * minutes or days after the search finished, so the search's own timestamps
- * say nothing about it. A row with no start time is LEFT ALONE — that is
- * either a row predating the column or a pass that never ran, and guessing
- * about either could close out a live pass mid-flight.
+ * The database already knows. Enrichment writes a `contacts` row for EVERY
+ * company it processes, found or not_found, so the newest contact row under a
+ * search is a heartbeat: past the ceiling with no new row, the process is gone.
  *
- * Degrades to a no-op if the migration has not been applied yet, rather than
- * throwing inside the dashboard render.
+ * Why "no rows at all" is not a case worth handling: enrichContacts wraps its
+ * whole body in a try/catch that sets enrichment_status = 'failed', so a pass
+ * that throws already reports itself. The only route to a stuck 'running' is
+ * the platform killing the process mid-loop, and a pass that survived long
+ * enough to be killed at the ceiling has written rows. A pass with zero rows is
+ * therefore seconds old, and left alone — which is the safe direction, since
+ * closing out a live pass is far worse than leaving a dead one a minute longer.
  */
 export async function reapStaleEnrichment(
   supabase: SupabaseClient,
   now: Date = new Date()
 ): Promise<ReapResult> {
-  const cutoff = new Date(now.getTime() - RUN_CEILING_MS - REAP_GRACE_MS).toISOString();
+  const cutoff = now.getTime() - RUN_CEILING_MS - REAP_GRACE_MS;
 
   const { data, error } = await supabase
     .from("searches")
     .select("id, contacts_found")
-    .eq("enrichment_status", "running")
-    .not("enrichment_started_at", "is", null)
-    .lt("enrichment_started_at", cutoff);
+    .eq("enrichment_status", "running");
 
-  if (error) {
-    // Unapplied migration: the column is unknown to PostgREST. Say so once and
-    // carry on — enrichment still works, it just cannot be auto-rescued yet.
-    if (/enrichment_started_at/.test(error.message ?? "")) {
-      console.warn(
-        "reapStaleEnrichment: enrichment_started_at column missing, apply supabase/migrations/20260809000000_enrichment_started_at.sql to enable enrichment recovery."
-      );
-    }
-    return { reaped: 0, ids: [] };
+  if (error || !data || data.length === 0) return { reaped: 0, ids: [] };
+
+  const stale: typeof data = [];
+  for (const row of data) {
+    // Newest contact written under this search, via an inner join on the
+    // company that owns it. `!inner` matters: without it PostgREST returns
+    // contacts whose company does not match the filter, with a null embed.
+    const { data: last } = await supabase
+      .from("contacts")
+      .select("created_at, companies!inner(search_id)")
+      .eq("companies.search_id", row.id)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    const beat = last?.[0]?.created_at;
+    if (!beat) continue; // seconds old, or nothing to enrich — leave it
+    if (new Date(beat).getTime() < cutoff) stale.push(row);
   }
-  if (!data || data.length === 0) return { reaped: 0, ids: [] };
+
+  if (stale.length === 0) return { reaped: 0, ids: [] };
 
   const ids: string[] = [];
-  for (const row of data) {
+  for (const row of stale) {
     const { error: updateErr } = await supabase
       .from("searches")
       .update({
