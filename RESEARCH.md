@@ -17,8 +17,21 @@ Yield per discovery channel, counted off every company in the database:
 | directory | 20 | 0 | none yet |
 | licensing | 1 | 0 | none yet |
 
-**The manual method is 12× better than the best automated channel and 34×
-better than the most expensive one.**
+**The manual method is far better than either automated channel.** The exact
+multiple is not knowable from this table — see the correction below — but the
+direction is not in doubt.
+
+> **Correction, added after adversarial review.** The web-vs-maps comparison in
+> this table rests on **3 signals total** (web 2/48, maps 1/69). Fisher's exact
+> two-sided p = **0.57**: at these counts the two channels are not
+> distinguishable, and quoting "2.9x" or "34x" from this table alone is wrong.
+>
+> The comparison survives for a different reason. `channel-priors.ts` carries a
+> **disjoint earlier sample** of 195 companies from before the database was
+> cleared — web 8/38, maps 3/98, p = 0.0017. Pooling the two independent
+> samples: **web 10/86 (11.6%) vs maps 4/167 (2.4%), p = 0.0062, ratio 4.9x**.
+> That is a same-direction replication of a pre-registered ordering, which is
+> real evidence — but it is one that `orderByYield` already acts on.
 
 That gap is not because a person is cleverer than the classifier. It is because
 of *what each one searches for*:
@@ -34,14 +47,35 @@ This is the scope document's own conclusion, now confirmed with numbers:
 
 ### What follows from it
 
-Maps is **39% of a run's cost** ($0.12 of $0.31) and returns the worst leads.
-Web search is 10% of cost at nearly 3× the rate. The cheapest large improvement
-available is to move spend from one to the other — no new vendor, no new
-integration, no subscription.
+Maps is **46% of a run's cost** and returns the worst measured rate.
 
-There are currently **4 query sets, ~12 phrasings** for landscaping. The hand
-audit found 28 signals by searching this way. More phrasings is the single
-highest-return change in the system and it costs nothing but the queries.
+> **Correction.** An earlier version of this section said 39% and put web search
+> at 10%. Both were wrong: it priced a SERP page at $0.010 when
+> `cost-tracker.ts:46` charges **$0.0035**. Repriced against the real table, a
+> $0.2605 run is maps 46%, classify 28%, tavily 12%, extract 6%, SERP **4.0%**,
+> firecrawl 4%. The error overstated the cost of the channel to expand and
+> understated the one to cut.
+
+The strongest argument for cutting Maps is not the yield table at all, and it
+holds even if that table is deleted. **Maps bills at buy time and is consumed at
+read time, with nothing connecting the two:**
+
+- `recordCost("apify_maps_place", items.length)` fires on everything returned,
+  and only *then* does `.filter(place => place.website)` run. A place with no
+  website can never become a candidate, because the pipeline reads a company's
+  own About page. Those are paid for and immediately discarded.
+- `orderByYield` sorts maps behind web_search, licensing and directory. It
+  reaches the front only through the 25% exploration reserve.
+- A target-3 run reads at most 18 companies across four channels, while one
+  discovery call already buffers far more web candidates than that. The surplus
+  is dropped at run end, and Maps has no offset parameter, so the next run
+  re-buys the same places.
+
+There were **4 query sets, 12 phrasings** for landscaping; now 8 and 24. The
+hand audit found 28 signals by searching this way. Rotation is per SET, so extra
+sets buy genuinely new SERPs on later rounds rather than lengthening any single
+call — 3 pages at $0.0035 each, and only when a round needs more candidates.
+Set 1 is left byte-for-byte; it is annotated as the proven one.
 
 ---
 
@@ -133,6 +167,52 @@ The two highest-value changes — reweighting spend away from Maps, and adding
 query phrasings — cost **nothing** and use vendors already integrated.
 
 ---
+
+## 5b. What happened when it was actually done (2026-08-09)
+
+The classifier gate was run first, as section 6 requires: `eval-labeled.mts`
+MODE A against the 72.
+
+  QUALIFIED recall        12/13 fetched  (92%, above the 90% bar)
+  no_founder_and_nextgen  21/25 fetched agreed
+  name traps              3/3 handled — Two Generations Landscaping,
+                          3 Generations Improvements and Dad and Daughter
+                          Custom Homes were all correctly NOT signalled
+
+The classifier is not the bottleneck, so the discovery change was safe to make.
+
+The three disagreements are worth reading before anyone calls them errors. In
+each, the classifier found a REAL named pair the auditor had cut:
+Levitch (Maurice -> Brian), Boniello (Gus Sr -> Gus Jr and three brothers),
+Family Development (Kevin -> Amanda Brongo). The auditor was reading the
+leadership PAGE; the classifier reads the whole About text. That is a
+difference about where evidence must appear, not evidence of keyword matching.
+
+Size gates scored badly on purpose-relevant grounds: `too_small` agreed on
+0 of 7 and `too_big` on 3 of 6. That is independent confirmation that revenue
+estimates are unreliable, and it is why the band gate was loosened to require
+a real parsed range before it cuts anything.
+
+### The cost claim did NOT hold, and the comparison is confounded
+
+A verification run after the cut showed the buy dropping 30 -> 12 places
+exactly as designed. It did not show a cheaper run:
+
+  before   $0.261   30 map places   4 leads
+  after    $0.297   12 map places   5 leads
+
+Maps fell by $0.072 and classify plus Firecrawl rose by $0.088, because the
+run read three more companies. Cost per lead improved 9% ($0.065 -> $0.060).
+
+That comparison proves very little, and it should not be quoted as if it did.
+Between the two runs the database was reset AND 67 hand-audited companies were
+seeded into cross-search memory, which changes which candidates get skipped
+before anything is read. The two runs had different starting conditions.
+
+What IS established: the buy is capped at 12 and tied to what the round can
+read. What is NOT established: that the cut lowers total cost per run. The
+honest case for it remains the buy/read mismatch — paying for places the
+ordering layer was never going to read — not a demonstrated saving.
 
 ## 6. What to do, in order
 

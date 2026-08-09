@@ -339,7 +339,37 @@ function isListicleTitle(title: string | undefined): boolean {
 //
 // 30 also comfortably feeds a round: ROUND_SIZE in the orchestrator is 15
 // candidates, and Maps is one of three channels supplying them.
-const MAPS_PLACES_PER_ROUND = 30;
+/**
+ * Places bought per discovery round. 30 -> 12 on 2026-08-09.
+ *
+ * NOT a yield argument. The arithmetic alone settles it, and it holds even if
+ * the channel comparison is thrown away:
+ *
+ *   BILLED AT BUY TIME. recordCost fires on items.length, and only THEN does
+ *   `.filter(place => place.website)` run. A place with no website can never
+ *   become a candidate — the whole pipeline reads a company's own About page —
+ *   so every website-less place is paid for and immediately discarded.
+ *
+ *   CONSUMED AT READ TIME, LAST. orderByYield sorts maps behind web_search,
+ *   licensing and directory; it reaches the front only through the 25%
+ *   exploration reserve. A target-3 run can read 18 companies TOTAL across four
+ *   channels, and one discovery call already buffers well over a hundred web
+ *   candidates. The surplus is dropped when the run ends, and Maps has no
+ *   offset parameter, so the next run re-buys the same places.
+ *
+ * So the old 30 was billing inventory the ordering layer had already decided
+ * not to read. Measured on a real run, maps was 46% of total spend and
+ * returned the worst rate in the system.
+ *
+ * Not zero, and not lower than 12, deliberately: Maps is the only channel with
+ * no SEO bias — a Google Business Profile exists whether or not the company
+ * ever paid for a website — which is exactly the $3-15M family landscaper with
+ * a 2011 site. It also feeds the recheck engine, where a company found today
+ * with one generation on the page becomes a signal in 90 days at zero
+ * discovery cost. Cutting it to nothing would forecloses that, and a channel
+ * that stops accruing reads can never earn its way back.
+ */
+const MAPS_PLACES_PER_ROUND = 12;
 
 /**
  * Fewest places worth buying for one trade term. Below this a query returns
@@ -478,7 +508,10 @@ async function discoverViaMaps(
   // The round budget, divided by however many states are being covered in
   // parallel (see `share` in discoverCandidates). Searching four states must
   // cost about what searching one costs, not four times as much.
-  const placeBudget = Math.max(PER_TERM_MIN, Math.floor(MAPS_PLACES_PER_ROUND / share));
+  // Never buy more than this call could feed to the reader. `limit` is the
+  // round's per-group share of ROUND_SIZE, so this is the actual ceiling on
+  // how many of these places can be classified before the run moves on.
+  const placeBudget = Math.max(PER_TERM_MIN, Math.min(MAPS_PLACES_PER_ROUND, limit));
 
   // How many trade terms this call can afford AT A USEFUL DEPTH, then WHICH
   // ones. The old line was `perTerm = Math.max(5, floor(budget / terms))`,
@@ -584,6 +617,46 @@ export const SUCCESSION_QUERY_SETS: Record<Industry, string[][]> = {
       '"carrying on the family tradition" landscaping OR irrigation company',
       '"joined his father" OR "joined her father" landscaping OR "lawn care" company',
     ],
+    // Sets 5-8 added 2026-08-09, after the measured yield showed this channel
+    // running ~5x the rate of Maps across two independent samples (web 10/86
+    // vs maps 4/167, Fisher p=0.006). Rotation is PER SET, so extra sets buy
+    // genuinely new SERPs on later rounds rather than lengthening any one
+    // call — a set costs 3 SERP pages at $0.0035 and only when a round
+    // actually needs more candidates.
+    //
+    // Set 5 — the surname in the company name, which the audit found is a
+    // near-certain family business even with no explicit language anywhere.
+    // "& Sons" is the strongest single string in this whole file.
+    [
+      '"& sons" landscaping OR "tree service" OR "lawn care" company',
+      '"and sons" OR "& daughters" landscaping OR irrigation company family owned',
+      '"brothers" landscaping OR "tree service" company "family owned" -franchise',
+    ],
+    // Set 6 — the founder still present alongside the successor, which is the
+    // pairing the classifier actually needs. A page naming a successor ALONE
+    // is the single most common rejection (21 of 39 in the audited set), so
+    // querying for both named together attacks the biggest cut directly.
+    [
+      '"founder" AND "president" landscaping company "family owned" father son',
+      '"still involved" OR "remains active" founder landscaping OR "tree service" company',
+      '"works alongside his father" OR "works alongside her father" landscaping OR "lawn care"',
+    ],
+    // Set 7 — the moment of transition reported by someone else. Local press
+    // and trade awards write this up in language a company never uses about
+    // itself, which is ground no About-page phrasing reaches.
+    [
+      '"family business of the year" landscaping OR "tree service" award',
+      '"names son" OR "names daughter" president landscaping OR irrigation company',
+      '"succession" landscaping company family owned "next generation" news',
+    ],
+    // Set 8 — the retirement side of the same event. A founder stepping back
+    // is the trigger Jonathan coaches through, and it is stated plainly far
+    // more often than "succession" ever is.
+    [
+      '"stepping back" OR "handing over the reins" landscaping OR "lawn care" company family',
+      '"after 40 years" OR "after 30 years" founder landscaping OR "tree service" retiring',
+      '"legacy" family owned landscaping company "second generation" OR "third generation"',
+    ],
   ],
   home_builder: [
     // Set 1 — proven in live testing. Verbatim, do not edit.
@@ -606,6 +679,27 @@ export const SUCCESSION_QUERY_SETS: Record<Industry, string[][]> = {
       '"next generation of leadership" home builder OR remodeler',
       '"carrying on the family tradition" custom home builder OR "general contractor"',
       '"joined his father" OR "joined her father" home builder OR remodeler',
+    ],
+    // Sets 5-8, same reasoning as landscaping above.
+    [
+      '"& sons" home builder OR construction OR remodeling company',
+      '"and sons" OR "& daughters" custom home builder family owned',
+      '"brothers" custom home builder OR "general contractor" "family owned" -franchise',
+    ],
+    [
+      '"founder" AND "president" home builder "family owned" father son',
+      '"still involved" OR "remains active" founder custom home builder OR remodeler',
+      '"works alongside his father" OR "works alongside her father" home builder OR construction',
+    ],
+    [
+      '"family business of the year" home builder OR construction award',
+      '"names son" OR "names daughter" president home builder OR construction company',
+      '"succession" home builder family owned "next generation" news',
+    ],
+    [
+      '"stepping back" OR "handing over the reins" home builder OR remodeler family',
+      '"after 40 years" OR "after 30 years" founder home builder retiring',
+      '"legacy" family owned home builder "second generation" OR "third generation"',
     ],
   ],
 };
@@ -750,14 +844,25 @@ export async function discoverCandidates(params: {
   // A single-state search is unchanged: one group, share of 1, same budget.
   const groups = states.length > 1 ? states.map((s) => [s]) : [states];
   const share = groups.length;
+  const mapsGroup = (round - 1) % groups.length;
   const perGroupLimit = Math.max(1, Math.ceil(limit / share));
 
   const settled = await Promise.allSettled(
-    groups.flatMap((group) => [
+    groups.flatMap((group, g) => [
       discoverViaDirectories(industry, group, perGroupLimit, round),
       discoverViaLicensing(industry, group, perGroupLimit, round),
       discoverViaWebSearch(industry, group, perGroupLimit, round, share),
-      discoverViaMaps(industry, group, perGroupLimit, round, share),
+      // MAPS RUNS FOR ONE STATE PER ROUND, rotating — the other channels run
+      // for all of them. Splitting the maps budget four ways instead would
+      // put every call under PER_TERM_MIN, and the floor there would quietly
+      // push total spend back ABOVE the budget, which is the exact bug this
+      // change exists to fix. Rotating keeps the buy at 12 for the whole
+      // round and still covers every state across rounds, which is all a
+      // low-yield backstop channel needs. share is 1 because this call now
+      // owns the entire budget rather than a slice of it.
+      g === mapsGroup
+        ? discoverViaMaps(industry, group, perGroupLimit, round, 1)
+        : Promise.resolve([] as Candidate[]),
     ])
   );
 
