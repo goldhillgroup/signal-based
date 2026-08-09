@@ -61,13 +61,26 @@ export function daysBetween(fromIso: string, toIso: string): number {
  * `dayOfWeek` is therefore the EARLIEST preferred day, not a hard gate.
  */
 /**
- * Days after which the harvest stops waiting for its preferred weekday.
+ * Off-day catch-up. Past this many days the harvest stops holding out for its
+ * preferred weekday and runs on the next ping, whatever day that is.
  *
- * 10, not 14: a fortnight means a whole extra Monday goes by before anything
- * happens, which is a full missed week of leads. Ten catches a run that slipped
- * past its day without letting the gap stretch to two.
+ * 10, not 14: a fortnight means a whole extra Monday passes before anything
+ * happens, which is a full week of leads lost to one bad deploy.
  */
 const CATCH_UP_DAYS = 10;
+
+/**
+ * Minimum gap when it IS the preferred day.
+ *
+ * Deliberately small, and it is what makes the schedule self-correcting. The
+ * preferred day only comes round every 7 days, so this can never cause two
+ * runs in a week by itself — its whole job is the case AFTER an off-day
+ * catch-up. A catch-up on Thursday sets lastRunOn to Thursday; the next Monday
+ * is then only 4 days later, and a 7-day cooldown would skip it and push the
+ * schedule out to the Monday after. With this, that Monday runs and the
+ * cadence is back on its anchor immediately.
+ */
+const PREFERRED_DAY_MIN_DAYS = 2;
 
 export function shouldRunNow(
   s: WeeklySchedule,
@@ -86,6 +99,12 @@ export function shouldRunNow(
     // The cooldown IS the weekly limit. Seven days of nothing changing is the
     // whole reason not to re-ask sooner — see recheck-policy.ts, which applies
     // the same idea per company.
+    const isPreferredDay = now.getDay() === s.dayOfWeek;
+
+    // On the anchor day, a short gap is enough — see PREFERRED_DAY_MIN_DAYS.
+    if (isPreferredDay && days >= PREFERRED_DAY_MIN_DAYS) {
+      return { run: true, reason: `${days} days since the last run.` };
+    }
     if (days < 7) {
       return { run: false, reason: `Ran ${days} day${days === 1 ? "" : "s"} ago, waits 7.` };
     }
@@ -102,9 +121,6 @@ export function shouldRunNow(
     // what stops that becoming a fortnight — if a whole preferred day has been
     // missed as well, run on the next ping regardless and let the day after
     // that re-anchor.
-    if (now.getDay() === s.dayOfWeek) {
-      return { run: true, reason: `${days} days since the last run.` };
-    }
     if (days >= CATCH_UP_DAYS) {
       return {
         run: true,

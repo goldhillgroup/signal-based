@@ -58,16 +58,34 @@ check(
 // ── The 7-day cooldown IS the weekly limit ─────────────────────────────────
 check("already ran today -> no", shouldRunNow({ ...base, lastRunOn: isoDay(MON) }, MON).run, false);
 check("ran 1 day ago -> no", shouldRunNow({ ...base, lastRunOn: "2026-08-09" }, MON).run, false);
-check("ran 6 days ago -> no", shouldRunNow({ ...base, lastRunOn: "2026-08-04" }, MON).run, false);
+// 2026-08-04 is a TUESDAY, so this is "ran off-day, now it is Monday again".
+// It runs, and that is the self-correction: an off-day catch-up would
+// otherwise re-anchor the cooldown to the wrong weekday and the schedule would
+// never find its way back to Monday. See PREFERRED_DAY_MIN_DAYS.
+check("ran 6 days ago on an OFF day, now Monday -> YES, re-anchors", shouldRunNow({ ...base, lastRunOn: "2026-08-04" }, MON).run, true);
+// The cooldown still holds when it is not the anchor day.
+check("ran 6 days ago, and today is not Monday -> no", shouldRunNow({ ...base, lastRunOn: "2026-08-05" }, TUE).run, false);
 check("ran exactly 7 days ago -> YES", shouldRunNow({ ...base, lastRunOn: "2026-08-03" }, MON).run, true);
 check("ran 30 days ago -> YES", shouldRunNow({ ...base, lastRunOn: "2026-07-11" }, MON).run, true);
 
-// ── Self-healing: a missed Monday must not cost the whole week ─────────────
-// This is the reason the cron pings daily instead of using a weekly cron
-// expression. Once past the cooldown it runs on the NEXT ping, whatever day.
+// ── MONDAY IS AN ANCHOR, and self-healing must not break it ────────────────
+// This assertion used to expect true: past the cooldown, run on the next ping
+// whatever day it is. That is what the daily ping was for, and it quietly
+// destroyed "every Monday" — one run displaced by an outage lands on a
+// Tuesday, and every run after it is a Tuesday, because each new lastRunOn
+// re-anchors the cooldown to the wrong day. It drifts a day per incident and
+// never comes back.
+//
+// So a day-8 Tuesday now waits. The gap is capped at CATCH_UP_DAYS (10), and
+// whatever day that catch-up lands on, the next Monday re-anchors it.
 check(
-  "overdue on a Tuesday still runs (missed Monday)",
+  "day 8 on a Tuesday waits, rather than moving the schedule to Tuesdays",
   shouldRunNow({ ...base, lastRunOn: "2026-08-03" }, TUE).run,
+  false
+);
+check(
+  "but a 10-day gap gives up on the anchor and runs",
+  shouldRunNow({ ...base, lastRunOn: "2026-08-01" }, TUE).run,
   true
 );
 check(
