@@ -22,6 +22,19 @@ export interface WeeklySchedule {
   /** Leads wanted per run. The real ceiling is the budget, not this. */
   targetPerRun: number;
   mode: SearchMode;
+  /**
+   * Revenue band, matching the one-off search form.
+   *
+   * The harvest had none: the cron passed { min: null, max: null } hardcoded,
+   * so every scheduled scan ran unbounded while the manual form defaulted to
+   * $3-15M. The same request produced different companies depending on which
+   * screen asked for it, and nothing on either screen said so.
+   *
+   * Nullable both ways, and both null legitimately means "no limit" — so a
+   * schedule saved before this existed keeps behaving exactly as it did.
+   */
+  revenueMinMusd: number | null;
+  revenueMaxMusd: number | null;
   /** ISO date (YYYY-MM-DD) of the last run that actually started. */
   lastRunOn: string | null;
 }

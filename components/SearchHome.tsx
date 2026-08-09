@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useSearches } from "@/lib/searches-store";
 import { AGREED_STATES, NATIONWIDE, stateNameFor } from "@/lib/pipeline/us-states";
 import { WhatCountsAsSignal } from "./WhatCountsAsSignal";
+import { MODE_META, MODE_ORDER, BAND_OPTIONS } from "@/lib/search-options";
+import type { Suggestion } from "@/lib/pipeline/suggestions";
 import { INDUSTRY_META } from "@/lib/signal-meta";
 import { applyAnswer, bandLabel, labelFor, type IntakeResult } from "@/lib/pipeline/intake-types";
 import type { Industry, SearchMode } from "@/lib/supabase/types";
@@ -30,37 +32,8 @@ const ASK_EXAMPLES = [
   "Lawn care firms in the Southeast, 10 leads",
 ];
 
-const MODE_META: Record<SearchMode, { label: string; description: string; targetLabel: string }> = {
-  hybrid: {
-    label: "Hybrid",
-    description: "Every company that fits, succession signals ranked first, everyone else right behind.",
-    targetLabel: "Companies to find:",
-  },
-  signal: {
-    label: "Signal only",
-    description: "Only companies showing a real founder-to-next-gen succession signal.",
-    targetLabel: "Signals to find:",
-  },
-  filter: {
-    label: "Just filter",
-    description: "Every company in the vertical + state that fits the ICP, no signal required at all.",
-    targetLabel: "Companies to find:",
-  },
-};
-const MODE_ORDER: SearchMode[] = ["hybrid", "signal", "filter"];
 
-// Step 01 of the stated method names a $3-15M band. Kept as the DEFAULT
-// rather than a hard rule — "no limit" is one click away, and the estimate
-// itself comes from soft textual proxies (crew size, years in business), not
-// real financials, so it should never feel like a locked constraint.
-const BAND_OPTIONS: { label: string; min: number | null; max: number | null }[] = [
-  { label: "$3-15M (baseline)", min: 3, max: 15 },
-  { label: "Under $3M", min: null, max: 3 },
-  { label: "$15M+", min: 15, max: null },
-  { label: "No limit", min: null, max: null },
-];
-
-export function SearchHome() {
+export function SearchHome({ suggestions = [] }: { suggestions?: Suggestion[] }) {
   const router = useRouter();
   const { folders, loading, createSearch } = useSearches();
 
@@ -242,7 +215,10 @@ export function SearchHome() {
           className="w-full resize-none rounded-lg border border-gh-border bg-gh-surface-sunken px-3 py-2.5 text-sm text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none focus:ring-2 focus:ring-gh-sky/20"
         />
         <div className="mt-2 flex flex-wrap gap-1.5">
-          {ASK_EXAMPLES.map((ex) => (
+          {(suggestions.length > 0
+            ? suggestions.map((sg) => ({ text: sg.text, why: sg.why }))
+            : ASK_EXAMPLES.map((ex) => ({ text: ex, why: "" }))
+          ).map(({ text: ex, why }) => (
             <button
               key={ex}
               type="button"
@@ -250,6 +226,10 @@ export function SearchHome() {
               className="rounded-full border border-gh-border bg-gh-surface px-2.5 py-1 text-[11px] font-medium text-gh-ink-secondary transition-colors hover:border-gh-sky/40 hover:text-gh-ink"
             >
               {ex}
+              {/* The REASON, on the chip. A bare suggestion is a guess you
+                  have to trust; "never searched" or "12 due for a free
+                  re-check" is a fact you can check. */}
+              {why && <span className="ml-1.5 text-gh-ink-muted">· {why}</span>}
             </button>
           ))}
         </div>

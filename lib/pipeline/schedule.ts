@@ -34,6 +34,10 @@ export const DEFAULT_SCHEDULE: WeeklySchedule = {
   states: [...AGREED_STATES],
   targetPerRun: 20,
   mode: "hybrid",
+  // Same baseline the one-off form defaults to, so a scheduled scan and a
+  // manual one for the same thing return the same companies.
+  revenueMinMusd: 3,
+  revenueMaxMusd: 15,
   lastRunOn: null,
 };
 
@@ -79,6 +83,13 @@ export async function getSchedule(): Promise<WeeklySchedule> {
       mode: VALID_MODES.includes(p.mode as SearchMode)
         ? (p.mode as SearchMode)
         : DEFAULT_SCHEDULE.mode,
+      // A band absent from stored JSON means the schedule predates this field,
+      // and what it actually DID was run unbounded. Reading it as null keeps
+      // that exact behaviour rather than silently applying a band to a job
+      // that has been running without one — a stored config must never change
+      // what it does because the code around it grew a feature.
+      revenueMinMusd: typeof p.revenueMinMusd === "number" ? p.revenueMinMusd : null,
+      revenueMaxMusd: typeof p.revenueMaxMusd === "number" ? p.revenueMaxMusd : null,
       lastRunOn: typeof p.lastRunOn === "string" ? p.lastRunOn : null,
     };
   } catch {

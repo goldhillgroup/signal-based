@@ -69,6 +69,22 @@ export async function POST(req: Request) {
     mode: VALID_MODES.includes(body.mode as SearchMode)
       ? (body.mode as SearchMode)
       : current.mode,
+    // null is a MEANINGFUL value here ("no limit"), so `typeof === "number"`
+    // rather than a truthiness check — and an absent key falls back to the
+    // current setting rather than to null, so a partial save cannot silently
+    // widen the band.
+    revenueMinMusd:
+      "revenueMinMusd" in body
+        ? typeof body.revenueMinMusd === "number"
+          ? body.revenueMinMusd
+          : null
+        : current.revenueMinMusd,
+    revenueMaxMusd:
+      "revenueMaxMusd" in body
+        ? typeof body.revenueMaxMusd === "number"
+          ? body.revenueMaxMusd
+          : null
+        : current.revenueMaxMusd,
     // Never writable from the UI — it is the cron's own bookkeeping, and
     // letting a save reset it would hand anyone an "ignore the 7-day
     // cooldown" button by accident.

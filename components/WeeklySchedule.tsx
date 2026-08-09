@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { WhatCountsAsSignal } from "./WhatCountsAsSignal";
+import { MODE_META, MODE_ORDER, BAND_OPTIONS } from "@/lib/search-options";
 import { DAY_NAMES, type WeeklySchedule as Schedule } from "@/lib/pipeline/schedule-types";
 import { INDUSTRY_META } from "@/lib/signal-meta";
 import type { Industry } from "@/lib/supabase/types";
@@ -162,54 +163,61 @@ export function WeeklySchedule({
           <StatePicker value={schedule.states} onChange={(states) => patch({ states })} />
         </div>
 
-                {/* WHAT IT LOOKS FOR. The schedule has always stored a mode and the
-            cron has always passed it to the pipeline — there was simply no
-            control for it, so it sat on whatever it was first saved with and
-            could never be changed. A panel that schedules an automatic scan
-            has to let you say what the scan is for. */}
-        <p className="mt-4 text-xs font-semibold text-gh-ink-secondary">What to collect</p>
-        <div className="mt-1.5 grid gap-2 sm:grid-cols-3">
-          {(
-            [
-              {
-                key: "signal",
-                title: "Signals only",
-                blurb: "Just the founder-and-successor matches. Fewest leads, purest list.",
-              },
-              {
-                key: "hybrid",
-                title: "Both, signals first",
-                blurb: "Everything that fits, with the signals ranked at the top.",
-              },
-              {
-                key: "filter",
-                title: "Every good fit",
-                blurb: "All family-owned companies in range, signal or not.",
-              },
-            ] as const
-          ).map((m) => (
-            <button
-              key={m.key}
-              type="button"
-              aria-pressed={schedule.mode === m.key}
-              onClick={() => patch({ mode: m.key })}
-              className={`cursor-pointer rounded-lg border px-3 py-2.5 text-left transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 ${
-                schedule.mode === m.key
-                  ? "border-gh-navy bg-gh-navy text-white"
-                  : "border-gh-border bg-gh-surface hover:border-gh-sky/40"
-              }`}
-            >
-              <span className="block text-xs font-semibold">{m.title}</span>
-              <span
-                className={`mt-0.5 block text-[11px] leading-snug ${
-                  schedule.mode === m.key ? "text-white/60" : "text-gh-ink-muted"
+                {/* Identical control to the one-off search form, from the same
+            MODE_META. These are the same decision made at two different times,
+            and they were two different-looking controls with different wording
+            — one screen calling it "Vertical", the other "Verticals to scan". */}
+        <div className="mt-4">
+          <label className="mb-1.5 block text-xs font-semibold text-gh-ink-secondary">
+            Mode
+          </label>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            {MODE_ORDER.map((key) => (
+              <button
+                key={key}
+                type="button"
+                aria-pressed={schedule.mode === key}
+                onClick={() => patch({ mode: key })}
+                className={`rounded-lg border px-3 py-2.5 text-left text-sm font-semibold transition-colors ${
+                  schedule.mode === key
+                    ? "border-gh-navy bg-gh-navy text-white"
+                    : "border-gh-border bg-gh-surface-sunken text-gh-ink-secondary hover:border-gh-sky/40"
                 }`}
               >
-                {m.blurb}
-              </span>
-            </button>
-          ))}
+                {MODE_META[key].label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-[11px] text-gh-ink-muted">
+            {MODE_META[schedule.mode].description}
+          </p>
         </div>
+
+        {/* The band the harvest never had. It ran unbounded while the form
+            defaulted to $3-15M. */}
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-gh-ink-muted">Revenue band:</span>
+          {BAND_OPTIONS.map((b) => {
+            const on =
+              schedule.revenueMinMusd === b.min && schedule.revenueMaxMusd === b.max;
+            return (
+              <button
+                key={b.label}
+                type="button"
+                aria-pressed={on}
+                onClick={() => patch({ revenueMinMusd: b.min, revenueMaxMusd: b.max })}
+                className={`cursor-pointer rounded-full px-3 py-1 text-xs font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 ${
+                  on
+                    ? "bg-gh-navy text-white"
+                    : "border border-gh-border bg-gh-surface text-gh-ink-secondary hover:border-gh-sky/40"
+                }`}
+              >
+                {b.label}
+              </button>
+            );
+          })}
+        </div>
+
 
 <div className="mt-4 flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium text-gh-ink-muted">Day:</span>
@@ -226,7 +234,7 @@ export function WeeklySchedule({
             ))}
           </select>
 
-          <span className="ml-2 text-xs font-medium text-gh-ink-muted">Leads per folder:</span>
+          <span className="ml-2 text-xs font-medium text-gh-ink-muted">Companies to find:</span>
           {TARGETS.map((n) => (
             <button
               key={n}

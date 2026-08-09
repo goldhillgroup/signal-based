@@ -159,7 +159,11 @@ export async function GET(req: Request) {
           schedule.targetPerRun,
           schedule.mode,
           null,
-          { min: null, max: null }
+          // Was hardcoded { min: null, max: null }, so every scheduled scan ran
+          // unbounded while the manual form defaulted to $3-15M — the same
+          // request returning different companies depending on which screen
+          // asked for it.
+          { min: schedule.revenueMinMusd, max: schedule.revenueMaxMusd }
         );
       } catch (e) {
         // runSearchPipeline already records failure on the row itself; this is
