@@ -64,3 +64,18 @@ export const US_STATES: { code: string; name: string }[] = [
 export function stateNameFor(code: string): string {
   return US_STATES.find((s) => s.code === code)?.name ?? code;
 }
+
+/**
+ * Sentinel for "anywhere in the United States", used wherever a states array
+ * is carried through the UI.
+ *
+ * "US" is not a state code, so it can never collide with a real one, and it
+ * keeps nationwide expressible as a POSITIVE selection. The alternative —
+ * representing it as an empty array — makes "he asked for the whole country"
+ * and "the form failed to send any states" indistinguishable, and those two
+ * must never run the same search.
+ *
+ * POST /api/search converts it to [] before the pipeline sees it; every
+ * discovery channel already treats an empty states array as nationwide.
+ */
+export const NATIONWIDE = "US";

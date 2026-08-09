@@ -64,10 +64,23 @@ export async function POST(req: Request) {
   const requested = (body.states?.length ? body.states : [body.state ?? ""])
     .map((s) => (s ?? "").trim().toUpperCase())
     .filter(Boolean);
-  const states = Array.from(new Set(requested));
-  if (states.length === 0) {
-    return NextResponse.json({ error: "state is required (2-letter code)" }, { status: 400 });
-  }
+  // "US" means nationwide, and an empty list means the same thing. The
+  // pipeline has always supported it — every channel has a no-state branch
+  // (national metro rotation for Maps, an unsuffixed query for web search,
+  // "the United States" for directories) — but this route rejected it, so the
+  // capability existed and was unreachable.
+  //
+  // Whether to name a state is a real choice, not an oversight to guard
+  // against. Web search is the highest-yield channel and its succession
+  // phrasing works nationally, so pinning it to one state shrinks an already
+  // thin pool for no gain. Kept explicit rather than inferred from an empty
+  // field, so "he wants the whole country" and "the form failed to send a
+  // state" stay distinguishable.
+  const nationwide = requested.includes("US") || requested.length === 0;
+  const states = nationwide
+    ? []
+    : Array.from(new Set(requested));
+
   const unknown = states.filter((s) => !VALID_STATE_CODES.has(s));
   if (unknown.length > 0) {
     return NextResponse.json(
@@ -96,7 +109,12 @@ export async function POST(req: Request) {
   // Human-readable label built server-side from the structured fields — the
   // free-text refinement is along for the ride in the label/query only, it
   // never drives the actual discovery filters (see lib/pipeline/apify.ts).
-  const label = `${industryLabel(industry)} companies in ${states.map(stateNameFor).join(", ")}`;
+  // A nationwide search has no states to list, and the old template produced
+  // "Landscaping companies in " with nothing after it — a folder named after a
+  // missing value, in a UI where the label is the only thing distinguishing
+  // one folder from another.
+  const where = states.length > 0 ? states.map(stateNameFor).join(", ") : "the United States";
+  const label = `${industryLabel(industry)} companies in ${where}`;
   const query = refinement ? `${label}, ${refinement}` : label;
 
   const { data: search, error } = await supabase

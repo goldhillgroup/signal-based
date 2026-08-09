@@ -353,11 +353,59 @@ const STATE_METROS: Record<string, string[]> = {
 };
 
 /**
+ * The rotation for a nationwide search, one metro per discovery call.
+ *
+ * Ordered to spread across the country early rather than to rank by size: the
+ * first six rounds land in six different regions, so a run that stops early
+ * still returns a national spread instead of eight Californian results. Every
+ * entry carries its state so the row records where the lead actually is.
+ */
+const NATIONAL_METROS: string[] = [
+  "Los Angeles, California",
+  "Dallas, Texas",
+  "Atlanta, Georgia",
+  "Chicago, Illinois",
+  "Tampa, Florida",
+  "Philadelphia, Pennsylvania",
+  "Phoenix, Arizona",
+  "Charlotte, North Carolina",
+  "Denver, Colorado",
+  "Seattle, Washington",
+  "Nashville, Tennessee",
+  "Columbus, Ohio",
+  "Houston, Texas",
+  "Minneapolis, Minnesota",
+  "San Diego, California",
+  "St. Louis, Missouri",
+  "Orlando, Florida",
+  "Kansas City, Missouri",
+  "Salt Lake City, Utah",
+  "Richmond, Virginia",
+];
+
+/**
  * Where round N should look. Rounds walk the metro list, then fall back to
  * the whole state once the metros are used up.
  */
 function locationForRound(states: string[], round: number): string {
-  if (states.length === 0) return "United States";
+  // NATIONWIDE — no state was named, so rotate the biggest metros in the
+  // country instead of asking Google Places for "United States".
+  //
+  // A geo search needs a place. Handing a country-sized string to a
+  // place-search API is the one input it cannot do anything useful with: it
+  // has no centre to search around, so it falls back on whatever it considers
+  // nationally prominent, which is national chains and franchises — the exact
+  // opposite of a family-owned business with a founder and a successor.
+  //
+  // Rotation matters at least as much. Walking metros is what stops the pool
+  // drying up (see the MAPS comment above); a single fixed location has no
+  // rotation axis at all, so round 2 re-buys round 1's results and the run
+  // concludes there is nothing left after one call. "Anywhere" has to mean
+  // "everywhere in turn", not "one query with no place in it".
+  if (states.length === 0) {
+    const metro = NATIONAL_METROS[(round - 1) % NATIONAL_METROS.length];
+    return `${metro}, USA`;
+  }
   // Multi-state searches alternate states first, so an early stop still
   // covered every state the user asked for rather than exhausting state one.
   const state = states[(round - 1) % states.length];

@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { US_STATES, AGREED_STATES, stateNameFor } from "@/lib/pipeline/us-states";
+import { US_STATES, AGREED_STATES, NATIONWIDE, stateNameFor } from "@/lib/pipeline/us-states";
 import { CheckIcon, ChevronDownIcon, XIcon } from "./icons";
 
 /**
@@ -33,19 +33,39 @@ export function StatePicker({
   const [showOthers, setShowOthers] = useState(false);
   const groupId = useId();
 
+  // Nationwide is a POSITIVE choice, carried as the sentinel "US", not as an
+  // empty selection. Encoding it as "nothing picked" would make "search the
+  // whole country" and "the form lost my states" the same state, and the one
+  // that must never run silently is the second.
+  const nationwide = value.includes(NATIONWIDE);
   const selected = new Set(value);
   const agreedSelected = AGREED_STATES.filter((c) => selected.has(c));
   const extraSelected = value.filter((c) => !AGREED_STATES.includes(c));
   const allAgreed = agreedSelected.length === AGREED_STATES.length;
 
+  // Picking a named state turns nationwide off. The two are alternatives, and
+  // a selection reading "United States + Texas" would be a contradiction the
+  // pipeline would have to guess its way out of.
   function toggle(code: string) {
-    onChange(selected.has(code) ? value.filter((c) => c !== code) : [...value, code]);
+    const without = value.filter((c) => c !== NATIONWIDE);
+    onChange(
+      selected.has(code) ? without.filter((c) => c !== code) : [...without, code]
+    );
+  }
+
+  function toggleNationwide() {
+    onChange(nationwide ? [] : [NATIONWIDE]);
   }
 
   // Deliberately additive rather than a replace: if he has already picked
   // Georgia, "All four" should not silently throw it away.
   function selectAllAgreed() {
-    onChange(allAgreed ? value.filter((c) => !AGREED_STATES.includes(c)) : [...extraSelected, ...AGREED_STATES]);
+    const without = value.filter((c) => c !== NATIONWIDE);
+    onChange(
+      allAgreed
+        ? without.filter((c) => !AGREED_STATES.includes(c))
+        : [...without.filter((c) => !AGREED_STATES.includes(c)), ...AGREED_STATES]
+    );
   }
 
   return (
@@ -62,6 +82,24 @@ export function StatePicker({
           {allAgreed ? "Clear all four" : "All four agreed"}
         </button>
       </div>
+
+      {/* Nationwide sits ABOVE the four, because it is the broader answer and
+          reading it after the specific ones invites picking a state first and
+          never noticing this existed. Full width so it does not look like a
+          fifth state. */}
+      <button
+        type="button"
+        onClick={toggleNationwide}
+        aria-pressed={nationwide}
+        className={`mb-2 flex min-h-11 w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 ${
+          nationwide
+            ? "border-gh-navy bg-gh-navy text-white"
+            : "border-dashed border-gh-border bg-gh-surface-sunken text-gh-ink-secondary hover:border-gh-sky/40 hover:text-gh-ink"
+        }`}
+      >
+        {nationwide && <CheckIcon className="h-3.5 w-3.5 shrink-0" />}
+        Anywhere in the United States
+      </button>
 
       {/* The four agreed states, the daily decision, always visible. */}
       <div role="group" aria-labelledby={groupId} className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -149,9 +187,14 @@ export function StatePicker({
             </span>
           ))}
         </div>
+      ) : nationwide ? (
+        <p className="mt-2.5 text-[11px] leading-relaxed text-gh-ink-muted">
+          Works through major metros across the country, a different one each
+          round, so results spread nationally instead of piling up in one city.
+        </p>
       ) : value.length === 0 ? (
         <p className="mt-2.5 text-[11px] font-medium text-gh-serious">
-          Pick at least one state to search.
+          Pick at least one state, or choose anywhere in the United States.
         </p>
       ) : null}
     </div>

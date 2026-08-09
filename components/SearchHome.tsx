@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSearches } from "@/lib/searches-store";
-import { AGREED_STATES, stateNameFor } from "@/lib/pipeline/us-states";
+import { AGREED_STATES, NATIONWIDE, stateNameFor } from "@/lib/pipeline/us-states";
 import { INDUSTRY_META } from "@/lib/signal-meta";
 import { applyAnswer, bandLabel, labelFor, type IntakeResult } from "@/lib/pipeline/intake-types";
 import type { Industry, SearchMode } from "@/lib/supabase/types";
@@ -89,6 +89,8 @@ export function SearchHome() {
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState("");
 
+  // A nationwide search carries the sentinel "US" rather than a list, so
+  // "something is selected" is the real precondition, not "a named state is".
   const canSearch = industry !== null && states.length > 0 && !starting;
   const pending = intake?.questions.filter((q) => !resolved.includes(q.field)) ?? [];
 
@@ -392,11 +394,13 @@ export function SearchHome() {
             <p className="mb-1.5 text-[11px] leading-relaxed text-gh-ink-muted">
               A hint for what to look for within{" "}
               {INDUSTRY_META[industry ?? "landscaping"].label.toLowerCase()} in{" "}
-              {states.length === 0
-                ? "your chosen states"
-                : states.length <= 2
-                  ? states.map(stateNameFor).join(" and ")
-                  : `the ${states.length} states above`}{" "}
+              {states.includes(NATIONWIDE)
+                ? "the United States"
+                : states.length === 0
+                  ? "your chosen states"
+                  : states.length <= 2
+                    ? states.map(stateNameFor).join(" and ")
+                    : `the ${states.length} states above`}{" "}
              , it never changes which companies get searched.
             </p>
             <input
