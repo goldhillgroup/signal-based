@@ -36,9 +36,17 @@ async function getApifyToken(): Promise<{ token: string; capUsd: number }> {
 }
 const APIFY_BASE = "https://api.apify.com/v2";
 
-// Developer account: a low self-imposed ceiling. Apify's API refuses to set a
-// plan limit below $29 ("cannot be less than 29"), so this is enforced here.
-export const DEV_CAP_USD = 10;
+// Developer account: a self-imposed ceiling, raised 10 -> 14 on 2026-08-09
+// because the old one was about to block testing with $20 still on the plan.
+// Apify's own API refuses to set a plan limit below $29 ("cannot be less than
+// 29"), so the real guard has to live here rather than on the account.
+//
+// This is deliberately NOT the client's cap. APIFY_TOKEN_4 is a developer
+// account whose whole purpose is keeping build-and-test spend off Jonathan's
+// card; getApifyToken tries it FIRST for exactly that reason. In production
+// APIFY_TOKEN_4 should simply be absent, so the chain falls through to his own
+// $29 plan at CLIENT_PLAN_USD.
+export const DEV_CAP_USD = 14;
 
 // The client's own plan. $29/mo of Apify is a line item in the signed scope,
 // so the ceiling is the plan, not an arbitrary fraction of it.
