@@ -249,7 +249,7 @@ export function SettingsForm({ rows: initialRows }: { rows: Row[] }) {
             />
             {showAdvanced ? "Hide advanced" : `Advanced (${advanced.length})`}
           </button>
-          <div className="collapse" data-open={showAdvanced ? "true" : "false"} inert={!showAdvanced}>
+          <div className="gh-collapse" data-open={showAdvanced ? "true" : "false"} inert={!showAdvanced}>
             <div>
               <div className="space-y-3">
                 <p className="px-1 text-xs leading-relaxed text-gh-ink-muted">

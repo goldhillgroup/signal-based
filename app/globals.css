@@ -368,13 +368,13 @@ button, [role="switch"] {
    grid-template-rows 0fr -> 1fr animates to the content's OWN height with no
    JS measurement and no magic max-height that clips long content. The child
    needs min-height:0 or it refuses to shrink below its intrinsic size. */
-.collapse {
+.gh-collapse {
   display: grid;
   grid-template-rows: 0fr;
   transition: grid-template-rows var(--gh-dur-slow) var(--gh-ease-out);
 }
-.collapse[data-open="true"] { grid-template-rows: 1fr; }
-.collapse > * { overflow: hidden; min-height: 0; }
+.gh-collapse[data-open="true"] { grid-template-rows: 1fr; }
+.gh-collapse > * { overflow: hidden; min-height: 0; }
 
 /* ── Loops ─────────────────────────────────────────────────────────────── */
 
@@ -446,5 +446,5 @@ button, [role="switch"] {
   }
   /* Snap open instead of growing. Instant is the correct behaviour here — the
      alternative is the layout shove this exists to smooth, just faster. */
-  .collapse { transition: none !important; }
+  .gh-collapse { transition: none !important; }
 }

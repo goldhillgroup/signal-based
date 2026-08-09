@@ -114,7 +114,7 @@ export function StatePicker({
         {showOthers ? "Hide other states" : `Other states${extraSelected.length ? ` (${extraSelected.length} selected)` : ""}`}
       </button>
 
-      <div className="collapse" data-open={showOthers ? "true" : "false"} inert={!showOthers}>
+      <div className="gh-collapse" data-open={showOthers ? "true" : "false"} inert={!showOthers}>
         <div>
           <div className="mt-2 max-h-52 overflow-y-auto rounded-lg border border-gh-border bg-gh-surface-sunken p-2">
           <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">

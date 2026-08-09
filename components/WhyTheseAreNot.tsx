@@ -106,7 +106,7 @@ export function WhyTheseAreNot({ searchId, count }: { searchId: string; count: n
           content out of the tab order and the accessibility tree — without it
           a closed panel is invisible but still focusable, which strands
           keyboard users on controls they cannot see. */}
-      <div className="collapse" data-open={open ? "true" : "false"} inert={!open}>
+      <div className="gh-collapse" data-open={open ? "true" : "false"} inert={!open}>
         <div>
           <div className="space-y-4 border-t border-gh-border p-4 sm:p-5">
           {rejected.length === 0 && (
