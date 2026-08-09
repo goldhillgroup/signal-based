@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { WhatCountsAsSignal } from "./WhatCountsAsSignal";
-import { MODE_META, MODE_ORDER, BAND_OPTIONS } from "@/lib/search-options";
+import { MODE_META, MODE_ORDER, BAND_OPTIONS, REFINEMENT_EXAMPLES } from "@/lib/search-options";
 import { DAY_NAMES, type WeeklySchedule as Schedule } from "@/lib/pipeline/schedule-types";
 import { INDUSTRY_META } from "@/lib/signal-meta";
 import type { Industry } from "@/lib/supabase/types";
@@ -106,7 +106,7 @@ export function WeeklySchedule({
                 track's. Anchoring left and translating by the travel distance
                 (44 track - 20 knob - 2 - 2 = 20) keeps it inside at both ends. */}
             <span
-              className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${
+              className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform duration-[var(--gh-dur)] ease-[var(--gh-ease-out)] ${
                 schedule.enabled ? "translate-x-[20px]" : "translate-x-0"
               }`}
             />
@@ -191,6 +191,49 @@ export function WeeklySchedule({
           <p className="mt-1.5 text-[11px] text-gh-ink-muted">
             {MODE_META[schedule.mode].description}
           </p>
+        </div>
+
+        {/* SIGNAL FOCUS — the one field a person writes in their own words,
+            and the only structured input the harvest could not be given. The
+            schedule could set vertical, states, band and mode; this was
+            missing from the UI and hardcoded to null in the cron, so a
+            scheduled run could never be told what to look for the way a
+            manual one can.
+            Same caveat as the search form: it nudges CLASSIFICATION, never
+            discovery. Free text choosing which companies get found is how a
+            search drifts off the agreed vertical. */}
+        <div className="mt-4">
+          <label
+            htmlFor="harvest-refinement"
+            className="mb-1.5 block text-xs font-semibold text-gh-ink-secondary"
+          >
+            Signal focus <span className="font-normal text-gh-ink-muted">(optional)</span>
+          </label>
+          <p className="mb-1.5 text-[11px] leading-relaxed text-gh-ink-muted">
+            A hint for what to look for inside the verticals and states above. It
+            never changes which companies get searched.
+          </p>
+          <input
+            id="harvest-refinement"
+            type="text"
+            value={schedule.refinement ?? ""}
+            onChange={(e) => patch({ refinement: e.target.value || null })}
+            maxLength={200}
+            placeholder="e.g. succession signals, founder retiring..."
+            className="w-full rounded-lg border border-gh-border bg-gh-surface-sunken px-3 py-2.5 text-base text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none focus:ring-2 focus:ring-gh-sky/20 sm:text-sm"
+          />
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {REFINEMENT_EXAMPLES.map((ex) => (
+              <button
+                key={ex}
+                type="button"
+                onClick={() => patch({ refinement: ex })}
+                className="hover-spring cursor-pointer rounded-full border border-gh-border bg-gh-surface px-2.5 py-1 text-[11px] font-medium text-gh-ink-secondary transition-colors duration-200 hover:border-gh-sky/40 hover:text-gh-ink"
+              >
+                {ex}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* The band the harvest never had. It ran unbounded while the form

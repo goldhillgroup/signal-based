@@ -17,6 +17,7 @@ const base: WeeklySchedule = {
   states: ["CA"],
   targetPerRun: 10,
   mode: "hybrid",
+  refinement: null,
   revenueMinMusd: 3,
   revenueMaxMusd: 15,
   lastRunOn: null,

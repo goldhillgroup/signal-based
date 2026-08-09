@@ -8,7 +8,8 @@ import { preflightBlocker, creditBlockerFor, recordHarvestHealth } from "@/lib/p
 import { stateNameFor } from "@/lib/pipeline/us-states";
 
 // Same ceiling as the interactive route — this runs the identical pipeline.
-export const maxDuration = 300;
+// See app/api/search/route.ts for why 800 and what it requires.
+export const maxDuration = 800;
 
 /**
  * The weekly harvest.
@@ -158,7 +159,9 @@ export async function GET(req: Request) {
           schedule.states,
           schedule.targetPerRun,
           schedule.mode,
-          null,
+          // Was hardcoded null, so even once the field existed the scheduled
+          // run would have ignored it.
+          schedule.refinement,
           // Was hardcoded { min: null, max: null }, so every scheduled scan ran
           // unbounded while the manual form defaulted to $3-15M — the same
           // request returning different companies depending on which screen

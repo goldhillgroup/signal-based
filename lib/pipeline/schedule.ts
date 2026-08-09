@@ -38,6 +38,7 @@ export const DEFAULT_SCHEDULE: WeeklySchedule = {
   // manual one for the same thing return the same companies.
   revenueMinMusd: 3,
   revenueMaxMusd: 15,
+  refinement: null,
   lastRunOn: null,
 };
 
@@ -88,6 +89,12 @@ export async function getSchedule(): Promise<WeeklySchedule> {
       // that exact behaviour rather than silently applying a band to a job
       // that has been running without one — a stored config must never change
       // what it does because the code around it grew a feature.
+      // Trimmed and length-capped here rather than trusted: this string is
+      // read by a cron with nobody watching and goes straight into a prompt.
+      refinement:
+        typeof p.refinement === "string" && p.refinement.trim()
+          ? p.refinement.trim().slice(0, 200)
+          : null,
       revenueMinMusd: typeof p.revenueMinMusd === "number" ? p.revenueMinMusd : null,
       revenueMaxMusd: typeof p.revenueMaxMusd === "number" ? p.revenueMaxMusd : null,
       lastRunOn: typeof p.lastRunOn === "string" ? p.lastRunOn : null,

@@ -14,6 +14,7 @@ const base = {
   industries: ["landscaping"] as const,
   states: ["TN"],
   targetSignals: 10,
+  refinement: null as string | null,
   revenueMinMusd: 3 as number | null,
   revenueMaxMusd: 15 as number | null,
   lastRunOn: null as string | null,

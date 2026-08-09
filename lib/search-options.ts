@@ -63,3 +63,15 @@ export function bandIndexFor(min: number | null, max: number | null): number {
   const i = BAND_OPTIONS.findIndex((b) => b.min === min && b.max === max);
   return i === -1 ? BAND_OPTIONS.length - 1 : i;
 }
+
+/**
+ * Suggested signal-focus phrasings, shared by the one-off search and the
+ * weekly harvest. Same decision, same suggestions — they were only on the
+ * search form, which is how the harvest ended up with no way to express it
+ * at all.
+ */
+export const REFINEMENT_EXAMPLES = [
+  "succession signals",
+  "founder retiring",
+  "second generation taking over",
+];

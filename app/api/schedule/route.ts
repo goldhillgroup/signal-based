@@ -73,6 +73,12 @@ export async function POST(req: Request) {
     // rather than a truthiness check — and an absent key falls back to the
     // current setting rather than to null, so a partial save cannot silently
     // widen the band.
+    refinement:
+      "refinement" in body
+        ? typeof body.refinement === "string" && body.refinement.trim()
+          ? body.refinement.trim().slice(0, 200)
+          : null
+        : current.refinement,
     revenueMinMusd:
       "revenueMinMusd" in body
         ? typeof body.revenueMinMusd === "number"

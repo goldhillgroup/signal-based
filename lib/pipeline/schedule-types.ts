@@ -35,6 +35,18 @@ export interface WeeklySchedule {
    */
   revenueMinMusd: number | null;
   revenueMaxMusd: number | null;
+  /**
+   * Free-text signal focus, the same field the one-off search form has.
+   *
+   * The harvest could set the vertical, the states, the band and the mode —
+   * every structured input — but not this one, so the only thing a person can
+   * say in their own words was the one thing a scheduled run could not be
+   * told. Passed to classification as a non-overriding hint; like the manual
+   * form it deliberately does NOT steer discovery, because letting free text
+   * choose which companies get FOUND is how a search drifts off the agreed
+   * vertical.
+   */
+  refinement: string | null;
   /** ISO date (YYYY-MM-DD) of the last run that actually started. */
   lastRunOn: string | null;
 }
