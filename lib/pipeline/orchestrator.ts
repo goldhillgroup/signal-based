@@ -32,7 +32,7 @@ const ROUND_SIZE = 15;
 // always part re-check, part fresh ground.
 const RECHECK_PER_RUN = 20;
 const MAX_SCAN_MULTIPLIER = 6; // never scan more than target * this
-const ABSOLUTE_SCAN_CEILING = 240; // hard stop regardless of target — cost/time sanity
+const ABSOLUTE_SCAN_CEILING = 240; // hard stop regardless of target, cost/time sanity
 
 // How many companies are classified at once. Each one is 1-2 OpenRouter calls
 // (classify, plus disprove when there's a signal to check), so this is bounded
@@ -78,14 +78,14 @@ async function bump(supabase: Supa, searchId: string, patch: Partial<SearchRow>)
     const m = /'([a-z_]+)' column/.exec(err.message ?? "");
     if (!m || !(m[1] in current)) break;
     console.warn(
-      `Search ${searchId}: '${m[1]}' column missing in DB — apply the latest supabase/migrations. Saving without it.`
+      `Search ${searchId}: '${m[1]}' column missing in DB, apply the latest supabase/migrations. Saving without it.`
     );
     delete (current as Record<string, unknown>)[m[1]];
     const retry = await supabase.from("searches").update(current).eq("id", searchId);
     if (!retry.error) return;
     err = retry.error;
   }
-  console.warn(`Search ${searchId}: update failed — ${err.message}`);
+  console.warn(`Search ${searchId}: update failed, ${err.message}`);
 }
 
 // Last-resort name when neither og:site_name nor the classifier could read
@@ -169,7 +169,7 @@ export function quoteAppears(quote: string, pageText: string): boolean {
       .toLowerCase()
       .replace(/[‘’ʼ]/g, "'")
       .replace(/[“”]/g, '"')
-      .replace(/[–—]/g, "-")
+      .replace(/[–-]/g, "-")
       .replace(/…/g, "...")
       .replace(/[^a-z0-9]+/g, " ")
       .trim();
@@ -241,7 +241,7 @@ export async function runSearchPipeline(
       }
       skippedRecent = seenDomains.size;
       console.log(
-        `Search ${searchId}: cross-search memory holds ${skippedRecent} settled domains — these are skipped, everything due for re-check is fair game.`
+        `Search ${searchId}: cross-search memory holds ${skippedRecent} settled domains, these are skipped, everything due for re-check is fair game.`
       );
     }
 
@@ -249,7 +249,7 @@ export async function runSearchPipeline(
     let qualified = 0; // signal found, confidence high/medium (or fit-only accepted in filter/hybrid, no signal)
     let verify = 0; // signal found, confidence verify
     let fitOnly = 0; // filter/hybrid only: accepted on ICP fit, no signal found
-    let accepted = 0; // qualified + verify + fitOnly — the denominator filter/hybrid targets against
+    let accepted = 0; // qualified + verify + fitOnly, the denominator filter/hybrid targets against
     let rejected = 0;
 
     // What counts toward the target differs by mode:
@@ -322,7 +322,7 @@ export async function runSearchPipeline(
       recheckSeeded = pending.length;
       if (recheckSeeded > 0) {
         console.log(
-          `Search ${searchId}: ${recheckSeeded} companies came due for re-check — read first, at no discovery cost.`
+          `Search ${searchId}: ${recheckSeeded} companies came due for re-check, read first, at no discovery cost.`
         );
       }
     } catch {
@@ -545,7 +545,7 @@ export async function runSearchPipeline(
             industry,
             status: "rejected",
             rejection_reason:
-              "Page too thin to evaluate — likely a JS-rendered shell or placeholder page",
+              "Page too thin to evaluate, likely a JS-rendered shell or placeholder page",
             recheck_after: recheckAfterFor("rejected", "could not be fetched"),
           });
           rejected++;
@@ -613,7 +613,7 @@ export async function runSearchPipeline(
         let quoteWarning: string | null = null;
         if (classification.qualifies && classification.quote && !quoteAppears(classification.quote, classifyText)) {
           quoteWarning =
-            "Evidence quote could not be located verbatim on the fetched page — flagged for manual verification.";
+            "Evidence quote could not be located verbatim on the fetched page, flagged for manual verification.";
           classification = { ...classification, confidence: "verify" as const };
         }
 
@@ -679,17 +679,17 @@ export async function runSearchPipeline(
         if (finalQualifies && classification.operatingCountry === "foreign") {
           finalQualifies = false;
           rejectionReason =
-            "Outside the US — the page shows this business operating in another country.";
+            "Outside the US, the page shows this business operating in another country.";
         } else if (finalQualifies && !classification.stillFamilyOwned) {
           finalQualifies = false;
           rejectionReason =
-            "No longer family-owned — acquired/consolidated, current leadership shows no family members.";
+            "No longer family-owned, acquired/consolidated, current leadership shows no family members.";
         } else if (finalQualifies && belowBand) {
           finalQualifies = false;
-          rejectionReason = `Too small — reads below the $${band!.min}M lower bound set for this search.`;
+          rejectionReason = `Too small, reads below the $${band!.min}M lower bound set for this search.`;
         } else if (finalQualifies && aboveBand) {
           finalQualifies = false;
-          rejectionReason = `Too big — reads above the $${band!.max}M upper bound set for this search.`;
+          rejectionReason = `Too big, reads above the $${band!.max}M upper bound set for this search.`;
         } else if (finalQualifies && hasSignal) {
           // Only worth running the disprove pass when there's an actual
           // signal claim to check — a filter/hybrid company accepted purely

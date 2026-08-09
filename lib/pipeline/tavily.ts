@@ -141,10 +141,10 @@ export async function tavilySearch(
     if (res) {
       const errBody = await res.text().catch(() => "");
       console.warn(
-        `Tavily search failed: ${res.status} ${errBody.slice(0, 200)} — query "${query.slice(0, 80)}"`
+        `Tavily search failed: ${res.status} ${errBody.slice(0, 200)}, query "${query.slice(0, 80)}"`
       );
     } else {
-      console.warn(`Tavily search failed: ${networkErr} — query "${query.slice(0, 80)}"`);
+      console.warn(`Tavily search failed: ${networkErr}, query "${query.slice(0, 80)}"`);
     }
     return [];
   }

@@ -97,7 +97,7 @@ export function VendorUsage() {
         <div>
           <h2 className="font-display text-lg font-semibold text-gh-ink">Vendor usage</h2>
           <p className="mt-0.5 text-sm text-gh-ink-secondary">
-            What&apos;s left at each vendor, read live — and for the monthly ones,
+            What&apos;s left at each vendor, read live, and for the monthly ones,
             the day the quota is full again.
           </p>
         </div>
@@ -173,7 +173,7 @@ function summarise(rows: VendorUsageRow[]): string {
   if (near) parts.push(`${near} nearly out`);
   if (!parts.length) return `All ${rows.length} vendors have room.`;
   parts.push(`${fine} ok`);
-  return `${parts.join(" · ")} — the ones needing attention are first.`;
+  return `${parts.join(" · ")}, the ones needing attention are first.`;
 }
 
 function VendorCard({ row }: { row: VendorUsageRow }) {

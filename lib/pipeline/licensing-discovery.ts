@@ -576,19 +576,19 @@ const LICENSING_SOURCES: Record<string, StateSupport> = {
     supported: false,
     board: "Florida DBPR / CILB",
     reason:
-      "No free enumerable source — checked 2026-08-07: DBPR does publish free weekly CSV extracts, but www2.myfloridalicense.com answers every headless client with HTTP 403 cf-mitigated:challenge (browser UA, curl default UA, HTTP/1.1, HTTP/2 and Node fetch all tested). Reaching it would require a paid rendering fetch.",
+      "No free enumerable source, checked 2026-08-07: DBPR does publish free weekly CSV extracts, but www2.myfloridalicense.com answers every headless client with HTTP 403 cf-mitigated:challenge (browser UA, curl default UA, HTTP/1.1, HTTP/2 and Node fetch all tested). Reaching it would require a paid rendering fetch.",
   },
   TX: {
     supported: false,
     board: "Texas TDLR",
     reason:
-      "No free enumerable source — checked 2026-08-07: TDLR's licfile.asp serves 149 free daily CSVs, but Texas does not license landscapers or home builders at state level, so none of the 149 covers either vertical.",
+      "No free enumerable source, checked 2026-08-07: TDLR's licfile.asp serves 149 free daily CSVs, but Texas does not license landscapers or home builders at state level, so none of the 149 covers either vertical.",
   },
   NC: {
     supported: false,
     board: "NC Licensing Board for General Contractors",
     reason:
-      "No free enumerable source — checked 2026-08-07: portal.nclbgc.org's search endpoint is a per-city lookup, not an export (a classification alone returns 'Additional Inputs Needed'), and its result rows carry only account number, type and owner name — no address, email or website to derive a domain from.",
+      "No free enumerable source, checked 2026-08-07: portal.nclbgc.org's search endpoint is a per-city lookup, not an export (a classification alone returns 'Additional Inputs Needed'), and its result rows carry only account number, type and owner name, no address, email or website to derive a domain from.",
   },
 };
 

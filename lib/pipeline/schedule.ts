@@ -28,7 +28,7 @@ import type { Industry, SearchMode } from "../supabase/types";
 export const SCHEDULE_KEY = "WEEKLY_HARVEST";
 
 export const DEFAULT_SCHEDULE: WeeklySchedule = {
-  enabled: false, // never starts spending on its own — has to be switched on
+  enabled: false, // never starts spending on its own, has to be switched on
   dayOfWeek: 1, // Monday: results are waiting at the start of his week
   industries: ["landscaping", "home_builder"],
   states: [...AGREED_STATES],

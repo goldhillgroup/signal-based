@@ -34,7 +34,7 @@ const RULES: Rule[] = [
     // irrigation. These are the only genuinely permanent rejections.
     test: /marketplace|directory platform|lead-?gen|brokerage|trade publication|magazine|not an? (actual|real) (company|business)|not a single/i,
     days: NEVER,
-    why: "not a trade business at all — structurally permanent",
+    why: "not a trade business at all, structurally permanent",
   },
   {
     // Wrong TRADE, which is a different claim from "not a business". This used
@@ -54,13 +54,13 @@ const RULES: Rule[] = [
     // into the ICP.
     test: /outside the (landscaping|icp)|not a landscaping|wrong industry|supplier|hvac|roofing|plumbing/i,
     days: 545,
-    why: "wrong trade today — trades diversify, so worth one look in 18 months",
+    why: "wrong trade today, trades diversify, so worth one look in 18 months",
   },
   {
     // PE roll-ups and acquisitions essentially never revert to family control.
     test: /no longer family-owned|acquired|consolidat|roll-?up/i,
     days: 365,
-    why: "acquired/consolidated — very unlikely to revert, but not impossible",
+    why: "acquired/consolidated, very unlikely to revert, but not impossible",
   },
   {
     // Transient infrastructure failure, not a judgment about the company.
@@ -73,7 +73,7 @@ const RULES: Rule[] = [
     // retrying in two weeks, not one quarter.
     test: /could not be fetched|classification failed|page not found|404|empty placeholder|essentially empty|no content available|placeholder content|only lists services|no about\/team|project blog post/i,
     days: 14,
-    why: "fetch/parse failure — transient, retry soon",
+    why: "fetch or parse failure, worth another try soon",
   },
   {
     // THE important one. "Only the founder is named", "no next-gen on the
@@ -86,16 +86,16 @@ const RULES: Rule[] = [
     // nothing was mis-scheduled — but matching them explicitly means the
     // recheck REASON shown in the UI is right, and a future default change
     // can't silently reclassify them.
-    test: /only one generation|no next-gen|no founder-and-next-gen|only the founder|only founder|no second[- ]generation|no generational|cut —/i,
+    test: /only one generation|no next-gen|no founder-and-next-gen|only the founder|only founder|no second[- ]generation|no generational|cut -/i,
     days: 90,
-    why: "no successor visible YET — this is exactly what changes over time",
+    why: "no successor visible YET, this is exactly what changes over time",
   },
   {
     // Team page exists but names nobody. Sites get rebuilt and start naming
     // people; slower-moving than the above but far from permanent.
     test: /no mention of any|names no individuals|no named individuals|generic marketing|slogan/i,
     days: 120,
-    why: "site names nobody today — may add a team page",
+    why: "site names nobody today, may add a team page",
   },
   {
     // Companies grow into (and out of) the band. Slower than leadership

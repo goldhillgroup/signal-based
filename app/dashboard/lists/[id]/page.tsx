@@ -87,7 +87,7 @@ export default function FolderPage() {
       <div className="mx-auto max-w-md py-20 text-center">
         <p className="font-display text-lg font-semibold text-gh-ink">This search failed</p>
         <p className="mt-2 text-sm text-gh-ink-secondary">
-          {folder.errorMessage ?? "Something went wrong partway through — try running it again."}
+          {folder.errorMessage ?? "Something went wrong partway through, try running it again."}
         </p>
         <Link
           href="/dashboard"

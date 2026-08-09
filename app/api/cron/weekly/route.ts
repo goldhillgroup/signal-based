@@ -31,7 +31,7 @@ export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
   if (!secret) {
     return NextResponse.json(
-      { error: "CRON_SECRET is not configured — the weekly harvest is disabled." },
+      { error: "CRON_SECRET is not configured, the weekly harvest is disabled." },
       { status: 503 }
     );
   }
@@ -107,7 +107,7 @@ export async function GET(req: Request) {
   // grouping, enrichment) working with no special case for scheduled runs.
   for (const industry of schedule.industries) {
     const label = weeklyLabel(industry, now);
-    const query = `${label} — ${schedule.states.map(stateNameFor).join(", ")}`;
+    const query = `${label}, ${schedule.states.map(stateNameFor).join(", ")}`;
 
     const { data: search, error } = await supabase
       .from("searches")
@@ -119,7 +119,7 @@ export async function GET(req: Request) {
         target_signals: schedule.targetPerRun,
         revenue_min_musd: null,
         revenue_max_musd: null,
-        created_by: null, // no user — this run belongs to the schedule
+        created_by: null, // no user, this run belongs to the schedule
       })
       .select("id, label")
       .single();

@@ -63,7 +63,7 @@ export function StatePicker({
         </button>
       </div>
 
-      {/* The four agreed states — the daily decision, always visible. */}
+      {/* The four agreed states, the daily decision, always visible. */}
       <div role="group" aria-labelledby={groupId} className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {AGREED_STATES.map((code) => {
           const on = selected.has(code);
@@ -79,7 +79,7 @@ export function StatePicker({
                   : "border-gh-border bg-gh-surface-sunken text-gh-ink-secondary hover:border-gh-sky/40 hover:text-gh-ink"
               }`}
             >
-              {/* Check + fill together — colour is never the only signal. */}
+              {/* Check + fill together, colour is never the only signal. */}
               {on && <CheckIcon className="h-3.5 w-3.5 shrink-0" />}
               {stateNameFor(code)}
             </button>
@@ -87,7 +87,7 @@ export function StatePicker({
         })}
       </div>
 
-      {/* Everything else, behind a disclosure — reachable, not in the way. */}
+      {/* Everything else, behind a disclosure, reachable, not in the way. */}
       <button
         type="button"
         onClick={() => setShowOthers((v) => !v)}
@@ -124,7 +124,7 @@ export function StatePicker({
         </div>
       )}
 
-      {/* Only for states picked inside the collapsed list — those would
+      {/* Only for states picked inside the collapsed list, those would
           otherwise vanish the moment the disclosure closes, leaving a search
           running against a state with nothing on screen to say so. The four
           agreed toggles above are already their own summary, so repeating them

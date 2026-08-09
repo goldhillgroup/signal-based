@@ -179,14 +179,14 @@ export function CompaniesTable({
                   {c.contact ? (
                     <FindStatusBadge status={c.contact.findStatus} />
                   ) : (
-                    <span className="text-xs text-gh-ink-muted">—</span>
+                    <span className="text-xs text-gh-ink-muted">-</span>
                   )}
                 </td>
                 <td className="px-4 py-3">
                   {c.contact?.findStatus === "found" ? (
                     <VerificationBadge status={c.contact.verificationStatus} />
                   ) : (
-                    <span className="text-xs text-gh-ink-muted">—</span>
+                    <span className="text-xs text-gh-ink-muted">-</span>
                   )}
                 </td>
                 <td className="px-4 py-3 text-xs text-gh-ink-secondary">

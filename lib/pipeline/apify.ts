@@ -192,7 +192,7 @@ const BLOCKED_TLDS = [".edu", ".gov", ".mil"];
 // a wrongly blocked company is a lead lost with no trace.
 const GENERIC_TWO_LETTER_TLDS = new Set([
   "us", // the US ccTLD itself
-  "co", // Colombia, sold generically — plenty of US small businesses use it
+  "co", // Colombia, sold generically, plenty of US small businesses use it
   "io",
   "ai",
   "me",
@@ -573,7 +573,7 @@ export async function discoverCandidates(params: {
   industry: Industry | null;
   states: string[];
   limit: number;
-  round?: number; // 1-indexed — later rounds ask Maps for more places per
+  round?: number; // 1-indexed, later rounds ask Maps for more places per
   // term so a repeat call surfaces businesses beyond what earlier rounds
   // already returned, rather than re-fetching the same top-ranked set.
   excludeDomains?: Set<string>;
@@ -635,7 +635,7 @@ export interface FetchedPage {
   domain: string;
   url: string;
   text: string;
-  siteName: string | null; // og:site_name — the cleanest source for the real company name
+  siteName: string | null; // og:site_name, the cleanest source for the real company name
 }
 
 // Fetches one arbitrary, already-known URL (not a company's guessed
@@ -725,7 +725,7 @@ async function fetchOneDomain(domain: string): Promise<RawFetchedItem[]> {
       maxRequestRetries: 1,
       saveMarkdown: false,
     },
-    90 // raised from 60 — one hop means up to 5 more pages per domain.
+    90 // raised from 60, one hop means up to 5 more pages per domain.
   )) as RawFetchedItem[];
 }
 

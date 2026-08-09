@@ -16,7 +16,7 @@ const poppins = Poppins({
 export const metadata: Metadata = {
   title: "Signal Radar | Goldhill Group",
   description:
-    "Signal-based prospecting dashboard for The Goldhill Group — surfaces family businesses showing leadership transition, succession, and growth signals.",
+    "Signal-based prospecting dashboard for The Goldhill Group, surfaces family businesses showing leadership transition, succession, and growth signals.",
   icons: {
     icon: [
       { url: "/icon-192.png", sizes: "192x192", type: "image/png" },

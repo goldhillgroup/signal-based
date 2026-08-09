@@ -82,7 +82,7 @@ export default function AllLeadsPage() {
           </div>
           <p className="mt-1 text-sm text-gh-ink-secondary">
             {showingAll
-              ? `Every lead ever found — ${stats.total} total.`
+              ? `Every lead ever found, ${stats.total} total.`
               : activeFolder
                 ? `${stats.total} lead${stats.total === 1 ? "" : "s"} · scraped ${dayLabel(dayKey(activeFolder.createdAt))}`
                 : "No leads yet."}
@@ -137,7 +137,7 @@ export default function AllLeadsPage() {
 
       {companies.length === 0 ? (
         <p className="rounded-xl border border-dashed border-gh-border bg-gh-surface p-10 text-center text-sm text-gh-ink-muted">
-          Nothing here yet —{" "}
+          Nothing here yet -{" "}
           <Link href="/dashboard" className="font-medium text-gh-sky hover:underline">
             run a search
           </Link>{" "}

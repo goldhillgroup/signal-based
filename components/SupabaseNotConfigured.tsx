@@ -15,7 +15,7 @@ export function SupabaseNotConfigured() {
           Signal Radar isn&rsquo;t connected yet
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-gh-ink-secondary">
-          This is the skeletal build — schema and auth pages are wired, but no
+          This is the skeletal build, schema and auth pages are wired, but no
           Supabase project is attached. Copy{" "}
           <code className="rounded bg-gh-surface-sunken px-1.5 py-0.5 text-xs">
             .env.example

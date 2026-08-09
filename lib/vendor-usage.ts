@@ -198,12 +198,12 @@ async function fetchOpenRouterPrimary(meta: VendorMeta): Promise<VendorUsage> {
     detail: [
       left > 0
         ? `${usd(left)} left.`
-        : `Over by ${usd(Math.abs(left))} — classify calls now come back 402 and fall through to the capped fallback key.`,
+        : `Over by ${usd(Math.abs(left))}, classify calls now come back 402 and fall through to the capped fallback key.`,
       "Every classify and disprove call in a search bills here.",
     ],
     percentUsed,
     resetsAt: null,
-    resetNote: "prepaid credits — no monthly reset, only a top-up refills this",
+    resetNote: "prepaid credits. Only a top-up refills this",
     warnLevel: levelFor(percentUsed),
   };
 }
@@ -240,16 +240,16 @@ async function fetchOpenRouterFallback(meta: VendorMeta): Promise<VendorUsage | 
     ok: true,
     headline: `${usd(spent)} of ${usd(OPENROUTER_2_CAP_USD)} cap used`,
     detail: [
-      `The ${usd(OPENROUTER_2_CAP_USD)} ceiling is ours, not OpenRouter's — this key belongs to a friend, and lib/pipeline/openrouter.ts refuses to spend past it.`,
+      `The ${usd(OPENROUTER_2_CAP_USD)} ceiling is ours, not OpenRouter's, this key belongs to a friend, and lib/pipeline/openrouter.ts refuses to spend past it.`,
       haveBaseline
         ? `Measured as the delta from a ${usd(baseline)} baseline, because OpenRouter reports usage per account rather than per key.`
-        : "No baseline recorded yet — it's captured the first time the pipeline falls back to this key, so nothing has been spent through the app.",
+        : "No baseline recorded yet, it's captured the first time the pipeline falls back to this key, so nothing has been spent through the app.",
       `Owner's account overall: ${usd(used)} of ${usd(granted)}, ${usd(accountLeft)} left.`,
       "Only reached when the primary key returns 402.",
     ],
     percentUsed,
     resetsAt: null,
-    resetNote: "prepaid credits — no monthly reset",
+    resetNote: "prepaid credits, no monthly reset",
     // The owner's own balance is a second ceiling, and it can bite before our
     // $5 delta does. A card tracking only the delta would promise headroom on
     // a key that can no longer buy anything.
@@ -315,7 +315,7 @@ async function fetchApify(
   if (opts.capUsd !== null) {
     detail.push(
       planMax !== null
-        ? `The ${usd(opts.capUsd)} ceiling is self-imposed in lib/pipeline/apify.ts. Apify itself would allow ${usd(planMax)}/mo on this account — the code cap is what stops a run first.`
+        ? `The ${usd(opts.capUsd)} ceiling is self-imposed in lib/pipeline/apify.ts. Apify itself would allow ${usd(planMax)}/mo on this account, the code cap is what stops a run first.`
         : `The ${usd(opts.capUsd)} ceiling is self-imposed in lib/pipeline/apify.ts.`
     );
   } else if (planMax !== null) {
@@ -338,7 +338,7 @@ async function fetchApify(
     detail,
     percentUsed,
     resetsAt: refill?.resetsAt ?? null,
-    resetNote: refill?.resetNote ?? "resets monthly — cycle dates unavailable",
+    resetNote: refill?.resetNote ?? "resets monthly, cycle dates unavailable",
     warnLevel: levelFor(percentUsed),
   };
 }
@@ -375,7 +375,7 @@ async function fetchTavily(meta: VendorMeta): Promise<VendorUsage> {
   const detail: string[] = [];
   if (account?.current_plan) detail.push(`Plan: ${account.current_plan}.`);
   if (keyUsage !== null && keyUsage !== planUsage) {
-    detail.push(`This key alone: ${units(keyUsage)} — the plan figure covers every key on the account.`);
+    detail.push(`This key alone: ${units(keyUsage)}, the plan figure covers every key on the account.`);
   }
   detail.push("Directory discovery runs on this; a basic search is 1 credit.");
   // TREAT THIS NUMBER AS A FLOOR, NOT A TOTAL. Measured 2026-08-07: five
@@ -387,7 +387,7 @@ async function fetchTavily(meta: VendorMeta): Promise<VendorUsage> {
   // succeeded while this field read 4. Our own per-run meter
   // (cost-tracker.ts) counts billable responses and is the number to trust.
   detail.push(
-    "Note: Tavily's own counter has been observed not to update — treat it as a floor. Our per-search cost breakdown is the reliable count."
+    "Note: Tavily's own counter has been observed not to update, treat it as a floor. Our per-search cost breakdown is the reliable count."
   );
   const paygoLimit = num(account?.paygo_limit ?? null);
   if (paygoLimit !== null) {
@@ -408,7 +408,7 @@ async function fetchTavily(meta: VendorMeta): Promise<VendorUsage> {
     // stops there rather than inventing a date that would be wrong most
     // months. An honest gap beats a confident guess.
     resetsAt: null,
-    resetNote: "resets monthly — Tavily's API doesn't return the date",
+    resetNote: "resets monthly, Tavily's API doesn't return the date",
     warnLevel: levelFor(percentUsed),
   };
 }
@@ -452,11 +452,11 @@ async function fetchFirecrawl(meta: VendorMeta): Promise<VendorUsage> {
   if (planCredits !== null) {
     detail.push(
       remaining > planCredits
-        ? `Plan grants ${units(planCredits)}/mo and the balance is above that — credits have rolled over or been topped up, so "used this period" isn't derivable from what the API returns.`
+        ? `Plan grants ${units(planCredits)}/mo and the balance is above that, credits have rolled over or been topped up, so "used this period" isn't derivable from what the API returns.`
         : `${units(used)} of the ${units(planCredits)}/mo plan used this period.`
     );
   }
-  detail.push("Layer 2 of 3 in the page fetch — only JS-gated or bot-blocked sites ever reach it.");
+  detail.push("Layer 2 of 3 in the page fetch, only JS-gated or bot-blocked sites ever reach it.");
 
   const refill = refillFrom(res.data.data?.billing_period_end);
 
@@ -467,7 +467,7 @@ async function fetchFirecrawl(meta: VendorMeta): Promise<VendorUsage> {
     detail,
     percentUsed,
     resetsAt: refill?.resetsAt ?? null,
-    resetNote: refill?.resetNote ?? "resets monthly — billing period unavailable",
+    resetNote: refill?.resetNote ?? "resets monthly, billing period unavailable",
     warnLevel: levelFor(percentUsed),
   };
 }
@@ -503,7 +503,7 @@ async function fetchAnymailfinder(meta: VendorMeta): Promise<VendorUsage> {
 
   const detail: string[] = [];
   if (res.data.email) detail.push(`Account: ${res.data.email}.`);
-  detail.push("Charged only when a lookup returns an address — misses are free.");
+  detail.push("Charged only when a lookup returns an address, misses are free.");
 
   return {
     ...meta,
@@ -515,7 +515,7 @@ async function fetchAnymailfinder(meta: VendorMeta): Promise<VendorUsage> {
     // one (see the probe list above). Point at the dashboard rather than
     // guess.
     resetsAt: null,
-    resetNote: "renewal date isn't exposed by the API — check the dashboard",
+    resetNote: "renewal date isn't exposed by the API, check the dashboard",
     warnLevel: levelFor(percentUsed),
   };
 }
@@ -571,8 +571,8 @@ async function fetchMillionVerifier(meta: VendorMeta): Promise<VendorUsage> {
     resetsAt: null,
     resetNote:
       renewing > 0
-        ? "part prepaid, part renewing — the prepaid share never resets"
-        : "prepaid — no reset; the balance only goes up when you buy more",
+        ? "part prepaid, part renewing, the prepaid share never resets"
+        : "prepaid, no reset; the balance only goes up when you buy more",
     warnLevel: credits <= 0 ? "exhausted" : credits < MILLIONVERIFIER_LOW_CREDITS ? "near" : "ok",
   };
 }
@@ -597,13 +597,13 @@ interface VendorDescriptor extends VendorMeta {
 export const VENDOR_FETCHERS: readonly VendorDescriptor[] = [
   {
     id: "openrouter-1",
-    vendor: "OpenRouter — primary key",
+    vendor: "OpenRouter, primary key",
     dashboardUrl: "https://openrouter.ai/settings/credits",
     run: fetchOpenRouterPrimary,
   },
   {
     id: "openrouter-2",
-    vendor: "OpenRouter — fallback key",
+    vendor: "OpenRouter, fallback key",
     dashboardUrl: "https://openrouter.ai/settings/credits",
     run: fetchOpenRouterFallback,
   },
@@ -613,19 +613,19 @@ export const VENDOR_FETCHERS: readonly VendorDescriptor[] = [
   // balance nothing can spend.
   {
     id: "apify-4",
-    vendor: "Apify — active account",
+    vendor: "Apify, active account",
     dashboardUrl: "https://console.apify.com/billing",
     run: (meta) =>
       fetchApify(meta, {
         settingKey: "APIFY_TOKEN_4",
         envValue: process.env.APIFY_TOKEN_4,
         capUsd: DEV_CAP_USD,
-        role: "First choice — every Apify call uses this token when it is set.",
+        role: "First choice, every Apify call uses this token when it is set.",
       }),
   },
   {
     id: "apify-1",
-    vendor: "Apify — client's own account",
+    vendor: "Apify, client's own account",
     dashboardUrl: "https://console.apify.com/billing",
     run: (meta) =>
       fetchApify(meta, {

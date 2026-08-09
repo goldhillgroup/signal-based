@@ -78,7 +78,7 @@ export function shouldRunNow(
     // whole reason not to re-ask sooner — see recheck-policy.ts, which applies
     // the same idea per company.
     if (days < 7) {
-      return { run: false, reason: `Ran ${days} day${days === 1 ? "" : "s"} ago — waits 7.` };
+      return { run: false, reason: `Ran ${days} day${days === 1 ? "" : "s"} ago, waits 7.` };
     }
     // Past the cooldown, run on the next ping whatever weekday it is. Holding
     // out for the preferred day would turn one missed Monday into a fortnight.
@@ -97,5 +97,5 @@ export function shouldRunNow(
 export function weeklyLabel(industry: Industry, now: Date): string {
   const when = now.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const what = industry === "home_builder" ? "Home builders" : "Landscaping";
-  return `Weekly harvest — ${what}, ${when}`;
+  return `Weekly harvest, ${what}, ${when}`;
 }

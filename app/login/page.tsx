@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { SupabaseNotConfigured } from "@/components/SupabaseNotConfigured";
-import { RadarIcon } from "@/components/icons";
+import { RadarIcon, ChevronDownIcon } from "@/components/icons";
 
 function LoginForm() {
   const router = useRouter();
@@ -60,7 +60,7 @@ function LoginForm() {
 
   return (
     <div className="grid min-h-screen overflow-hidden bg-gh-page lg:grid-cols-2">
-      {/* Left — form */}
+      {/* Left, form */}
       <div className="relative flex items-center justify-center bg-gh-surface px-8 py-12">
         <div className="w-full max-w-[360px]">
           <div className="mb-10 flex items-center gap-2.5">
@@ -135,12 +135,12 @@ function LoginForm() {
           </form>
 
           <p className="mt-8 text-center text-[11px] text-gh-ink-muted">
-            Invite-only — reach out to your Deep Loom contact for access.
+            Invite-only, reach out to your Deep Loom contact for access.
           </p>
         </div>
       </div>
 
-      {/* Right — what the engine does */}
+      {/* Right, what the engine does */}
       <div className="relative hidden items-center justify-center overflow-hidden border-l border-gh-border bg-gh-navy px-16 lg:flex">
         <div
           className="pointer-events-none absolute inset-0 opacity-[0.05]"
@@ -163,31 +163,41 @@ function LoginForm() {
           <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white">
             <RadarIcon className="h-5 w-5" />
           </span>
-          <h2 className="font-display text-xl font-semibold leading-snug text-white">
-            Family businesses at the handoff moment — found before they raise
-            their hand.
+          {/* Deliberately short. The old panel ran a headline, a 40-word
+              paragraph and a pull-quote at someone whose only goal here is to
+              type a password. The funnel below says the same thing faster:
+              each number is smaller than the last, which IS the product. */}
+          <h2 className="font-display text-2xl font-semibold leading-snug text-white">
+            Family businesses,
+            <br />
+            caught mid-handoff.
           </h2>
-          <p className="text-sm leading-relaxed text-white/60">
-            Watches landscaping companies and home builders for the same signal
-            fifteen years of Jonathan&rsquo;s pattern recognition looks for: a
-            founder still in the seat, a next-gen name stepping onto the
-            leadership page.
-          </p>
 
-          <div className="mt-2 grid grid-cols-2 gap-3">
-            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-              <p className="font-display text-2xl font-semibold text-white">13</p>
-              <p className="mt-0.5 text-xs text-white/50">Qualified companies, proof run</p>
-            </div>
-            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-              <p className="font-display text-2xl font-semibold text-white">44</p>
-              <p className="mt-0.5 text-xs text-white/50">Reviewed and explicitly cut</p>
-            </div>
+          {/* The shape of the work, as three steps rather than a paragraph. */}
+          <div className="mt-1 flex items-stretch gap-2">
+            {[
+              { n: "57", l: "read", tone: "bg-white/5 text-white" },
+              { n: "44", l: "cut, with reasons", tone: "bg-white/5 text-white" },
+              { n: "13", l: "worth calling", tone: "bg-gh-sky/15 text-white" },
+            ].map((s, i) => (
+              <div key={s.l} className="flex flex-1 items-center gap-2">
+                <div className={`flex-1 rounded-xl border border-white/10 p-3 ${s.tone}`}>
+                  <p className="font-display text-2xl font-semibold leading-none">{s.n}</p>
+                  <p className="mt-1 text-[11px] leading-tight text-white/50">{s.l}</p>
+                </div>
+                {i < 2 && (
+                  <ChevronDownIcon
+                    aria-hidden
+                    className="h-3.5 w-3.5 shrink-0 -rotate-90 text-white/25"
+                  />
+                )}
+              </div>
+            ))}
           </div>
 
-          <p className="text-xs italic leading-relaxed text-white/40">
-            &ldquo;Nothing is deleted, only labeled — every rejected company stays
-            visible with its reason.&rdquo;
+          <p className="text-xs leading-relaxed text-white/45">
+            A founder still in the seat, and a son or daughter already on the
+            leadership page.
           </p>
         </div>
       </div>

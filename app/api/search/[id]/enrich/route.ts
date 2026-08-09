@@ -39,7 +39,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
   if (search.status !== "complete") {
     return NextResponse.json(
-      { error: "Discovery hasn't finished yet — wait for it to complete before enriching." },
+      { error: "Discovery hasn't finished yet, wait for it to complete before enriching." },
       { status: 400 }
     );
   }

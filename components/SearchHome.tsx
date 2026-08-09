@@ -11,7 +11,7 @@ import { FolderCard } from "./FolderCard";
 import { ReturnOverview } from "./ReturnOverview";
 import { SearchProgress } from "./SearchProgress";
 import { StatePicker } from "./StatePicker";
-import { CheckIcon, ZapIcon } from "./icons";
+import { BuildingIcon, CheckIcon, SearchIcon, UsersIcon, ZapIcon } from "./icons";
 
 const TARGET_OPTIONS = [10, 20, 50, 100];
 const REFINEMENT_EXAMPLES = [
@@ -32,7 +32,7 @@ const ASK_EXAMPLES = [
 const MODE_META: Record<SearchMode, { label: string; description: string; targetLabel: string }> = {
   hybrid: {
     label: "Hybrid",
-    description: "Every company that fits — succession signals ranked first, everyone else right behind.",
+    description: "Every company that fits, succession signals ranked first, everyone else right behind.",
     targetLabel: "Companies to find:",
   },
   signal: {
@@ -42,7 +42,7 @@ const MODE_META: Record<SearchMode, { label: string; description: string; target
   },
   filter: {
     label: "Just filter",
-    description: "Every company in the vertical + state that fits the ICP — no signal required at all.",
+    description: "Every company in the vertical + state that fits the ICP, no signal required at all.",
     targetLabel: "Companies to find:",
   },
 };
@@ -188,11 +188,27 @@ export function SearchHome() {
         <h1 className="mt-4 font-display text-2xl font-semibold text-gh-ink sm:text-3xl">
           Who are you looking for?
         </h1>
-        <p className="mx-auto mt-2 max-w-lg text-sm leading-relaxed text-gh-ink-secondary">
-          Describe it in your own words. Signal Radar keeps discovering and
-          classifying real local businesses until it hits your target, or runs
-          out of companies to check.
-        </p>
+        {/* Was a 32-word paragraph explaining the loop before he could type a
+            word. The four steps below say it faster and stay useful after the
+            first read, which prose does not. */}
+        <div className="mx-auto mt-3 flex max-w-md items-center justify-center gap-1.5">
+          {[
+            { Icon: SearchIcon, label: "Find" },
+            { Icon: BuildingIcon, label: "Read" },
+            { Icon: ZapIcon, label: "Judge" },
+            { Icon: UsersIcon, label: "Contact" },
+          ].map(({ Icon, label }, i) => (
+            <div key={label} className="flex items-center gap-1.5">
+              <div className="flex flex-col items-center gap-1">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gh-navy/[0.06] text-gh-navy">
+                  <Icon className="h-3.5 w-3.5" />
+                </span>
+                <span className="text-[11px] font-medium text-gh-ink-muted">{label}</span>
+              </div>
+              {i < 3 && <span aria-hidden className="mb-4 h-px w-4 bg-gh-border" />}
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* ── Ask box ──────────────────────────────────────────────────────── */}
@@ -265,14 +281,14 @@ export function SearchHome() {
                           {o.label}
                         </button>
                       ))}
-                      {/* Skipping is a first-class path, not a dead end — the
+                      {/* Skipping is a first-class path, not a dead end, the
                           stated default runs and stays visible below. */}
                       <button
                         type="button"
                         onClick={() => setResolved((r) => [...r, q.field])}
                         className="rounded-full px-3 py-1 text-xs font-medium text-gh-ink-muted underline underline-offset-2 hover:text-gh-ink"
                       >
-                        Skip — {q.skipLabel.toLowerCase()}
+                        Skip, {q.skipLabel.toLowerCase()}
                       </button>
                     </div>
                   </div>
@@ -368,7 +384,7 @@ export function SearchHome() {
             <label htmlFor="refinement" className="mb-1.5 block text-xs font-semibold text-gh-ink-secondary">
               Signal focus <span className="font-normal text-gh-ink-muted">(optional)</span>
             </label>
-            {/* Deliberately does NOT steer discovery — only nudges what
+            {/* Deliberately does NOT steer discovery, only nudges what
                 classification pays attention to within the vertical + state
                 above. Letting free text pick which companies get found is how a
                 search drifts off the agreed vertical; the two required
@@ -381,7 +397,7 @@ export function SearchHome() {
                 : states.length <= 2
                   ? states.map(stateNameFor).join(" and ")
                   : `the ${states.length} states above`}{" "}
-              — it never changes which companies get searched.
+             , it never changes which companies get searched.
             </p>
             <input
               id="refinement"
@@ -442,7 +458,7 @@ export function SearchHome() {
           </div>
           {target >= 50 && (
             <p className="mt-1.5 text-[11px] text-gh-ink-muted">
-              Larger targets take longer — the pipeline keeps discovering and
+              Larger targets take longer, the pipeline keeps discovering and
               classifying new companies in rounds until it gets close.
             </p>
           )}
@@ -455,7 +471,7 @@ export function SearchHome() {
           >
             {starting ? "Starting…" : "Search"}
           </button>
-          {/* A disabled button with no stated reason is a dead end — say which
+          {/* A disabled button with no stated reason is a dead end, say which
               input is still missing rather than leaving him to guess. */}
           {!canSearch && !starting && (
             <p className="mt-1.5 text-center text-[11px] font-medium text-gh-ink-muted" aria-live="polite">
@@ -482,7 +498,7 @@ export function SearchHome() {
         </div>
         {!loading && folders.length === 0 && (
           <p className="rounded-xl border border-dashed border-gh-border bg-gh-surface p-8 text-center text-sm text-gh-ink-muted">
-            No searches yet — run your first one above.
+            No searches yet, run your first one above.
           </p>
         )}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

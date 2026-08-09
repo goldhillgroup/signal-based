@@ -13,7 +13,7 @@ export function Topbar() {
         className="shrink-0 rounded bg-gh-navy p-1 lg:hidden"
       />
 
-      {/* A "Demo data — pipeline not yet wired up" badge lived here from the
+      {/* A "Demo data, pipeline not yet wired up" badge lived here from the
           mock phase. It was still rendering over real, live, paid-for results,
           which is the worst possible direction for a labeling error: it tells
           the user his genuine leads are fake. Removed when the pipeline went

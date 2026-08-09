@@ -72,16 +72,16 @@ export const SETTINGS_KEYS = [
     key: "APIFY_TOKEN_4",
     // Label has to track BUDGET_CAP_USD in lib/pipeline/apify.ts or it
     // contradicts the Vendor usage card above it.
-    label: "Apify — active token ($29/mo plan, code-capped at $10)",
+    label: "Apify: active token ($29/mo plan, code-capped at $10)",
     envFallback: "APIFY_TOKEN_4",
   },
   {
     key: "APIFY_TOKEN",
-    label: "Apify — client's own account (code-capped at $10)",
+    label: "Apify: client's own account (code-capped at $10)",
     envFallback: "APIFY_TOKEN",
   },
   { key: "OPENROUTER_API_KEY", label: "OpenRouter", envFallback: "OPENROUTER_API_KEY" },
-  { key: "OPENROUTER_API_KEY_2", label: "OpenRouter — fallback key ($5 capped)", envFallback: "OPENROUTER_API_KEY_2" },
+  { key: "OPENROUTER_API_KEY_2", label: "OpenRouter: fallback key ($5 capped)", envFallback: "OPENROUTER_API_KEY_2" },
   { key: "ANYMAILFINDER_API_KEY", label: "Anymailfinder", envFallback: "ANYMAILFINDER_API_KEY" },
   { key: "MILLIONVERIFIER_API_KEY", label: "MillionVerifier", envFallback: "MILLIONVERIFIER_API_KEY" },
   { key: "TAVILY_API_KEY", label: "Tavily (directory search)", envFallback: "TAVILY_API_KEY" },
@@ -89,6 +89,6 @@ export const SETTINGS_KEYS = [
   // Model IDs, not secrets — same mechanism so they're switchable without a
   // redeploy. Flip CLASSIFY_MODEL to anthropic/claude-haiku-4.5 once the
   // 72-company benchmark proves it holds.
-  { key: "CLASSIFY_MODEL", label: "Model — classify + disprove", envFallback: "CLASSIFY_MODEL" },
-  { key: "EXTRACT_MODEL", label: "Model — directory extraction", envFallback: "EXTRACT_MODEL" },
+  { key: "CLASSIFY_MODEL", label: "Model: classify + disprove", envFallback: "CLASSIFY_MODEL" },
+  { key: "EXTRACT_MODEL", label: "Model: directory extraction", envFallback: "EXTRACT_MODEL" },
 ] as const;

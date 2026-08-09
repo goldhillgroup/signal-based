@@ -43,7 +43,7 @@ export function SettingsForm({ rows: initialRows }: { rows: Row[] }) {
         prev.map((r) => (r.key === key ? { ...r, status: "db", masked } : r))
       );
       setDrafts((d) => ({ ...d, [key]: "" }));
-      setFeedback((f) => ({ ...f, [key]: "Saved — takes effect on the next search." }));
+      setFeedback((f) => ({ ...f, [key]: "Saved. Takes effect on the next search." }));
     } catch (e) {
       setFeedback((f) => ({ ...f, [key]: (e as Error).message }));
     } finally {

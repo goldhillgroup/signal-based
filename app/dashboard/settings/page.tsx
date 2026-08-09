@@ -62,7 +62,7 @@ export default async function SettingsPage() {
       <section>
         <h2 className="font-display text-lg font-semibold text-gh-ink">API keys</h2>
         <p className="mt-0.5 mb-3 text-sm text-gh-ink-secondary">
-          Saved here take effect on the very next search — no redeploy needed.
+          Saved here take effect on the very next search, no redeploy needed.
           Leave a field blank to keep whatever&apos;s already set.
         </p>
         <SettingsForm rows={rows} />

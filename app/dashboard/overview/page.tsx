@@ -104,7 +104,7 @@ export default async function OverviewPage() {
           the right kind of company.{" "}
           <strong className="font-semibold text-gh-ink">Real signal</strong> is
           a founder and their successor both named, both in charge today
-          {rate ? ` — about 1 in ${rate}` : ""}. Rejections are kept with their
+          {rate ? `, about 1 in ${rate}` : ""}. Rejections are kept with their
           reason, never deleted.
         </p>
       </section>

@@ -61,7 +61,7 @@ export function WeeklySchedule({
     <section>
       <h2 className="font-display text-lg font-semibold text-gh-ink">Weekly harvest</h2>
       <p className="mt-0.5 text-sm text-gh-ink-secondary">
-        Scan automatically once a week and drop the results in a new folder —
+        Scan automatically once a week and drop the results in a new folder -
         so there are fresh leads waiting without running a search yourself.
       </p>
 

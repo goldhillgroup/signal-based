@@ -91,7 +91,7 @@ export function SignalFunnel({
                 className="hover-spring group flex shrink-0 flex-col items-center gap-1.5 rounded-lg px-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 sm:px-2"
               >
                 <div className="relative">
-                  {/* Only the payload stage pulses — a halo on all four would
+                  {/* Only the payload stage pulses, a halo on all four would
                       be decoration, and decoration that never stops is noise. */}
                   {stage.key === "signal" && stage.count > 0 && (
                     <span

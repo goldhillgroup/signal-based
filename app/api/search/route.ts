@@ -17,7 +17,7 @@ import type { Industry, SearchMode } from "@/lib/supabase/types";
 export const maxDuration = 300;
 
 const MIN_TARGET = 1;
-const MAX_TARGET = 200; // UI-level sanity cap — see MAX_SCAN_MULTIPLIER/ABSOLUTE_SCAN_CEILING in the orchestrator for the real cost ceiling
+const MAX_TARGET = 200; // UI-level sanity cap, see MAX_SCAN_MULTIPLIER/ABSOLUTE_SCAN_CEILING in the orchestrator for the real cost ceiling
 const VALID_INDUSTRIES: Industry[] = ["landscaping", "home_builder"];
 const VALID_MODES: SearchMode[] = ["signal", "filter", "hybrid"];
 const VALID_STATE_CODES = new Set(US_STATES.map((s) => s.code));
@@ -92,7 +92,7 @@ export async function POST(req: Request) {
   // free-text refinement is along for the ride in the label/query only, it
   // never drives the actual discovery filters (see lib/pipeline/apify.ts).
   const label = `${industryLabel(industry)} companies in ${states.map(stateNameFor).join(", ")}`;
-  const query = refinement ? `${label} — ${refinement}` : label;
+  const query = refinement ? `${label}, ${refinement}` : label;
 
   const { data: search, error } = await supabase
     .from("searches")

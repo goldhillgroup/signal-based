@@ -33,7 +33,7 @@ export const CONFIDENCE_META: Record<
   },
   verify: {
     label: "Verify",
-    description: "Borderline match — flagged for a human look before it's worked as qualified.",
+    description: "Borderline match, flagged for a human look before it's worked as qualified.",
     color: "#9a4a1f",
     bg: "#fbe4d7",
   },

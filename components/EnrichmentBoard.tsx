@@ -87,7 +87,7 @@ export function EnrichmentBoard() {
 
       <Group
         title="Ready to enrich"
-        hint="Billed per address found — pick how wide to go. Nothing runs until you press it."
+        hint="Billed per address found. Nothing runs until you press it."
       >
         {ready.length === 0 ? (
           <Empty>Nothing waiting. Every finished search has been through enrichment.</Empty>
@@ -143,7 +143,7 @@ export function EnrichmentBoard() {
       )}
 
       {failed.length > 0 && (
-        <Group title="Failed" hint="Safe to retry — enrichment never re-bills a contact it already found.">
+        <Group title="Failed" hint="Safe to retry. Enrichment never re-bills a contact it already found.">
           {failed.map((f) => (
             <Row key={f.id} folder={f} note={f.enrichmentError}>
               <button

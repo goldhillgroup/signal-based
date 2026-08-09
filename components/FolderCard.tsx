@@ -61,7 +61,7 @@ export function FolderCard({ folder }: { folder: SearchFolder }) {
       {!isRunning && !isFailed && found < folder.targetSignals && (
         <p className="mt-2 text-[11px] text-gh-ink-muted">
           {folder.candidatesPoolExhausted
-            ? `Ran out of new companies to check — ${found} of ${folder.targetSignals} requested`
+            ? `Ran out of new companies to check, ${found} of ${folder.targetSignals} requested`
             : `${found} of ${folder.targetSignals} requested`}
         </p>
       )}

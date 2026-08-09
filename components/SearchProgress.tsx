@@ -32,12 +32,12 @@ function foundCount(folder: SearchFolder): number {
 function currentActivity(folder: SearchFolder): string {
   const classified = folder.qualifiedCount + folder.verifyCount + folder.fitOnlyCount + folder.rejectedCount;
   if (folder.pagesFetched < folder.companiesScanned) {
-    return `Fetching leadership pages — ${folder.pagesFetched}/${folder.companiesScanned}`;
+    return `Fetching leadership pages, ${folder.pagesFetched}/${folder.companiesScanned}`;
   }
   if (classified < folder.companiesScanned) {
     return folder.mode === "signal"
-      ? `Classifying — ${folder.qualifiedCount} qualified · ${folder.verifyCount} verify · ${folder.rejectedCount} rejected`
-      : `Classifying — ${folder.qualifiedCount + folder.verifyCount + folder.fitOnlyCount} accepted (${folder.qualifiedCount + folder.verifyCount} with a signal) · ${folder.rejectedCount} rejected`;
+      ? `Classifying, ${folder.qualifiedCount} qualified · ${folder.verifyCount} verify · ${folder.rejectedCount} rejected`
+      : `Classifying, ${folder.qualifiedCount + folder.verifyCount + folder.fitOnlyCount} accepted (${folder.qualifiedCount + folder.verifyCount} with a signal) · ${folder.rejectedCount} rejected`;
   }
   return "Looking for more candidates…";
 }
@@ -54,7 +54,7 @@ export function SearchProgress({ searchId, query, onComplete, onError, onDismiss
       while (!stopRef.current) {
         const f = await fetchFolder(searchId);
         if (!f) {
-          onError("Search vanished — try again.");
+          onError("Search vanished. Try again.");
           return;
         }
         setFolder(f);
@@ -133,7 +133,7 @@ export function SearchProgress({ searchId, query, onComplete, onError, onDismiss
         </div>
 
         <p className="mt-3 text-center text-[11px] text-gh-ink-muted">
-          {folder.companiesScanned} companies checked so far — kept results accumulate as
+          {folder.companiesScanned} companies checked so far, kept results accumulate as
           rounds continue, nothing found so far gets thrown away.
         </p>
 
@@ -148,7 +148,7 @@ export function SearchProgress({ searchId, query, onComplete, onError, onDismiss
             onClick={onDismiss}
             className="mt-4 w-full rounded-xl border border-gh-border bg-gh-surface-sunken py-2.5 text-xs font-semibold text-gh-ink-secondary transition-colors hover:border-gh-sky/40 hover:text-gh-ink"
           >
-            Let it run — I&rsquo;ll check back later
+            Let it run, I&rsquo;ll check back later
           </button>
         )}
         <p className="mt-2 text-center text-[11px] text-gh-ink-muted">

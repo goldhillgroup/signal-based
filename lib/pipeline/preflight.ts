@@ -131,7 +131,7 @@ export async function creditBlockerFor(targetSignals: number): Promise<string | 
   if (left === null) return null;
   if (left >= need) return null;
   return (
-    `Not enough OpenRouter credit for a search this size — $${left.toFixed(2)} left, ` +
+    `Not enough OpenRouter credit for a search this size, $${left.toFixed(2)} left, ` +
     `about $${need.toFixed(2)} needed for ${targetSignals} results. ` +
     `Top up in Settings, or run a smaller search.`
   );
@@ -183,7 +183,7 @@ export async function enrichmentBlockerFor(companyCount: number): Promise<string
     resolveSetting("ANYMAILFINDER_API_KEY", process.env.ANYMAILFINDER_API_KEY),
     resolveSetting("MILLIONVERIFIER_API_KEY", process.env.MILLIONVERIFIER_API_KEY),
   ]);
-  if (!amfKey) return "No AnymailFinder key is configured — add one in Settings before finding emails.";
+  if (!amfKey) return "No AnymailFinder key is configured, add one in Settings before finding emails.";
 
   try {
     const res = await fetch("https://api.anymailfinder.com/v5.0/meta/account.json", {
@@ -201,7 +201,7 @@ export async function enrichmentBlockerFor(companyCount: number): Promise<string
       const credits = typeof b?.credits_left === "number" ? b.credits_left : null;
       if (credits !== null && credits < companyCount) {
         return (
-          `Not enough AnymailFinder credits — ${credits} left, ${companyCount} companies to look up. ` +
+          `Not enough AnymailFinder credits, ${credits} left, ${companyCount} companies to look up. ` +
           `Enrich the signals only, or top up.`
         );
       }
@@ -220,7 +220,7 @@ export async function enrichmentBlockerFor(companyCount: number): Promise<string
         const b = await res.json();
         const credits = typeof b?.credits === "number" ? b.credits : null;
         if (credits !== null && credits < companyCount) {
-          return `Not enough MillionVerifier credits — ${credits} left, ${companyCount} to verify.`;
+          return `Not enough MillionVerifier credits, ${credits} left, ${companyCount} to verify.`;
         }
       }
     } catch {

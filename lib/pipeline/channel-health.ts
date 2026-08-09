@@ -118,10 +118,10 @@ export function buildWarningLine(
   const anyActionable = Array.from(byChannel.values()).some((w) => w.actionable);
 
   return (
-    `Searched with ${used} of ${totalChannels} discovery channels — ${parts.join("; ")}. ` +
+    `Searched with ${used} of ${totalChannels} discovery channels, ${parts.join("; ")}. ` +
     (used === 0
       ? "No channel was able to search, so this is not a statement about what exists."
       : "Results may be incomplete" +
-        (anyActionable ? " until that's topped up." : " — worth re-running later."))
+        (anyActionable ? " until that's topped up." : ", worth re-running later."))
   );
 }

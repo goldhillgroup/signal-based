@@ -106,7 +106,7 @@ export function CompanyDrawer({
                   {company.confidence ? (
                     <ConfidenceBadge confidence={company.confidence} />
                   ) : company.status === "qualified" ? (
-                    <span className="text-sm text-gh-ink-muted">No signal — fit-only match</span>
+                    <span className="text-sm text-gh-ink-muted">No signal, fit-only match</span>
                   ) : (
                     <span className="text-sm text-gh-ink-muted">Not yet classified</span>
                   )}
@@ -173,11 +173,11 @@ export function CompanyDrawer({
                       // openrouter.ts), so "Contact" reads accurately either way.
                       <Row
                         k={company.nextGenName ? "Founder" : "Contact"}
-                        v={`${company.founderName}${company.founderTitle ? ` — ${company.founderTitle}` : ""}`}
+                        v={`${company.founderName}${company.founderTitle ? `, ${company.founderTitle}` : ""}`}
                       />
                     )}
                     {company.nextGenName && (
-                      <Row k="Next generation" v={`${company.nextGenName}${company.nextGenTitle ? ` — ${company.nextGenTitle}` : ""}`} />
+                      <Row k="Next generation" v={`${company.nextGenName}${company.nextGenTitle ? `, ${company.nextGenTitle}` : ""}`} />
                     )}
                     <div className="flex items-center justify-between gap-2 pt-1">
                       <span className="text-gh-ink-muted">Website</span>
@@ -215,7 +215,7 @@ export function CompanyDrawer({
                       <Row
                         k="Name"
                         v={`${company.contact.name}${company.contact.nameInferred ? " (inferred from email)" : ""}${
-                          company.contact.title ? ` — ${company.contact.title}` : ""
+                          company.contact.title ? `, ${company.contact.title}` : ""
                         }`}
                       />
                     )}

@@ -15,8 +15,8 @@ const COLUMNS: { header: string; get: (c: Company) => string }[] = [
     get: (c) => {
       if (c.status === "rejected") return "Rejected";
       if (c.status === "pending") return "Scanning";
-      if (!c.confidence) return "Fit only — no signal found";
-      return c.confidence === "verify" ? "Qualified — verify" : `Qualified — ${c.confidence}`;
+      if (!c.confidence) return "Fit only (no signal)";
+      return c.confidence === "verify" ? "Qualified, verify" : `Qualified, ${c.confidence}`;
     },
   },
   { header: "Founder name", get: (c) => c.founderName ?? "" },

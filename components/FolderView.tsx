@@ -143,18 +143,18 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
                     hour: "numeric",
                     minute: "2-digit",
                   })
-                : "—"}
+                : "-"}
             </p>
             {(folder.mode === "signal" ? stats.qualified + stats.verify : stats.accepted) < folder.targetSignals && (
               <p className="mt-0.5 text-xs text-gh-ink-muted">
                 {folder.mode === "signal" ? stats.qualified + stats.verify : stats.accepted} of {folder.targetSignals} requested
-                {folder.candidatesPoolExhausted ? " — pool exhausted" : ""}
+                {folder.candidatesPoolExhausted ? ", pool exhausted" : ""}
               </p>
             )}
             {folder.errorMessage && (
               <p className="mt-0.5 max-w-xs text-xs text-gh-ink-muted">{folder.errorMessage}</p>
             )}
-            {/* What this run actually cost, metered call by call — see
+            {/* What this run actually cost, metered call by call, see
                 lib/pipeline/cost-tracker.ts. Estimates, and labeled as such. */}
             {folder.costEstimateUsd !== null && folder.costEstimateUsd > 0 && (
               <p className="tabular mt-0.5 text-xs text-gh-ink-muted">
@@ -177,7 +177,7 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
         )}
       </div>
 
-      {/* Step 2 of the two-step flow — discovery is already done by the time
+      {/* Step 2 of the two-step flow, discovery is already done by the time
           this page renders; enrichment only runs when this button is
           clicked, so testing a search's results doesn't automatically spend
           AnymailFinder/MillionVerifier credits. */}
@@ -186,12 +186,12 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
           <p className="text-sm font-semibold text-gh-ink">Contact enrichment</p>
           <p className="mt-0.5 text-xs text-gh-ink-secondary">
             {folder.enrichmentStatus === "idle" &&
-              `Find and verify emails for ${stats.accepted} accepted companies — separate step, runs on demand.`}
+              `Find and verify emails for ${stats.accepted} accepted companies, separate step, runs on demand.`}
             {folder.enrichmentStatus === "running" &&
-              `Looking up contacts — ${stats.contactsFound} found, ${stats.contactsVerified} verified so far…`}
+              `Looking up contacts, ${stats.contactsFound} found, ${stats.contactsVerified} verified so far…`}
             {folder.enrichmentStatus === "complete" &&
-              `Done — ${stats.contactsFound} contact${stats.contactsFound === 1 ? "" : "s"} found, ${stats.contactsVerified} verified.`}
-            {folder.enrichmentStatus === "failed" && (folder.enrichmentError ?? "Enrichment failed — try again.")}
+              `Done, ${stats.contactsFound} contact${stats.contactsFound === 1 ? "" : "s"} found, ${stats.contactsVerified} verified.`}
+            {folder.enrichmentStatus === "failed" && (folder.enrichmentError ?? "Enrichment failed. Try again.")}
           </p>
           {enrichError && <p className="mt-0.5 text-xs font-medium text-gh-critical">{enrichError}</p>}
         </div>
@@ -222,7 +222,7 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
         <StatCard
           label="Verify-flagged"
           value={stats.verify}
-          subtext="Borderline — needs a human look"
+          subtext="Borderline, worth a look"
           icon={ZapIcon}
           accent="#9a4a1f"
         />
