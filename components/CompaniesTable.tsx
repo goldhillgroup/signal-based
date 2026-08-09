@@ -9,7 +9,7 @@ import { SearchIcon, GridIcon, RowsIcon } from "./icons";
 import { LeadCard } from "./LeadCard";
 import { LeadTable } from "./LeadTable";
 
-type Tab = "all" | "signal";
+type Tab = "all" | "signal" | "not_a_fit";
 
 // FOUR TABS BECAME TWO, and they now say what the cards say.
 //
@@ -26,12 +26,26 @@ type Tab = "all" | "signal";
 // "By signal") separates them under headings inside the list, which is where a
 // small distinction belongs.
 //
-// No "Rejected" tab either. This screen is the lead list, and the companies the
-// pipeline cut are not leads. The rejections are still stored and still drive
-// the recheck schedule; the folder header still reports how many were checked.
+// A THIRD TAB, for the companies the pipeline cut.
+//
+// These were removed from the product entirely — a folder that read 67 sites
+// and kept 28 was putting 39 companies he had been told not to call in front of
+// him, mixed into the list that was right.
+//
+// They are back as their own tab, which is a different thing from mixing them
+// in. The default tab is still the leads, so the first thing on screen is
+// always the call list and nothing cut can be dialled by accident. But the cut
+// pile is one click away, counted, labelled "Not a fit", and every row carries
+// the reason it was cut — because sometimes the reason is wrong, and the only
+// way to find that out is to be able to look.
+//
+// The collapsed evidence panel at the bottom of the folder stays. It answers a
+// different question: the DISTRIBUTION of reasons is the argument that a real
+// test ran, and no individual row makes that point.
 const TABS: { key: Tab; label: string; hint: string }[] = [
   { key: "all", label: "All leads", hint: "Everything that fits the profile" },
   { key: "signal", label: "Founder + successor", hint: "Both named and running it today" },
+  { key: "not_a_fit", label: "Not a fit", hint: "Cut by one of your gates, with the reason" },
 ];
 
 // A 'filter'/'hybrid' company that fit the ICP with no signal found is
@@ -43,6 +57,7 @@ function matchesTab(c: Company, tab: Tab) {
   // return true for everything, so the default view of a folder was mostly
   // rejects and the real count was buried.
   if (tab === "all") return c.status === "qualified";
+  if (tab === "not_a_fit") return c.status === "rejected";
   // Signal covers confirmed AND needs-a-look. Both are a founder-and-successor
   // claim; only the confidence differs, and the card says which.
   return c.status === "qualified" && c.hasSignal === true;
@@ -123,9 +138,24 @@ export function CompaniesTable({
   companies,
   onRowClick,
   defaultView = "cards",
+  onEnrichSelected,
+  enrichBusy = false,
 }: {
   companies: Company[];
   onRowClick: (company: Company) => void;
+  /**
+   * Look up addresses for an explicit set of companies.
+   *
+   * Enrichment used to be a folder-wide switch with two settings, "the signals"
+   * or "everything accepted", and neither could reach a company the pipeline
+   * cut. Picking rows is what makes a rejected company enrichable at all, and
+   * it is also the cheaper habit: the folder-wide button buys an address for
+   * every row, this one buys the four you actually want to call.
+   *
+   * Optional — when it is absent, no checkboxes render at all.
+   */
+  onEnrichSelected?: (ids: string[]) => void;
+  enrichBusy?: boolean;
   /**
    * All Leads opens as a table; a folder opens as cards.
    *
@@ -151,6 +181,8 @@ export function CompaniesTable({
   // Cards read one lead well; rows compare many. Neither is "the" view —
   // they answer different questions, so both exist and neither is hidden.
   const [view, setView] = useState<"cards" | "table">(defaultView);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const selectable = typeof onEnrichSelected === "function";
 
   const counts = useMemo(
     () =>
@@ -187,10 +219,19 @@ export function CompaniesTable({
 
   const groups = useMemo(() => buildGroups(filtered, groupBy), [filtered, groupBy]);
 
+  function togglePick(id: string) {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   return (
     <div className="rounded-xl border border-gh-border bg-gh-surface">
       <div className="flex flex-wrap items-center gap-1 border-b border-gh-border p-2">
-        {TABS.map((t) => (
+        {TABS.filter((t) => t.key !== "not_a_fit" || counts.not_a_fit > 0).map((t) => (
           <button
             key={t.key}
             type="button"
@@ -269,9 +310,24 @@ export function CompaniesTable({
         </select>
       </div>
 
+      {selectable && (
+        <SelectionBar
+          picked={picked}
+          rows={filtered}
+          busy={enrichBusy}
+          onClear={() => setPicked(new Set())}
+          onSelectAll={() => setPicked(new Set(filtered.map((c) => c.id)))}
+          onEnrich={() => onEnrichSelected!([...picked])}
+        />
+      )}
+
+      {/* Denominator scoped to the ACTIVE TAB, not to every row in the folder.
+          It read "Showing 28 of 67 leads" — 67 being the leads plus the 39
+          rejections — so the one line whose job is "you are seeing all of them"
+          said 39 were being hidden by a filter that did not exist. */}
       <p className="px-4 pt-3 text-xs text-gh-ink-muted">
         Showing <span className="font-semibold text-gh-ink-secondary">{filtered.length}</span> of{" "}
-        {companies.length} leads
+        {counts[tab]} {tab === "not_a_fit" ? "cut" : "leads"}
       </p>
 
       {/* Cards, not table rows. The two fields that decide whether he calls —
@@ -289,6 +345,8 @@ export function CompaniesTable({
             groups={groups.map((g) => ({ key: g.key, label: g.label, rows: g.rows }))}
             showGroupRows={groupBy !== "none"}
             onOpen={onRowClick}
+            picked={selectable ? picked : null}
+            onTogglePick={selectable ? togglePick : undefined}
           />
         </div>
       ) : (
@@ -319,7 +377,12 @@ export function CompaniesTable({
               <div className="stagger grid items-stretch gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {g.rows.map((c) => (
                   <div key={c.id} className="h-full">
-                    <LeadCard company={c} onOpen={() => onRowClick(c)} />
+                    <LeadCard
+                      company={c}
+                      onOpen={() => onRowClick(c)}
+                      picked={selectable ? picked.has(c.id) : null}
+                      onTogglePick={selectable ? () => togglePick(c.id) : undefined}
+                    />
                   </div>
                 ))}
               </div>
@@ -332,6 +395,83 @@ export function CompaniesTable({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * The picking bar. Appears only once something is picked, because an always-on
+ * toolbar for an occasional action is just a strip of dead pixels above every
+ * list.
+ *
+ * It states the number and the fact that it costs money, which is the whole
+ * reason the count matters — the confirm dialog still asks before anything is
+ * bought, so this is the warning before the warning rather than the last word.
+ */
+function SelectionBar({
+  picked,
+  rows,
+  busy,
+  onClear,
+  onSelectAll,
+  onEnrich,
+}: {
+  picked: Set<string>;
+  rows: Company[];
+  busy: boolean;
+  onClear: () => void;
+  onSelectAll: () => void;
+  onEnrich: () => void;
+}) {
+  const n = picked.size;
+  // Only what is BOTH picked and currently on screen. A pick made on the leads
+  // tab stays in the set when the tab changes, and counting it here would
+  // offer to enrich rows the user cannot see.
+  const visiblePicked = rows.filter((c) => picked.has(c.id)).length;
+  const allShown = rows.length > 0 && visiblePicked === rows.length;
+
+  if (n === 0) {
+    return (
+      <div className="flex items-center gap-3 border-b border-gh-border px-4 py-2">
+        <button
+          type="button"
+          onClick={onSelectAll}
+          disabled={rows.length === 0}
+          className="cursor-pointer rounded px-1 py-1 text-xs font-semibold text-gh-sky underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+        >
+          Select all {rows.length}
+        </button>
+        <span className="text-xs text-gh-ink-muted">
+          or tick the ones you want an email for
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fade-in flex flex-wrap items-center gap-2 border-b border-gh-border bg-gh-sky/[0.07] px-4 py-2.5">
+      <span className="text-xs font-semibold text-gh-ink">
+        {n} selected
+        {visiblePicked !== n && (
+          <span className="font-normal text-gh-ink-muted"> ({visiblePicked} on this tab)</span>
+        )}
+      </span>
+      <button
+        type="button"
+        onClick={allShown ? onClear : onSelectAll}
+        className="cursor-pointer rounded px-1 py-1 text-xs font-medium text-gh-sky underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+      >
+        {allShown ? "Clear" : `Select all ${rows.length}`}
+      </button>
+      <span className="flex-1" />
+      <button
+        type="button"
+        onClick={onEnrich}
+        disabled={busy}
+        className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-gh-navy px-3 py-1.5 text-xs font-semibold text-white hover:bg-gh-navy-2 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+      >
+        {busy ? "Starting…" : `Find emails for ${n}`}
+      </button>
     </div>
   );
 }

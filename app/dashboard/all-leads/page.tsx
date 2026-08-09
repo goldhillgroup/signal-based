@@ -92,11 +92,15 @@ function folderBucket(f: SearchFolder, leads: Company[], by: FolderGroupBy): str
 }
 
 export default function AllLeadsPage() {
-  const { fetchAllCompanies, folders, deleteSearch, renameSearch } = useSearches();
+  const { fetchAllCompanies, folders, deleteSearch, renameSearch, startEnrichment } =
+    useSearches();
   const [companies, setCompanies] = useState<Company[] | "loading">("loading");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [openFolderId, setOpenFolderId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<SearchFolder | null>(null);
+  /** Company ids picked for an email lookup, awaiting confirmation. */
+  const [pendingPick, setPendingPick] = useState<string[] | null>(null);
+  const [enrichError, setEnrichError] = useState("");
   const [renaming, setRenaming] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
   // How the FOLDERS themselves are piled up. Every option is derived from what
@@ -120,18 +124,28 @@ export default function AllLeadsPage() {
 
   // Folders that actually contributed a lead, newest first. An empty folder is
   // a dead card.
+  // LEADS only. `companies` also carries the rejected rows now (they feed the
+  // "Not a fit" tab once a folder is open), and every number derived here —
+  // the tile's lead count, its signal count, which folders count as
+  // contributing, and how they are bucketed — is about leads. Counting a cut
+  // company as a lead is the bug this page just had at the headline level.
+  const leads = companies.filter((c) => c.status === "qualified");
   const counts = new Map<string, number>();
   const signals = new Map<string, number>();
-  for (const c of companies) {
+  for (const c of leads) {
     if (!c.searchId) continue;
     counts.set(c.searchId, (counts.get(c.searchId) ?? 0) + 1);
     if (c.hasSignal) signals.set(c.searchId, (signals.get(c.searchId) ?? 0) + 1);
   }
   const contributing = folders.filter((f) => counts.has(f.id));
+  // `companies` now also carries the rejected rows, so they can reach the
+  // "Not a fit" tab inside a folder. The headline is about LEADS, and counting
+  // the cut ones there would restate the exact confusion this page just had.
+  const leadCount = leads.length;
   const openFolder = contributing.find((f) => f.id === openFolderId) ?? null;
 
   const leadsByFolder = new Map<string, Company[]>();
-  for (const c of companies) {
+  for (const c of leads) {
     if (!c.searchId) continue;
     const list = leadsByFolder.get(c.searchId) ?? [];
     list.push(c);
@@ -179,6 +193,64 @@ export default function AllLeadsPage() {
     }
   }
 
+  async function confirmEnrich() {
+    if (!openFolderId || !pendingPick) return;
+    const ids = pendingPick;
+    setPendingPick(null);
+    try {
+      await startEnrichment(openFolderId, undefined, ids);
+      // Pull the rows back so the picked companies show their new contact
+      // state without a manual refresh.
+      const fresh = await fetchAllCompanies();
+      setCompanies(fresh);
+    } catch (e) {
+      setEnrichError((e as Error).message || "Could not start the lookup.");
+    }
+  }
+
+  const pickedRejected = pendingPick
+    ? companies.filter((c) => pendingPick.includes(c.id) && c.status === "rejected").length
+    : 0;
+
+  const enrichDialog = (
+    <ConfirmDialog
+      open={pendingPick !== null}
+      title="Look up these emails?"
+      confirmLabel="Yes, look them up"
+      cancelLabel="No, go back"
+      onConfirm={confirmEnrich}
+      onCancel={() => setPendingPick(null)}
+      body={
+        pendingPick && (
+          <>
+            <p>
+              Searching for a contact at{" "}
+              <strong className="font-semibold text-gh-ink">
+                {pendingPick.length} {pendingPick.length === 1 ? "company" : "companies"}
+              </strong>{" "}
+              you picked.
+            </p>
+            {pickedRejected > 0 && (
+              <p className="mt-2">
+                <strong className="font-semibold text-gh-ink">
+                  {pickedRejected} of them {pickedRejected === 1 ? "was" : "were"} marked not a fit.
+                </strong>{" "}
+                They will be looked up anyway.
+              </p>
+            )}
+            <p className="mt-2">
+              Costs up to{" "}
+              <strong className="font-semibold text-gh-ink">
+                ${(pendingPick.length * 0.05).toFixed(2)}
+              </strong>
+              , charged only for the addresses actually found.
+            </p>
+          </>
+        )
+      }
+    />
+  );
+
   const deleteDialog = (
     <ConfirmDialog
       open={pendingDelete !== null}
@@ -217,12 +289,17 @@ export default function AllLeadsPage() {
   // ── Level 2: one folder's leads ──────────────────────────────────────────
   if (openFolder) {
     const visible = companies.filter((c) => c.searchId === openFolder.id);
+    // The CSV carries the cut companies too, labelled by the `verdict` column.
+    // The button says so, because a file three times the size of the screen is
+    // a surprise worth spending eight words on.
+    const visibleLeads = visible.filter((c) => c.status === "qualified").length;
     const stats = getSummaryStats(visible);
     const selected = visible.find((c) => c.id === selectedId) ?? null;
 
     return (
       <div className="mx-auto max-w-7xl space-y-6">
         {deleteDialog}
+        {enrichDialog}
 
         <div>
           <button
@@ -265,6 +342,11 @@ export default function AllLeadsPage() {
               >
                 <DownloadIcon className="h-4 w-4" />
                 Download {visible.length}
+                {visibleLeads !== visible.length && (
+                  <span className="font-normal text-white/60">
+                    ({visibleLeads} leads + {visible.length - visibleLeads} not a fit)
+                  </span>
+                )}
               </button>
             </div>
           </div>
@@ -272,11 +354,23 @@ export default function AllLeadsPage() {
 
         {error && <p className="text-xs font-medium text-gh-critical">{error}</p>}
 
+        {enrichError && (
+          <p className="rounded-lg border border-gh-critical/30 bg-gh-critical/5 px-3 py-2 text-xs text-gh-critical">
+            {enrichError}
+          </p>
+        )}
+
         <CompaniesTable
           key={openFolder.id}
           companies={visible}
           onRowClick={(c) => setSelectedId(c.id)}
           defaultView="table"
+          onEnrichSelected={(ids) => {
+            if (ids.length === 0) return;
+            setEnrichError("");
+            setPendingPick(ids);
+          }}
+          enrichBusy={openFolder.enrichmentStatus === "running"}
         />
 
         {/* Under the leads, on both folder routes. This page and
@@ -306,7 +400,7 @@ export default function AllLeadsPage() {
           <p className="text-sm text-gh-ink-secondary">
             {contributing.length === 0
               ? "No leads yet."
-              : `${companies.length} leads across ${contributing.length} folder${contributing.length === 1 ? "" : "s"}. Open one to see them.`}
+              : `${leadCount} lead${leadCount === 1 ? "" : "s"} across ${contributing.length} folder${contributing.length === 1 ? "" : "s"}. Open one to see them.`}
           </p>
           {contributing.length > 1 && (
             <select

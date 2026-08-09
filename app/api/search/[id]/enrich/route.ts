@@ -17,8 +17,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   // Defaults to "signals" — the cheap branch. An enrichment request that
   // arrives without a scope (an old client, a retry, a curl) should buy the
   // 15 contacts, not the 124. Spending more has to be asked for explicitly.
-  const body = (await req.json().catch(() => ({}))) as { scope?: string };
-  const scope: EnrichScope = body.scope === "all" ? "all" : "signals";
+  const body = (await req.json().catch(() => ({}))) as {
+    scope?: string;
+    companyIds?: unknown;
+  };
+  // An explicit list wins over the scope word, and is only honoured when it is
+  // actually a non-empty list of strings — a malformed body must fall back to a
+  // narrower scope, never to a wider one.
+  const rawIds = Array.isArray(body.companyIds)
+    ? body.companyIds.filter((v): v is string => typeof v === "string" && v.length > 0)
+    : [];
+  const companyIds = [...new Set(rawIds)].slice(0, 500);
+  const scope: EnrichScope =
+    companyIds.length > 0 ? "selected" : body.scope === "all" ? "all" : "signals";
 
   const supabase = await createClient();
   const {
@@ -53,10 +64,23 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   let countQuery = service
     .from("companies")
     .select("*", { count: "exact", head: true })
-    .eq("search_id", id)
-    .eq("status", "qualified");
-  if (scope === "signals") countQuery = countQuery.eq("has_signal", true);
+    .eq("search_id", id);
+  if (scope === "selected") {
+    // Counted through the same search_id filter the enrichment itself uses, so
+    // ids belonging to another folder are neither charged for nor looked up.
+    countQuery = countQuery.in("id", companyIds);
+  } else {
+    countQuery = countQuery.eq("status", "qualified");
+    if (scope === "signals") countQuery = countQuery.eq("has_signal", true);
+  }
   const { count: toEnrich } = await countQuery;
+
+  if (scope === "selected" && (toEnrich ?? 0) === 0) {
+    return NextResponse.json(
+      { error: "None of the selected companies are in this folder." },
+      { status: 400 }
+    );
+  }
 
   const blocker = await enrichmentBlockerFor(toEnrich ?? 0);
   if (blocker) {
@@ -72,7 +96,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   // (see maxDuration above) — the client polls the `searches` row for
   // enrichment_status/contacts_found/contacts_verified, same pattern as the
   // main search's progress polling.
-  after(() => enrichContacts(id, scope));
+  after(() => enrichContacts(id, scope, companyIds));
 
-  return NextResponse.json({ id, scope });
+  return NextResponse.json({ id, scope, count: toEnrich ?? 0 });
 }

@@ -210,7 +210,16 @@ interface SearchesContextValue {
     revenueMaxMusd?: number | null;
     mode?: SearchMode;
   }) => Promise<{ id: string; label: string }>;
-  startEnrichment: (searchId: string, scope?: "signals" | "all") => Promise<void>;
+  /**
+   * `companyIds` is an explicit pick and overrides `scope` server-side. It is
+   * how a rejected company gets an address looked up — the scope words only
+   * ever reach status='qualified'.
+   */
+  startEnrichment: (
+    searchId: string,
+    scope?: "signals" | "all",
+    companyIds?: string[]
+  ) => Promise<void>;
   deleteSearch: (searchId: string) => Promise<void>;
   renameSearch: (searchId: string, label: string) => Promise<void>;
   /** Rejections for one folder. Separate because the lead views deliberately exclude them. */
@@ -282,10 +291,10 @@ export function SearchesProvider({ children }: { children: ReactNode }) {
   );
 
   const fetchAllCompanies = useCallback(async (): Promise<Company[]> => {
-    // Only accepted leads (status: 'qualified' — covers qualified/verify/
-    // fit-only, see orchestrator.ts) belong in the combined view; a
-    // rejected candidate from search A shouldn't clutter "all of Jonathan's
-    // leads" just because it happened to get scanned.
+    // Leads AND the companies that were cut. The cut ones are not mixed into
+    // the lead list — CompaniesTable files them under their own "Not a fit"
+    // tab, and the page's headline counts only status='qualified' — but they
+    // have to be fetched for that tab to have anything in it.
     //
     // search_id NOT NULL is the other half, and it is not optional.
     // reset-leads.mts empties the dashboard by DETACHING companies rather than
@@ -303,7 +312,7 @@ export function SearchesProvider({ children }: { children: ReactNode }) {
     const { data, error } = await supabase
       .from("companies")
       .select("*, signal_evidence(*), contacts(*)")
-      .eq("status", "qualified")
+      .in("status", ["qualified", "rejected"])
       .not("search_id", "is", null)
       .order("last_crawled_at", { ascending: false });
     if (error || !data) return [];
@@ -338,11 +347,11 @@ export function SearchesProvider({ children }: { children: ReactNode }) {
   );
 
   const startEnrichment = useCallback(
-    async (searchId: string, scope: "signals" | "all" = "signals") => {
+    async (searchId: string, scope: "signals" | "all" = "signals", companyIds?: string[]) => {
       const res = await fetch(`/api/search/${searchId}/enrich`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scope }),
+        body: JSON.stringify({ scope, companyIds }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -359,9 +368,9 @@ export function SearchesProvider({ children }: { children: ReactNode }) {
     [refreshFolders]
   );
 
-  // Loaded on demand, never with the leads. fetchAllCompanies filters to
-  // status 'qualified' on purpose — a rejected candidate has no business in
-  // "all of Jonathan's leads" — so the evidence section that argues the
+  // Loaded on demand, never with the leads. The lead views carry rejections in
+  // their own "Not a fit" tab, but this panel needs them GROUPED BY REASON and
+  // for a single folder, so the evidence section that argues the
   // rejections matter has to ask for them separately.
   const fetchRejected = useCallback(
     async (searchId: string): Promise<Company[]> => {

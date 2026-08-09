@@ -22,7 +22,11 @@ import { explainFit } from "./fit-explanation";
  * filled with a plausible-looking default.
  */
 
-export type SignalType = "succession_pair" | "succession_verify" | "family_owned_fit";
+export type SignalType =
+  | "succession_pair"
+  | "succession_verify"
+  | "family_owned_fit"
+  | "not_a_fit";
 
 export const SIGNAL_TYPE_META: Record<
   SignalType,
@@ -58,6 +62,22 @@ export const SIGNAL_TYPE_META: Record<
     color: "#3d5a80",
     bg: "#e1e9f2",
   },
+  // Rejected companies are shown now rather than hidden, so they need a type
+  // of their own. Without one they fell through to family_owned_fit and were
+  // labelled "Good fit, no successor yet" — the CSV export shipped all 39
+  // rejections under that heading, which reads as a recommendation to call a
+  // company the test had specifically thrown out.
+  //
+  // Grey, not red. These are not errors and several are real family businesses
+  // in the right trade; they simply failed one gate. Red would say "something
+  // went wrong here", which is the wrong reading of a working filter.
+  not_a_fit: {
+    label: "Not a fit",
+    short: "Not a fit",
+    blurb: "Cut by one of your gates — the reason is on the row",
+    color: "#6b7280",
+    bg: "#f1f2f4",
+  },
 };
 
 export interface Lead {
@@ -91,6 +111,11 @@ export function leadPeople(c: Company): { founder: string | null; nextGen: strin
 }
 
 export function signalTypeOf(c: Company): SignalType {
+  // Status FIRST. A rejected company can carry has_signal — plenty were cut on
+  // revenue or trade while their page did name a founder and a successor — so
+  // testing the signal before the status would badge a cut company "Founder +
+  // successor" and put it back among the leads.
+  if (c.status === "rejected") return "not_a_fit";
   if (c.hasSignal && c.confidence === "verify") return "succession_verify";
   if (c.hasSignal) return "succession_pair";
   return "family_owned_fit";
@@ -174,11 +199,16 @@ export function toLead(c: Company): Lead {
 
   const location = [c.city, c.state].filter((s) => s && s !== "-").join(", ");
 
+  const rejected = c.status === "rejected";
+
   return {
     signalType: signalTypeOf(c),
     signalDetail: detail,
-    whyThisLead: fit?.headline ?? "",
-    missing: fit?.missing ?? null,
+    // For a cut company the useful sentence is why it was CUT, not why it would
+    // have been worth calling. explainFit answers the second question and would
+    // otherwise print an argument for a company the test rejected.
+    whyThisLead: rejected ? (c.rejectionReason ?? "Cut by one of your gates.") : (fit?.headline ?? ""),
+    missing: rejected ? null : (fit?.missing ?? null),
     surfacedAt: c.firstSeenAt,
     location: location || "Location not stated",
     score,

@@ -33,6 +33,8 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
   const [companies, setCompanies] = useState(companiesProp);
   const [enrichError, setEnrichError] = useState("");
   const [confirmEnrich, setConfirmEnrich] = useState(false);
+  /** Explicit company ids awaiting confirmation. null = the folder-wide button. */
+  const [pendingPick, setPendingPick] = useState<string[] | null>(null);
   // Watch the run the way the search does. The Enrichment page has had this
   // since it was built; the in-folder button never did — pressing it here
   // greyed out to "Enriching…" and gave no count, no percentage and no way to
@@ -85,16 +87,21 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
   // Same yes/no as the Enrichment page. This button spends the same money on
   // the same vendor, so it cannot be the one place that just does it.
   async function handleEnrich() {
+    const ids = pendingPick;
     setConfirmEnrich(false);
+    setPendingPick(null);
     setEnrichError("");
     try {
-      await startEnrichment(folder.id);
+      // An explicit pick overrides the scope server-side, and is the only path
+      // that can reach a company the pipeline rejected.
+      await startEnrichment(folder.id, undefined, ids ?? undefined);
       setFolder({ ...folder, enrichmentStatus: "running" });
       setWatchingEnrich(true);
     } catch (e) {
       setEnrichError((e as Error).message || "Could not start enrichment.");
     }
   }
+
 
   const stats = useMemo(() => getSummaryStats(companies), [companies]);
   const industryRows = useMemo(
@@ -109,6 +116,12 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
     [companies]
   );
   const trend = useMemo(() => getDailyTrend(companies), [companies]);
+
+  /** How many the pending action will actually look up — a pick, or the signals. */
+  const enrichCount = pendingPick ? pendingPick.length : stats.qualified + stats.verify;
+  const rejectedInPick = pendingPick
+    ? companies.filter((c) => pendingPick.includes(c.id) && c.status === "rejected").length
+    : 0;
   const selected = companies.find((c) => c.id === selectedId) ?? null;
 
   return (
@@ -133,15 +146,26 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
             <p>
               Searching for a contact at{" "}
               <strong className="font-semibold text-gh-ink">
-                {stats.qualified + stats.verify}{" "}
-                {stats.qualified + stats.verify === 1 ? "company" : "companies"}
+                {enrichCount} {enrichCount === 1 ? "company" : "companies"}
               </strong>{" "}
-              with a signal in this folder.
+              {pendingPick ? "you picked." : "with a signal in this folder."}
             </p>
+            {/* Named explicitly when some of the picks were cut companies. The
+                dialog is the last point before money is spent, and "you are
+                about to buy an address for a company your own test threw out"
+                is exactly the kind of thing it exists to say out loud. */}
+            {pendingPick && rejectedInPick > 0 && (
+              <p className="mt-2">
+                <strong className="font-semibold text-gh-ink">
+                  {rejectedInPick} of them {rejectedInPick === 1 ? "was" : "were"} marked not a fit.
+                </strong>{" "}
+                They will be looked up anyway.
+              </p>
+            )}
             <p className="mt-2">
               Costs up to{" "}
               <strong className="font-semibold text-gh-ink">
-                ${((stats.qualified + stats.verify) * 0.05).toFixed(2)}
+                ${(enrichCount * 0.05).toFixed(2)}
               </strong>
               , charged only for the addresses actually found.
             </p>
@@ -167,7 +191,12 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
               className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-gh-border bg-gh-surface px-3 py-1.5 text-xs font-semibold text-gh-ink-secondary transition-colors hover:border-gh-sky/40 hover:text-gh-ink"
             >
               <DownloadIcon className="h-3.5 w-3.5" />
-              Download as spreadsheet (CSV)
+              Download {companies.length} rows (CSV)
+              {companies.length !== stats.accepted && (
+                <span className="font-normal text-gh-ink-muted">
+                  {stats.accepted} leads + {companies.length - stats.accepted} not a fit
+                </span>
+              )}
             </button>
           </div>
           <div className="text-right">
@@ -223,7 +252,7 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
           <p className="text-sm font-semibold text-gh-ink">Contact enrichment</p>
           <p className="mt-0.5 text-xs text-gh-ink-secondary">
             {folder.enrichmentStatus === "idle" &&
-              `Find and verify emails for ${stats.accepted} accepted companies, separate step, runs on demand.`}
+              `Find and verify emails for the ${stats.qualified + stats.verify} with a signal, separate step, runs on demand. Tick rows below to pick your own.`}
             {folder.enrichmentStatus === "running" &&
               `Looking up contacts, ${stats.contactsFound} found, ${stats.contactsVerified} verified so far…`}
             {folder.enrichmentStatus === "complete" &&
@@ -314,7 +343,16 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
         </div>
       </div>
 
-      <CompaniesTable companies={companies} onRowClick={(c) => setSelectedId(c.id)} />
+      <CompaniesTable
+        companies={companies}
+        onRowClick={(c) => setSelectedId(c.id)}
+        onEnrichSelected={(ids) => {
+          if (ids.length === 0) return;
+          setPendingPick(ids);
+          setConfirmEnrich(true);
+        }}
+        enrichBusy={folder.enrichmentStatus === "running"}
+      />
 
       {/* AFTER the leads, never among them. The proof page argues the
           rejections matter most, and it is right about WHY — they are what

@@ -22,9 +22,14 @@ import { BuildingIcon, UsersIcon } from "./icons";
 export function LeadCard({
   company,
   onOpen,
+  picked = null,
+  onTogglePick,
 }: {
   company: Company;
   onOpen: () => void;
+  /** null turns the checkbox off entirely. */
+  picked?: boolean | null;
+  onTogglePick?: () => void;
 }) {
   const lead = toLead(company);
   const meta = SIGNAL_TYPE_META[lead.signalType];
@@ -38,14 +43,35 @@ export function LeadCard({
   // doing nothing for those rows.
   const contact = settledContact(company);
   const parked = company.contact?.findStatus === "not_attempted" && !!company.contact.email;
+  const rejected = company.status === "rejected";
+  const selectable = picked !== null && typeof onTogglePick === "function";
 
   return (
-    <article className="fade-up lift flex h-full flex-col rounded-xl border border-gh-border bg-gh-surface hover:border-gh-sky/50">
+    // A cut company is visually quieter than a lead — muted border, no hover
+    // lift, a dashed edge. It is on screen because it is worth being able to
+    // look at, not because it is worth calling, and the card should not argue
+    // otherwise from across the room.
+    <article
+      className={`fade-up flex h-full flex-col rounded-xl border bg-gh-surface ${
+        rejected
+          ? "border-dashed border-gh-border-strong/60"
+          : "lift border-gh-border hover:border-gh-sky/50"
+      } ${picked ? "ring-2 ring-gh-sky/50" : ""}`}
+    >
       <div className="flex-1 p-4 sm:p-5">
         {/* No flex row any more: it existed to push the score to the right,
             and with the score gone the header is a single column. */}
         <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
+              {selectable && (
+                <input
+                  type="checkbox"
+                  checked={!!picked}
+                  onChange={onTogglePick}
+                  aria-label={`Select ${company.name}`}
+                  className="h-4 w-4 shrink-0 cursor-pointer accent-gh-navy"
+                />
+              )}
               <span
                 className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold"
                 style={{ color: meta.color, background: meta.bg }}
@@ -79,6 +105,15 @@ export function LeadCard({
               {company.name}
             </button>
           <p className="mt-0.5 text-[11px] text-gh-ink-muted">{company.domain}</p>
+          {rejected && company.rejectionReason && (
+            // The reason in full, not a tooltip. The point of showing a cut
+            // company at all is that the reason might be wrong, and a reason
+            // you have to hover to read is one nobody checks.
+            <p className="mt-2 rounded-lg bg-gh-surface-sunken px-2.5 py-1.5 text-[11px] leading-relaxed text-gh-ink-secondary">
+              <span className="font-semibold text-gh-ink">Cut because: </span>
+              {company.rejectionReason}
+            </p>
+          )}
 
         </div>
 

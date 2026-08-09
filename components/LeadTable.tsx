@@ -41,7 +41,9 @@ export interface LeadGroup {
   rows: Company[];
 }
 
-const COLS = 10;
+/** Grows to 11 when the pick column is on. Used by the group separator rows,
+ *  which span the whole sheet and would leave a hole if this were wrong. */
+const BASE_COLS = 10;
 
 /** Short enough for a column. Full wording lives in the drawer. */
 const CREWS: Record<string, string> = {
@@ -55,19 +57,27 @@ export function LeadTable({
   groups,
   showGroupRows,
   onOpen,
+  picked = null,
+  onTogglePick,
 }: {
   groups: LeadGroup[];
   /** False when grouping is off — one flat sheet, no separator rows. */
   showGroupRows: boolean;
   onOpen: (c: Company) => void;
+  /** null turns the pick column off entirely. */
+  picked?: Set<string> | null;
+  onTogglePick?: (id: string) => void;
 }) {
   const total = groups.reduce((n, g) => n + g.rows.length, 0);
+  const selectable = picked !== null && typeof onTogglePick === "function";
+  const COLS = BASE_COLS + (selectable ? 1 : 0);
 
   return (
     <div className="overflow-x-auto rounded-xl border border-gh-border">
       <table className="w-full min-w-[1180px] table-fixed border-collapse text-left text-sm">
         <thead className="sticky top-0 z-10">
           <tr className="bg-gh-surface-sunken text-xs font-semibold uppercase tracking-wide text-gh-ink-secondary">
+            {selectable && <Th className="w-[3%]"><span className="sr-only">Pick</span></Th>}
             <Th className="w-[15%]">Company</Th>
             <Th className="w-[4%]">State</Th>
             <Th className="w-[11%]">Signal</Th>
@@ -111,8 +121,29 @@ export function LeadTable({
                       i % 2 === 1 ? "bg-gh-surface-sunken/40" : ""
                     }`}
                   >
+                    {selectable && (
+                      // stopPropagation, or ticking the box also opens the
+                      // drawer — the row's own onClick is on the <tr>.
+                      <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={picked!.has(c.id)}
+                          onChange={() => onTogglePick!(c.id)}
+                          aria-label={`Select ${c.name}`}
+                          className="h-4 w-4 cursor-pointer accent-gh-navy"
+                        />
+                      </td>
+                    )}
                     <Td title={c.name} className="font-medium text-gh-ink">
                       {c.name}
+                      {c.status === "rejected" && (
+                        <span
+                          title={c.rejectionReason ?? "Cut by one of your gates"}
+                          className="ml-1.5 align-middle text-[10px] font-semibold uppercase tracking-wide text-gh-ink-muted"
+                        >
+                          cut
+                        </span>
+                      )}
                     </Td>
                     <Td>{c.state && c.state !== "-" ? c.state : "-"}</Td>
                     <Td title={`${meta.label} — ${meta.blurb}`}>

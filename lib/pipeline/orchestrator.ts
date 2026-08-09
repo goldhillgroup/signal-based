@@ -665,10 +665,21 @@ export async function runSearchPipeline(
         const withName = { ...base, name: companyName, industry };
 
         if (classification.industry === "other") {
+          // recheck_after, like every other rejection path in this file (:599,
+          // :620, :646, :833). It was the one insert that omitted it, and a
+          // NULL recheck_after is read as PERMANENT by the cross-search memory
+          // preload — so a company cut for being the wrong trade was cut
+          // forever, and the 545-day reconsideration never applied to the one
+          // rejection reason most likely to stop being true. A supplier that
+          // adds install crews, or a fence contractor that moves into
+          // landscaping, was invisible to every future search.
+          const wrongTradeReason =
+            classification.rejectionReason ?? "Outside the landscaping/home-builder ICP";
           await supabase.from("companies").insert({
             ...withName,
             status: "rejected",
-            rejection_reason: classification.rejectionReason ?? "Outside the landscaping/home-builder ICP",
+            rejection_reason: wrongTradeReason,
+            recheck_after: recheckAfterFor("rejected", wrongTradeReason),
           });
           rejected++;
           await bump(supabase, searchId, { rejected_count: rejected });
@@ -1059,7 +1070,14 @@ async function addEnrichmentCost(
  * succession story — the signal is what makes the call TIMELY, not what makes
  * the company a fit.
  */
-export type EnrichScope = "signals" | "all";
+/**
+ * "selected" is an explicit list of company ids, so the choice of who to look
+ * up can be made per company rather than only per folder — including companies
+ * the pipeline REJECTED, which are visible now and are sometimes worth an
+ * address anyway (a cut on revenue says nothing about whether the founder is
+ * handing over).
+ */
+export type EnrichScope = "signals" | "all" | "selected";
 
 /**
  * Last resort before recording "no contact": read the company's own page.
@@ -1084,7 +1102,11 @@ async function emailFromCompanyPage(
   }
 }
 
-export async function enrichContacts(searchId: string, scope: EnrichScope = "all") {
+export async function enrichContacts(
+  searchId: string,
+  scope: EnrichScope = "all",
+  companyIds?: string[]
+) {
   const supabase = createServiceRoleClient();
 
   // Enrichment gets its OWN counters, separate from the discovery run's — the
@@ -1110,9 +1132,18 @@ export async function enrichContacts(searchId: string, scope: EnrichScope = "all
     let companiesQuery = supabase
       .from("companies")
       .select("id, domain, next_gen_name, next_gen_title, founder_name, founder_title, source_url")
-      .eq("search_id", searchId)
-      .eq("status", "qualified");
-    if (scope === "signals") companiesQuery = companiesQuery.eq("has_signal", true);
+      // Kept on EVERY branch, including "selected". It is what stops a crafted
+      // request enriching another folder's companies by id, and it is the
+      // reason the selected branch can safely drop the status filter.
+      .eq("search_id", searchId);
+    if (scope === "selected") {
+      // No status filter: an explicit pick means the user has already decided,
+      // and a rejected company is a legitimate thing to want an address for.
+      companiesQuery = companiesQuery.in("id", companyIds ?? []);
+    } else {
+      companiesQuery = companiesQuery.eq("status", "qualified");
+      if (scope === "signals") companiesQuery = companiesQuery.eq("has_signal", true);
+    }
     const { data: companies, error: companiesErr } = await companiesQuery;
     if (companiesErr) throw companiesErr;
 

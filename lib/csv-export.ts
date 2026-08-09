@@ -17,8 +17,21 @@ import { isSharedInbox } from "./pipeline/page-email";
 // It is also the shape of the Phase 1 deliverable, near enough word for word:
 // "the signal behind each name, the reason it surfaced now, and the contact to
 // start with".
+//
+// `verdict` IS COLUMN TWO, and it is not optional. The export receives whatever
+// the folder holds, which since rejections became visible includes the
+// companies the pipeline cut. There was no status column at all, and
+// signal_type fell through to "Good fit, no successor yet" for a rejected row —
+// so a 67-row download presented 39 companies Jonathan's own test had thrown
+// out as leads worth calling, with no way to tell them apart in the sheet.
+//
+// Second column rather than last because a spreadsheet is sorted and filtered
+// on its left-hand columns, and "is this a lead or not" outranks every other
+// question you can ask of this file.
 const COLUMNS: { header: string; get: (c: Company) => string }[] = [
   { header: "company", get: (c) => c.name },
+  { header: "verdict", get: (c) => (c.status === "rejected" ? "NOT A FIT" : "lead") },
+  { header: "not_a_fit_reason", get: (c) => (c.status === "rejected" ? (c.rejectionReason ?? "") : "") },
   { header: "signal_type", get: (c) => SIGNAL_TYPE_META[toLead(c).signalType].label },
   { header: "signal_detail", get: (c) => toLead(c).signalDetail },
   {
