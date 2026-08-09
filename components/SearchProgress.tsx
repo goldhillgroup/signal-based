@@ -29,17 +29,41 @@ function foundCount(folder: SearchFolder): number {
   return folder.mode === "signal" ? signalFound : signalFound + folder.fitOnlyCount;
 }
 
+/**
+ * Which of the three stages the run is in right now.
+ *
+ * The pipeline loops discover -> fetch -> classify in rounds, so this is not a
+ * one-way march: it returns to "find" every time the candidate buffer empties.
+ * Showing the CURRENT stage is what turns a spinner into something that is
+ * visibly doing a specific thing, rather than a bar that might be stuck.
+ */
+type Stage = "find" | "read" | "judge";
+
+function currentStage(folder: SearchFolder): Stage {
+  const classified =
+    folder.qualifiedCount + folder.verifyCount + folder.fitOnlyCount + folder.rejectedCount;
+  if (folder.pagesFetched < folder.companiesScanned) return "read";
+  if (classified < folder.companiesScanned) return "judge";
+  return "find";
+}
+
+const STAGE_LABEL: Record<Stage, string> = {
+  find: "Finding companies",
+  read: "Reading their pages",
+  judge: "Judging the signal",
+};
+
 function currentActivity(folder: SearchFolder): string {
   const classified = folder.qualifiedCount + folder.verifyCount + folder.fitOnlyCount + folder.rejectedCount;
   if (folder.pagesFetched < folder.companiesScanned) {
-    return `Fetching leadership pages, ${folder.pagesFetched}/${folder.companiesScanned}`;
+    return `${folder.pagesFetched} of ${folder.companiesScanned} pages read`;
   }
   if (classified < folder.companiesScanned) {
     return folder.mode === "signal"
-      ? `Classifying, ${folder.qualifiedCount} qualified · ${folder.verifyCount} verify · ${folder.rejectedCount} rejected`
-      : `Classifying, ${folder.qualifiedCount + folder.verifyCount + folder.fitOnlyCount} accepted (${folder.qualifiedCount + folder.verifyCount} with a signal) · ${folder.rejectedCount} rejected`;
+      ? `${folder.qualifiedCount} qualified · ${folder.verifyCount} verify · ${folder.rejectedCount} cut`
+      : `${folder.qualifiedCount + folder.verifyCount + folder.fitOnlyCount} accepted · ${folder.rejectedCount} cut`;
   }
-  return "Looking for more candidates…";
+  return "Looking for more to check…";
 }
 
 export function SearchProgress({ searchId, query, onComplete, onError, onDismiss }: Props) {
@@ -86,6 +110,7 @@ export function SearchProgress({ searchId, query, onComplete, onError, onDismiss
   const found = foundCount(folder);
   const pct = Math.min(100, Math.round((found / Math.max(folder.targetSignals, 1)) * 100));
   const unit = folder.mode === "signal" ? "signals" : "companies";
+  const stage = currentStage(folder);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-gh-navy-3/50 backdrop-blur-sm">
@@ -120,21 +145,57 @@ export function SearchProgress({ searchId, query, onComplete, onError, onDismiss
             </span>
             <span className="text-sm text-gh-ink-muted">/ {folder.targetSignals} {unit}</span>
           </div>
-          <div className="mx-auto mt-3 h-2 max-w-[240px] overflow-hidden rounded-full bg-gh-surface-sunken">
-            <div
-              className="h-full rounded-full bg-gh-sky transition-[width] duration-500"
-              style={{ width: `${pct}%` }}
-            />
+          <div className="mx-auto mt-3 max-w-[240px]">
+            <div className="h-2 overflow-hidden rounded-full bg-gh-surface-sunken">
+              <div
+                className="h-full rounded-full bg-gh-sky transition-[width] duration-500"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            {/* The bar already encoded this in its width, but a width is not a
+                number you can read out or compare to a minute ago. */}
+            <p className="tabular mt-1.5 text-center text-[11px] font-semibold text-gh-ink-secondary">
+              {pct}%
+            </p>
           </div>
         </div>
 
-        <div className="mt-5 rounded-lg bg-gh-surface-sunken px-3 py-2.5 text-center">
-          <p className="tabular text-xs font-medium text-gh-ink-secondary">{currentActivity(folder)}</p>
+        {/* WHICH of the three stages is running. Without it the bar can sit at
+            the same percentage for a minute while real work happens, and the
+            only honest reading is "possibly stuck". The pipeline loops, so this
+            legitimately returns to Finding when the buffer empties. */}
+        <div className="mt-5 flex items-center justify-center gap-1.5">
+          {(["find", "read", "judge"] as Stage[]).map((s, i) => {
+            const active = stage === s;
+            return (
+              <div key={s} className="flex items-center gap-1.5">
+                <span
+                  className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors duration-300 ${
+                    active
+                      ? "bg-gh-navy text-white"
+                      : "bg-gh-surface-sunken text-gh-ink-muted"
+                  }`}
+                >
+                  {active && (
+                    <span aria-hidden className="pulse-dot h-1.5 w-1.5 rounded-full bg-gh-sky" />
+                  )}
+                  {STAGE_LABEL[s].split(" ")[0]}
+                </span>
+                {i < 2 && <span aria-hidden className="h-px w-2 bg-gh-border" />}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-3 rounded-lg bg-gh-surface-sunken px-3 py-2.5 text-center">
+          <p className="text-xs font-semibold text-gh-ink">{STAGE_LABEL[stage]}</p>
+          <p className="tabular mt-0.5 text-[11px] text-gh-ink-secondary">
+            {currentActivity(folder)}
+          </p>
         </div>
 
         <p className="mt-3 text-center text-[11px] text-gh-ink-muted">
-          {folder.companiesScanned} companies checked so far, kept results accumulate as
-          rounds continue, nothing found so far gets thrown away.
+          {folder.companiesScanned} checked. Nothing found is ever discarded.
         </p>
 
         {/* The run lives on the server (see `after()` in app/api/search/route.ts),

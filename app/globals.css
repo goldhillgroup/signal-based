@@ -192,3 +192,14 @@ summary {
     min-height: 44px;
   }
 }
+
+/* Live indicator on the active pipeline stage. Distinguishes "working" from
+   "frozen" when a progress bar legitimately sits still for a minute. */
+@keyframes ghPulseDot {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.25; }
+}
+.pulse-dot { animation: ghPulseDot 1.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .pulse-dot { animation: none !important; }
+}
