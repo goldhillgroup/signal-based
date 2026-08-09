@@ -7,7 +7,7 @@ import { SearchesProvider } from "@/lib/searches-store";
 import { Sidebar } from "@/components/Sidebar";
 import { Topbar } from "@/components/Topbar";
 import { createServiceRoleClient } from "@/lib/supabase/server";
-import { reapStaleRuns } from "@/lib/pipeline/reap";
+import { reapStaleRuns, reapStaleEnrichment } from "@/lib/pipeline/reap";
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
   if (!isSupabaseConfigured) {
@@ -36,7 +36,11 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   // dashboard — a reaper that takes down the page it exists to fix is worse
   // than the stuck row.
   try {
-    await reapStaleRuns(createServiceRoleClient());
+    const service = createServiceRoleClient();
+    // Enrichment fails the same way and strands the folder harder: the enrich
+    // route refuses to start a second pass while one is 'running', so a killed
+    // pass makes the folder permanently un-enrichable.
+    await Promise.all([reapStaleRuns(service), reapStaleEnrichment(service)]);
   } catch (e) {
     console.error("Stale-run reaper failed, dashboard rendering anyway:", e);
   }

@@ -88,6 +88,72 @@ export async function reapStaleRuns(
 }
 
 /**
+ * The same rescue for enrichment, which fails the same way.
+ *
+ * A killed pass leaves enrichment_status = 'running' forever, and the enrich
+ * route refuses to start a second pass while one is running — so the folder
+ * becomes permanently un-enrichable, with whatever contacts it had already
+ * bought stranded behind a spinner.
+ *
+ * Dated from enrichment_started_at rather than created_at: enrichment begins
+ * minutes or days after the search finished, so the search's own timestamps
+ * say nothing about it. A row with no start time is LEFT ALONE — that is
+ * either a row predating the column or a pass that never ran, and guessing
+ * about either could close out a live pass mid-flight.
+ *
+ * Degrades to a no-op if the migration has not been applied yet, rather than
+ * throwing inside the dashboard render.
+ */
+export async function reapStaleEnrichment(
+  supabase: SupabaseClient,
+  now: Date = new Date()
+): Promise<ReapResult> {
+  const cutoff = new Date(now.getTime() - RUN_CEILING_MS - REAP_GRACE_MS).toISOString();
+
+  const { data, error } = await supabase
+    .from("searches")
+    .select("id, contacts_found")
+    .eq("enrichment_status", "running")
+    .not("enrichment_started_at", "is", null)
+    .lt("enrichment_started_at", cutoff);
+
+  if (error) {
+    // Unapplied migration: the column is unknown to PostgREST. Say so once and
+    // carry on — enrichment still works, it just cannot be auto-rescued yet.
+    if (/enrichment_started_at/.test(error.message ?? "")) {
+      console.warn(
+        "reapStaleEnrichment: enrichment_started_at column missing, apply supabase/migrations/20260809000000_enrichment_started_at.sql to enable enrichment recovery."
+      );
+    }
+    return { reaped: 0, ids: [] };
+  }
+  if (!data || data.length === 0) return { reaped: 0, ids: [] };
+
+  const ids: string[] = [];
+  for (const row of data) {
+    const { error: updateErr } = await supabase
+      .from("searches")
+      .update({
+        // 'failed', not 'complete'. Unlike discovery, a half-finished
+        // enrichment is genuinely incomplete work on a finished list, and the
+        // UI offers "Retry enrichment" on failure — which is exactly the right
+        // next action and costs nothing to re-run, since a company that
+        // already has a contact row is skipped.
+        enrichment_status: "failed",
+        enrichment_error: `Stopped early: this pass hit the ${RUN_CEILING_MS / 1000 / 60} minute server limit after finding ${row.contacts_found ?? 0} email${(row.contacts_found ?? 0) === 1 ? "" : "s"}. Everything found is saved. Press Retry to pick up the rest, you are not charged twice for an address already found.`,
+      })
+      .eq("id", row.id)
+      .eq("enrichment_status", "running");
+    if (!updateErr) ids.push(row.id);
+  }
+
+  if (ids.length > 0) {
+    console.warn(`Reaped ${ids.length} enrichment pass(es) killed by the function ceiling: ${ids.join(", ")}`);
+  }
+  return { reaped: ids.length, ids };
+}
+
+/**
  * Plain English, because this lands in front of the client. It says what
  * happened, that nothing was lost, and what to do — a bare "timed out" reads
  * like the results are suspect when they are not.

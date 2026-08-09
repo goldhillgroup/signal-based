@@ -148,6 +148,10 @@ export interface Database {
           cost_breakdown: string | null;
           enrichment_status: EnrichmentStatus;
           enrichment_error: string | null;
+          // Start of the current enrichment pass. Null means never enriched,
+          // or a row predating the column — reapStaleEnrichment leaves both
+          // alone rather than dating them by guesswork.
+          enrichment_started_at: string | null;
           target_signals: number;
           revenue_min_musd: number | null;
           revenue_max_musd: number | null;

@@ -62,7 +62,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: blocker }, { status: 402 });
   }
 
-  await service.from("searches").update({ enrichment_status: "running", enrichment_error: null }).eq("id", id);
+  // enrichment_started_at is what makes a killed pass recoverable — without a
+  // start time, reapStaleEnrichment cannot tell a dead pass from one that began
+  // four seconds ago, so it correctly refuses to touch either.
+  await service
+    .from("searches")
+    .update({
+      enrichment_status: "running",
+      enrichment_error: null,
+      enrichment_started_at: new Date().toISOString(),
+    })
+    .eq("id", id);
 
   // Runs after this response is sent, within the extended function lifetime
   // (see maxDuration above) — the client polls the `searches` row for
