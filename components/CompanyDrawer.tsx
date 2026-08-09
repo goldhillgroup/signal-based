@@ -33,6 +33,10 @@ const CHANNEL_LABELS: Record<string, string> = {
   licensing: "Licensing board",
   web_search: "Web search (succession phrasing)",
   maps: "Google Maps (category listing)",
+  // Not a crawler channel: the 72-company proof list was audited by a person
+  // before any of this existed, and saying so is the point — it is the most
+  // trustworthy provenance in the database, not the least.
+  hand_audit: "Audited by hand",
 };
 
 export function CompanyDrawer({

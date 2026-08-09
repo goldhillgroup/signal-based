@@ -37,7 +37,7 @@ export interface LeadGroup {
   rows: Company[];
 }
 
-const COLS = 9;
+const COLS = 10;
 
 /** Short enough for a column. Full wording lives in the drawer. */
 const CREWS: Record<string, string> = {
@@ -69,10 +69,11 @@ export function LeadTable({
             <Th className="w-[11%]">Signal</Th>
             <Th className="w-[9%]">Size</Th>
             <Th className="w-[7%]">Crews</Th>
-            <Th className="w-[18%]">What the site says</Th>
+            <Th className="w-[17%]">What the site says</Th>
             <Th className="w-[12%]">Who to reach</Th>
             <Th className="w-[13%]">Email</Th>
-            <Th className="w-[11%]">Deliverable</Th>
+            <Th className="w-[10%]">Deliverable</Th>
+            <Th className="w-[6%]">Source</Th>
           </tr>
         </thead>
         <tbody>
@@ -172,6 +173,27 @@ export function LeadTable({
                               : "unconfirmed"}
                           {isSharedInbox(contact.email) ? ", shared" : ""}
                         </span>
+                      ) : (
+                        <Muted>-</Muted>
+                      )}
+                    </Td>
+                    {/* WHERE IT CAME FROM. Every lead has a page it was read
+                        off, and the whole product rests on that being checkable
+                        — Jonathan intends to audit the list against the live
+                        sites himself. A lead you cannot trace is a lead you
+                        have to take on trust, which is what the three agencies
+                        before us asked him to do. */}
+                    <Td title={lead.sourceUrl ?? "no source recorded"}>
+                      {lead.sourceUrl ? (
+                        <a
+                          href={lead.sourceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-gh-sky hover:underline"
+                        >
+                          open
+                        </a>
                       ) : (
                         <Muted>-</Muted>
                       )}
