@@ -201,6 +201,7 @@ interface SearchesContextValue {
     mode?: SearchMode;
   }) => Promise<{ id: string; label: string }>;
   startEnrichment: (searchId: string, scope?: "signals" | "all") => Promise<void>;
+  deleteSearch: (searchId: string) => Promise<void>;
 }
 
 const SearchesContext = createContext<SearchesContextValue | null>(null);
@@ -297,17 +298,42 @@ export function SearchesProvider({ children }: { children: ReactNode }) {
     [refreshFolders]
   );
 
-  const startEnrichment = useCallback(async (searchId: string, scope: "signals" | "all" = "signals") => {
-    const res = await fetch(`/api/search/${searchId}/enrich`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scope }),
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error(body?.error ?? "Enrichment failed to start");
-    }
-  }, []);
+  const startEnrichment = useCallback(
+    async (searchId: string, scope: "signals" | "all" = "signals") => {
+      const res = await fetch(`/api/search/${searchId}/enrich`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scope }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error ?? "Enrichment failed to start");
+      }
+      // Pull the row back so the caller's UI sees enrichment_status flip to
+      // 'running'. Without this the POST succeeded, the server started work,
+      // and the screen did not move by a single pixel — which reads as a dead
+      // button, so the natural response is to press it again. It was reported
+      // as "I clicked and nothing happened" while the run was in fact already
+      // finding contacts.
+      await refreshFolders();
+    },
+    [refreshFolders]
+  );
+
+  const deleteSearch = useCallback(
+    async (searchId: string) => {
+      const res = await fetch(`/api/search/${searchId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error ?? "Could not delete this search.");
+      }
+      // Drop it locally first so the list updates instantly, then re-read to
+      // stay honest about what the server actually holds.
+      setFolders((prev) => prev.filter((f) => f.id !== searchId));
+      await refreshFolders();
+    },
+    [refreshFolders]
+  );
 
   const value = useMemo<SearchesContextValue>(
     () => ({
@@ -320,8 +346,9 @@ export function SearchesProvider({ children }: { children: ReactNode }) {
       fetchAllCompanies,
       createSearch,
       startEnrichment,
+      deleteSearch,
     }),
-    [folders, loading, refreshFolders, getFolder, fetchFolder, fetchCompanies, fetchAllCompanies, createSearch, startEnrichment]
+    [folders, loading, refreshFolders, getFolder, fetchFolder, fetchCompanies, fetchAllCompanies, createSearch, startEnrichment, deleteSearch]
   );
 
   return <SearchesContext.Provider value={value}>{children}</SearchesContext.Provider>;

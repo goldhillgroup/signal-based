@@ -12,6 +12,7 @@ import {
 } from "./badges";
 import { XIcon, BuildingIcon } from "./icons";
 import { formatRelativeDate } from "@/lib/stats";
+import { explainFit } from "@/lib/fit-explanation";
 
 // Which discovery channel surfaced this company — see lib/pipeline/apify.ts's
 // discoverCandidates() and lib/pipeline/directory-discovery.ts.
@@ -43,6 +44,7 @@ export function CompanyDrawer({
 }) {
   const open = company !== null;
   const [copied, setCopied] = useState(false);
+  const fit = company ? explainFit(company) : null;
 
   async function copyEmail(email: string) {
     try {
@@ -123,12 +125,40 @@ export function CompanyDrawer({
                 </InfoTile>
               </div>
 
-              {company.status === "rejected" && company.rejectionReason && (
-                <div className="rounded-lg border-l-2 border-gh-critical bg-gh-surface-sunken p-3.5">
+              {/* The "Rejection reason" block lived here. Removed with the rest
+                  of the rejected surfaces: nothing in the dashboard shows a
+                  rejected company any more, so this could only ever render for
+                  a row that cannot be reached — dead UI that still had to be
+                  read and maintained.
+                  The reasons are NOT gone from the system. They are still
+                  written to companies.rejection_reason and they are still what
+                  recheck-policy.ts schedules the next look from, which is the
+                  job they actually do. */}
+
+              {/* Why an ACCEPTED company is here. A rejection always stated its
+                  reason and a signal always showed its quote, but a company
+                  that fit the ICP with no signal showed neither — it just
+                  appeared. On a real folder that is most of the list, so most
+                  of the list was unexplained. */}
+              {fit && (
+                <div className="rounded-lg border-l-2 border-gh-sky bg-gh-surface-sunken p-3.5">
                   <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gh-ink-muted">
-                    Rejection reason
+                    Why this one is here
                   </p>
-                  <p className="text-sm text-gh-ink-secondary">{company.rejectionReason}</p>
+                  <p className="text-sm font-medium text-gh-ink">{fit.headline}</p>
+                  <ul className="mt-2 space-y-1.5">
+                    {fit.points.map((p) => (
+                      <li key={p} className="flex gap-2 text-xs leading-relaxed text-gh-ink-secondary">
+                        <span aria-hidden className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-gh-sky" />
+                        <span>{p}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {fit.missing && (
+                    <p className="mt-2.5 border-t border-gh-border pt-2.5 text-xs leading-relaxed text-gh-ink-secondary">
+                      {fit.missing}
+                    </p>
+                  )}
                 </div>
               )}
 

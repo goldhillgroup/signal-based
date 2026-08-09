@@ -14,14 +14,22 @@ import {
 } from "./badges";
 import { SearchIcon } from "./icons";
 
-type Tab = "all" | "qualified" | "verify" | "fit_only" | "rejected";
+type Tab = "all" | "qualified" | "verify" | "fit_only";
 
+// No "Rejected" tab. This screen is the lead list, and the companies the
+// pipeline cut are not leads — a landscaping search that reads 83 sites and
+// keeps 16 was putting 67 rejects in front of him, four sixths of the page
+// being businesses he was explicitly told not to call.
+//
+// The rejections are NOT thrown away and this is not hiding the funnel: the
+// folder header still reports how many were checked and how many were cut, so
+// the thoroughness is still legible as a number. What is gone is the browsable
+// pile of them mixed in with real work.
 const TABS: { key: Tab; label: string }[] = [
-  { key: "all", label: "All" },
+  { key: "all", label: "All leads" },
   { key: "qualified", label: "Qualified" },
   { key: "verify", label: "Verify" },
   { key: "fit_only", label: "Fit only" },
-  { key: "rejected", label: "Rejected" },
 ];
 
 // A 'filter'/'hybrid' company that fit the ICP with no signal found is
@@ -29,11 +37,13 @@ const TABS: { key: Tab; label: string }[] = [
 // null is what actually distinguishes it from a real qualified/verify
 // signal match. See orchestrator.ts's finalHasSignal.
 function matchesTab(c: Company, tab: Tab) {
-  if (tab === "all") return true;
+  // "All" means every LEAD, not every row the pipeline touched. It used to
+  // return true for everything, so the default view of a folder was mostly
+  // rejects and the real count was buried.
+  if (tab === "all") return c.status === "qualified";
   if (tab === "qualified") return c.status === "qualified" && (c.confidence === "high" || c.confidence === "medium");
   if (tab === "verify") return c.status === "qualified" && c.confidence === "verify";
   if (tab === "fit_only") return c.status === "qualified" && c.confidence === null;
-  if (tab === "rejected") return c.status === "rejected";
   return true;
 }
 
@@ -45,9 +55,14 @@ export function CompaniesTable({
   onRowClick: (company: Company) => void;
 }) {
   // Default to the first tab that actually has results — landing on an
-  // empty "Qualified" tab reads as broken when a folder is all rejects.
+  // empty "Qualified" tab reads as broken.
+  //
+  // "fit_only" was missing from this list, which quietly hid most of a folder.
+  // A real run finished 0 qualified / 1 verify / 15 fit-only, so the priority
+  // fell through to "verify" and opened on ONE company out of sixteen. The
+  // other fifteen were behind a tab you had to already know to press.
   const [tab, setTab] = useState<Tab>(() => {
-    const priority: Tab[] = ["qualified", "verify", "rejected", "all"];
+    const priority: Tab[] = ["qualified", "verify", "fit_only", "all"];
     return priority.find((t) => companies.some((c) => matchesTab(c, t))) ?? "all";
   });
   const [q, setQ] = useState("");
@@ -134,7 +149,7 @@ export function CompaniesTable({
               <th className="px-4 py-3 font-semibold">Company</th>
               <th className="px-4 py-3 font-semibold">Industry</th>
               <th className="px-4 py-3 font-semibold">Confidence / status</th>
-              <th className="px-4 py-3 font-semibold">Next-gen contact</th>
+              <th className="px-4 py-3 font-semibold">Email</th>
               <th className="px-4 py-3 font-semibold">Verification</th>
               <th className="px-4 py-3 font-semibold">Last checked</th>
             </tr>
@@ -156,9 +171,11 @@ export function CompaniesTable({
                   <IndustryChip industry={c.industry} />
                 </td>
                 <td className="px-4 py-3">
-                  {c.status === "rejected" ? (
-                    <StatusBadge status="rejected" />
-                  ) : c.status === "pending" ? (
+                  {/* No "rejected" branch. Every tab filters to
+                      status === 'qualified', so a rejected row cannot reach
+                      this table at all and the badge could only ever have
+                      rendered for a row that is no longer reachable. */}
+                  {c.status === "pending" ? (
                     <StatusBadge status="pending" />
                   ) : c.confidence ? (
                     <ConfidenceBadge confidence={c.confidence} />
@@ -175,11 +192,33 @@ export function CompaniesTable({
                     </span>
                   )}
                 </td>
+                {/* The ADDRESS, not a badge saying one exists. This column
+                    used to render "Found", which is the least useful true
+                    thing it could say: after paying to look an email up, the
+                    only way to see it was to open the row. The email is the
+                    deliverable — it belongs on the row the moment it lands. */}
                 <td className="px-4 py-3">
-                  {c.contact ? (
+                  {c.contact?.email ? (
+                    <div className="min-w-0">
+                      <a
+                        href={`mailto:${c.contact.email}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="block max-w-[15rem] truncate text-xs font-medium text-gh-sky hover:underline"
+                        title={c.contact.email}
+                      >
+                        {c.contact.email}
+                      </a>
+                      {c.contact.name && (
+                        <span className="mt-0.5 block max-w-[15rem] truncate text-[11px] text-gh-ink-muted">
+                          {c.contact.name}
+                          {c.contact.title ? `, ${c.contact.title}` : ""}
+                        </span>
+                      )}
+                    </div>
+                  ) : c.contact ? (
                     <FindStatusBadge status={c.contact.findStatus} />
                   ) : (
-                    <span className="text-xs text-gh-ink-muted">-</span>
+                    <span className="text-xs text-gh-ink-muted">Not looked up yet</span>
                   )}
                 </td>
                 <td className="px-4 py-3">

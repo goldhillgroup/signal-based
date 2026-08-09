@@ -147,3 +147,17 @@ export function InboxIcon({ className }: IconProps) {
   );
 }
 
+
+export function TrashIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden>
+      <path
+        d="M3.5 5.5h13M8 5.5V4a1 1 0 011-1h2a1 1 0 011 1v1.5M5 5.5l.7 10a1 1 0 001 .9h6.6a1 1 0 001-.9l.7-10M8.5 9v4.5M11.5 9v4.5"
+        stroke="currentColor"
+        strokeWidth={base}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}

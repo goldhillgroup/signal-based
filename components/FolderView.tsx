@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Company } from "@/lib/company";
 import { SearchFolder, useSearches } from "@/lib/searches-store";
+import { ConfirmDialog } from "./ConfirmDialog";
 import {
   getSummaryStats,
   getIndustryBreakdown,
@@ -30,6 +31,7 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
   const [folder, setFolder] = useState(folderProp);
   const [companies, setCompanies] = useState(companiesProp);
   const [enrichError, setEnrichError] = useState("");
+  const [confirmEnrich, setConfirmEnrich] = useState(false);
   const stopPollRef = useRef(false);
 
   // Reset local override state when the parent hands us a different search
@@ -73,7 +75,10 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [folder.id, folder.enrichmentStatus]);
 
+  // Same yes/no as the Enrichment page. This button spends the same money on
+  // the same vendor, so it cannot be the one place that just does it.
   async function handleEnrich() {
+    setConfirmEnrich(false);
     setEnrichError("");
     try {
       await startEnrichment(folder.id);
@@ -112,6 +117,34 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
+      <ConfirmDialog
+        open={confirmEnrich}
+        title="Look up these emails?"
+        confirmLabel="Yes, look them up"
+        cancelLabel="No, go back"
+        onConfirm={handleEnrich}
+        onCancel={() => setConfirmEnrich(false)}
+        body={
+          <>
+            <p>
+              Searching for a contact at{" "}
+              <strong className="font-semibold text-gh-ink">
+                {stats.qualified + stats.verify}{" "}
+                {stats.qualified + stats.verify === 1 ? "company" : "companies"}
+              </strong>{" "}
+              with a signal in this folder.
+            </p>
+            <p className="mt-2">
+              Costs up to{" "}
+              <strong className="font-semibold text-gh-ink">
+                ${((stats.qualified + stats.verify) * 0.05).toFixed(2)}
+              </strong>
+              , charged only for the addresses actually found.
+            </p>
+          </>
+        }
+      />
+
       <div>
         <Link
           href="/dashboard"
@@ -197,7 +230,7 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
         </div>
         <button
           type="button"
-          onClick={handleEnrich}
+          onClick={() => setConfirmEnrich(true)}
           disabled={folder.enrichmentStatus === "running"}
           className="shrink-0 rounded-lg bg-gh-navy px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-gh-navy-2 disabled:cursor-not-allowed disabled:opacity-50"
         >
@@ -235,10 +268,15 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
             accent="#3d5a80"
           />
         )}
+        {/* Was "Rejected / 67 / Cut, kept, and labeled with a reason". Replaced
+            rather than deleted: the run's thoroughness is the useful half of
+            that number and the rejects themselves are not, so this says how
+            much work was done without putting 67 companies he must not call
+            on the same row as the ones he should. */}
         <StatCard
-          label="Rejected"
-          value={stats.rejected}
-          subtext="Cut, kept, and labeled with a reason"
+          label="Companies checked"
+          value={folder.companiesScanned}
+          subtext="Every one read and judged before this list"
           icon={InboxIcon}
           accent="#8892a0"
         />

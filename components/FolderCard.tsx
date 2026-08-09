@@ -53,7 +53,11 @@ export function FolderCard({ folder }: { folder: SearchFolder }) {
             {folder.mode !== "signal" && (
               <StatChip value={folder.fitOnlyCount} label="fit only" color="#3d5a80" bg="#e1e9f2" />
             )}
-            <StatChip value={folder.rejectedCount} label="rejected" color="#8892a0" bg="var(--gh-surface-sunken)" />
+            {/* No "rejected" chip. This card is a summary of what he GOT, and
+                the cut count was the widest number on it — a folder reading
+                "1 qualified · 15 fit only · 67 rejected" leads with the 67 and
+                makes a good run look like a bad one. How much was checked lives
+                in the folder itself. */}
           </>
         )}
       </div>

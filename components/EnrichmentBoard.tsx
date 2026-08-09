@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearches, type SearchFolder } from "@/lib/searches-store";
 import { CountUp } from "./CountUp";
+import { ConfirmDialog } from "./ConfirmDialog";
+import { EnrichProgress } from "./EnrichProgress";
 import { UsersIcon, CheckIcon } from "./icons";
 
 /**
@@ -42,9 +44,31 @@ function signalCount(f: SearchFolder): number {
 const PER_EMAIL_USD = 0.05;
 
 export function EnrichmentBoard() {
-  const { folders, loading, startEnrichment } = useSearches();
+  const { folders, loading, startEnrichment, refreshFolders } = useSearches();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
+  /** The click waiting on a yes/no. null when no dialog is open. */
+  const [pending, setPending] = useState<{
+    id: string;
+    scope: "signals" | "all";
+    count: number;
+    label: string;
+  } | null>(null);
+  /** The run the user just started, so its progress can be shown. */
+  const [watching, setWatching] = useState<{ id: string; target: number } | null>(null);
+
+  // Poll while anything is running. The board is otherwise a snapshot taken on
+  // mount: enrichment runs on the server for minutes, so without this the
+  // counts never move, the row never leaves "Running now", and the only way to
+  // learn it finished is to reload the page by hand.
+  const anyRunning = folders.some((f) => f.enrichmentStatus === "running");
+  useEffect(() => {
+    if (!anyRunning) return;
+    const t = setInterval(() => {
+      refreshFolders();
+    }, 3000);
+    return () => clearInterval(t);
+  }, [anyRunning, refreshFolders]);
 
   if (loading) return null;
 
@@ -63,11 +87,29 @@ export function EnrichmentBoard() {
   const foundSoFar = folders.reduce((n, f) => n + f.contactsFound, 0);
   const verified = folders.reduce((n, f) => n + f.contactsVerified, 0);
 
-  async function enrich(id: string, scope: "signals" | "all") {
+  /**
+   * Nothing is spent here. This only opens the confirmation.
+   *
+   * Enrichment bills per address found, on a vendor with a prepaid balance, and
+   * the click that starts it used to be immediate and irreversible — one stray
+   * tap on "all 83 leads" spends real money with no way to take it back. Every
+   * other destructive-or-costly action in the app asks first; this was the one
+   * that did not.
+   */
+  function askEnrich(id: string, scope: "signals" | "all", count: number, label: string) {
+    setError("");
+    setPending({ id, scope, count, label });
+  }
+
+  async function confirmEnrich() {
+    if (!pending) return;
+    const { id, scope } = pending;
+    setPending(null);
     setBusy(id);
     setError("");
     try {
       await startEnrichment(id, scope);
+      setWatching({ id, target: pending.count });
     } catch (e) {
       setError((e as Error).message || "Could not start enrichment.");
     } finally {
@@ -75,8 +117,51 @@ export function EnrichmentBoard() {
     }
   }
 
+  const watched = watching ? folders.find((f) => f.id === watching.id) : null;
+
   return (
     <div className="space-y-6">
+      {watched && (
+        <EnrichProgress
+          folder={watched}
+          target={watching!.target}
+          onDismiss={() => setWatching(null)}
+        />
+      )}
+
+      <ConfirmDialog
+        open={pending !== null}
+        title="Look up these emails?"
+        confirmLabel="Yes, look them up"
+        cancelLabel="No, go back"
+        onConfirm={confirmEnrich}
+        onCancel={() => setPending(null)}
+        body={
+          pending && (
+            <>
+              <p>
+                Searching for a contact at{" "}
+                <strong className="font-semibold text-gh-ink">
+                  {pending.count} {pending.count === 1 ? "company" : "companies"}
+                </strong>{" "}
+                in {pending.label}.
+              </p>
+              {/* "Up to" and "only when found" are both load-bearing. The vendor
+                  bills per address it actually returns, so the real number is
+                  usually lower than this — quoting a firm figure would look
+                  like an overcharge on the invoice. */}
+              <p className="mt-2">
+                Costs up to{" "}
+                <strong className="font-semibold text-gh-ink">
+                  ${(pending.count * PER_EMAIL_USD).toFixed(2)}
+                </strong>
+                , charged only for the addresses actually found.
+              </p>
+            </>
+          )
+        }
+      />
+
       <div className="grid grid-cols-3 gap-3">
         <Tile label="Waiting for emails" value={waiting} accent />
         <Tile label="Emails found" value={foundSoFar} />
@@ -106,7 +191,7 @@ export function EnrichmentBoard() {
                   {sig > 0 && (
                     <ScopeButton
                       busy={busy === f.id}
-                      onClick={() => enrich(f.id, "signals")}
+                      onClick={() => askEnrich(f.id, "signals", sig, f.label)}
                       label={`${sig} signal${sig === 1 ? "" : "s"}`}
                       cost={sig * PER_EMAIL_USD}
                       primary
@@ -115,7 +200,7 @@ export function EnrichmentBoard() {
                   {all > sig && (
                     <ScopeButton
                       busy={busy === f.id}
-                      onClick={() => enrich(f.id, "all")}
+                      onClick={() => askEnrich(f.id, "all", all, f.label)}
                       label={`all ${all} leads`}
                       cost={all * PER_EMAIL_USD}
                     />
@@ -148,7 +233,7 @@ export function EnrichmentBoard() {
             <Row key={f.id} folder={f} note={f.enrichmentError}>
               <button
                 type="button"
-                onClick={() => enrich(f.id, "signals")}
+                onClick={() => askEnrich(f.id, "signals", signalCount(f), f.label)}
                 disabled={busy === f.id}
                 className="shrink-0 cursor-pointer rounded-lg border border-gh-border bg-gh-surface px-3 py-1.5 text-[11px] font-semibold text-gh-ink transition-colors duration-200 hover:bg-gh-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 disabled:opacity-40"
               >
