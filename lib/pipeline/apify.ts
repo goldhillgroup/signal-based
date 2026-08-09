@@ -433,6 +433,38 @@ function locationForRound(states: string[], round: number): string {
   return `${metros[pass]}, ${stateName}, USA`;
 }
 
+/** One Google Places record, only the fields this pipeline reads. */
+export interface RawPlace {
+  title?: string;
+  website?: string | null;
+  categoryName?: string;
+  phone?: string | null;
+  city?: string | null;
+  address?: string | null;
+  state?: string | null;
+}
+
+/**
+ * Google Places record -> Candidate.
+ *
+ * Separated out so the field names can be asserted against a REAL actor
+ * payload in a test rather than trusted. They were originally written from
+ * memory, and a wrong key here fails silently: the run still succeeds, the
+ * companies still save, and the phone and address are simply never there —
+ * which is exactly how zero of 106 rows ended up with a city.
+ */
+export function placeToCandidate(place: RawPlace): Candidate {
+  return {
+    domain: "",
+    url: place.website!,
+    title: place.title ?? "",
+    channel: "maps",
+    phone: place.phone ?? null,
+    city: place.city ?? null,
+    address: place.address ?? null,
+  };
+}
+
 async function discoverViaMaps(
   industry: Industry | null,
   states: string[],
@@ -477,30 +509,14 @@ async function discoverViaMaps(
       skipClosedPlaces: true,
     },
     timeoutSecs
-  )) as Array<{
-    title?: string;
-    website?: string | null;
-    categoryName?: string;
-    phone?: string | null;
-    city?: string | null;
-    address?: string | null;
-    state?: string | null;
-  }>;
+  )) as RawPlace[];
 
   // This actor bills per place scraped — meter what was actually returned.
   recordCost("apify_maps_place", items.length);
 
   return items
     .filter((place) => place.website)
-    .map((place) => ({
-      domain: "",
-      url: place.website!,
-      title: place.title ?? "",
-      channel: "maps" as const,
-      phone: place.phone ?? null,
-      city: place.city ?? null,
-      address: place.address ?? null,
-    }));
+    .map(placeToCandidate);
 }
 
 // Vertical-specific succession-language phrasings — the point of this
