@@ -64,9 +64,16 @@ function currentActivity(folder: SearchFolder): string {
     // append "· 67 cut", which is the biggest number on a healthy run and made
     // a working search read as mostly failure. The companies-checked line
     // below already shows the work is progressing.
-    return folder.mode === "signal"
-      ? `${folder.qualifiedCount} qualified · ${folder.verifyCount} to verify`
-      : `${folder.qualifiedCount + folder.verifyCount + folder.fitOnlyCount} accepted so far`;
+    //
+    // Same plain wording as the folder card and the finished summary: how many
+    // leads so far, and how many of those carry a signal — not the internal
+    // qualified / verify vocabulary.
+    const found =
+      folder.qualifiedCount + folder.verifyCount + folder.fitOnlyCount;
+    const withSignal = folder.qualifiedCount + folder.verifyCount;
+    return withSignal > 0 && withSignal !== found
+      ? `${found} found · ${withSignal} with signal`
+      : `${found} lead${found === 1 ? "" : "s"} found so far`;
   }
   return "Looking for more to check…";
 }
