@@ -203,3 +203,18 @@ summary {
 @media (prefers-reduced-motion: reduce) {
   .pulse-dot { animation: none !important; }
 }
+
+/* Entrance for list rows and cards. Staggered by the caller via
+   animation-delay so the eye is drawn down in reading order rather than
+   everything appearing at once. Transform + opacity only, so it cannot
+   cause layout shift. */
+@keyframes ghFadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+.fade-up {
+  animation: ghFadeUp 380ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fade-up { animation: none !important; opacity: 1; transform: none; }
+}

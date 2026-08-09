@@ -40,7 +40,7 @@ function LoginForm() {
       setError("Invalid email or password.");
       return;
     }
-    router.push("/dashboard");
+    router.push("/dashboard/overview");
     router.refresh();
   }
 

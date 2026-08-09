@@ -66,20 +66,6 @@ export function SearchIcon({ className }: IconProps) {
   );
 }
 
-export function BellIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden>
-      <path
-        d="M5 8a5 5 0 0110 0c0 3.2 1 4.3 1.5 5H3.5C4 12.3 5 11.2 5 8z"
-        stroke="currentColor"
-        strokeWidth={base}
-        strokeLinejoin="round"
-      />
-      <path d="M8 15.5a2 2 0 004 0" stroke="currentColor" strokeWidth={base} strokeLinecap="round" />
-    </svg>
-  );
-}
-
 export function RadarIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden>

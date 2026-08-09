@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { BellIcon, SearchIcon } from "./icons";
+import { SearchIcon } from "./icons";
 
 export function Topbar() {
   return (
@@ -26,14 +26,17 @@ export function Topbar() {
           <SearchIcon className="h-4 w-4" />
           New search
         </Link>
-        <button
-          type="button"
-          className="relative flex h-9 w-9 items-center justify-center rounded-lg text-gh-ink-secondary transition-colors hover:bg-gh-surface-sunken"
-          aria-label="Notifications"
-        >
-          <BellIcon className="h-4.5 w-4.5" />
-          <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-gh-orange" />
-        </button>
+        {/* The notification bell lived here and did NOTHING: no click handler,
+            no menu, and a hardcoded orange dot that was permanently lit and
+            could never clear. A fake unread badge is worse than no bell,
+            because it teaches you to ignore an indicator that never meant
+            anything, and the one time something DOES need attention you will
+            not look.
+            Everything it pretended to announce already has a real home:
+            finished searches and "ready to enrich" appear on the dashboard via
+            ReturnOverview, and a failed scheduled harvest is reported on
+            Overview. Build a real one against those sources if it is wanted;
+            do not put the shell back. */}
       </div>
     </header>
   );

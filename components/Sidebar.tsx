@@ -41,7 +41,7 @@ export function Sidebar({ userEmail }: { userEmail: string | null }) {
   const pathname = usePathname();
 
   return (
-    <aside className="hidden w-64 shrink-0 flex-col bg-gh-navy text-white lg:flex">
+    <aside className="hidden h-full w-64 shrink-0 flex-col overflow-hidden bg-gh-navy text-white lg:flex">
       <div className="flex h-16 items-center gap-2.5 border-b border-white/10 px-5">
         <Image
           src="/brand/goldhill-mark.png"
@@ -60,7 +60,7 @@ export function Sidebar({ userEmail }: { userEmail: string | null }) {
         </div>
       </div>
 
-      <nav className="flex-1 space-y-1 px-3 py-5">
+      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-5">
         {NAV_ITEMS.map(({ label, icon: Icon, href }) => {
           // Exact match for the dashboard root so it doesn't also light up
           // while on /dashboard/lists/[id] — "All Leads" only lights up on

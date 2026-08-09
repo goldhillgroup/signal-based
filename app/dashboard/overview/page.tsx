@@ -2,6 +2,9 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { SignalFunnel } from "@/components/SignalFunnel";
 import { readHarvestHealth } from "@/lib/pipeline/preflight";
+import { getSchedule } from "@/lib/pipeline/schedule";
+import { DAY_NAMES } from "@/lib/pipeline/schedule-types";
+import { RecentFolders } from "@/components/RecentFolders";
 import { RadarIcon, FolderIcon, SettingsIcon, SearchIcon } from "@/components/icons";
 
 /**
@@ -37,7 +40,14 @@ async function getCounts() {
     0
   );
 
+  const { data: recent } = await supabase
+    .from("searches")
+    .select("id, label, created_at, status, qualified_count, verify_count, fit_only_count, rejected_count, cost_estimate_usd")
+    .order("created_at", { ascending: false })
+    .limit(4);
+
   return {
+    recent: recent ?? [],
     searches: searches.count ?? 0,
     scanned: scanned.count ?? 0,
     icpFit: icpFit.count ?? 0,
@@ -54,10 +64,8 @@ const DESTINATIONS = [
 ];
 
 export default async function OverviewPage() {
-  const [{ searches, scanned, icpFit, signals, contacts, spent }, health] = await Promise.all([
-    getCounts(),
-    readHarvestHealth(),
-  ]);
+  const [{ recent, searches, scanned, icpFit, signals, contacts, spent }, health, schedule] =
+    await Promise.all([getCounts(), readHarvestHealth(), getSchedule()]);
   const rate = signals > 0 ? Math.round(scanned / signals) : null;
 
   return (
@@ -91,7 +99,7 @@ export default async function OverviewPage() {
         </div>
       )}
 
-      <section>
+      <section className="fade-up">
         <SignalFunnel
           scanned={scanned}
           icpFit={icpFit}
@@ -109,13 +117,56 @@ export default async function OverviewPage() {
         </p>
       </section>
 
+      {/* What actually happened, not just totals. */}
+      <section>
+        <div className="mb-2.5 flex items-baseline justify-between">
+          <h2 className="font-display text-sm font-semibold text-gh-ink">Recent searches</h2>
+          {searches > 0 && (
+            <Link href="/dashboard/all-leads" className="text-[11px] font-semibold text-gh-sky hover:underline">
+              All leads
+            </Link>
+          )}
+        </div>
+        <RecentFolders rows={recent} />
+      </section>
+
+      {/* Whether anything runs on its own, answered without opening Settings. */}
+      <section>
+        <div className="fade-up flex items-center gap-3 rounded-xl border border-gh-border bg-gh-surface px-4 py-3.5" style={{ animationDelay: "240ms" }}>
+          <span
+            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+              schedule.enabled ? "bg-gh-lime/20 text-[#5f8a00]" : "bg-gh-surface-sunken text-gh-ink-muted"
+            }`}
+          >
+            <SettingsIcon className="h-4 w-4" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-xs font-semibold text-gh-ink">
+              Weekly harvest is {schedule.enabled ? "on" : "off"}
+            </span>
+            <span className="mt-0.5 block text-[11px] text-gh-ink-muted">
+              {schedule.enabled
+                ? `Runs every ${DAY_NAMES[schedule.dayOfWeek]}, ${schedule.industries.length} vertical${schedule.industries.length === 1 ? "" : "s"} across ${schedule.states.length} state${schedule.states.length === 1 ? "" : "s"}.`
+                : "Nothing runs on its own. Searches happen when you ask."}
+            </span>
+          </span>
+          <Link
+            href="/dashboard/settings"
+            className="shrink-0 rounded-lg border border-gh-border px-3 py-1.5 text-[11px] font-semibold text-gh-ink-secondary transition-colors duration-200 hover:border-gh-sky/40 hover:text-gh-ink"
+          >
+            {schedule.enabled ? "Change" : "Turn on"}
+          </Link>
+        </div>
+      </section>
+
       <section>
         <div className="grid gap-3 sm:grid-cols-3">
-          {DESTINATIONS.map(({ href, icon: Icon, label }) => (
+          {DESTINATIONS.map(({ href, icon: Icon, label }, i) => (
             <Link
               key={href}
               href={href}
-              className="hover-spring group flex items-center gap-2.5 rounded-xl border border-gh-border bg-gh-surface px-4 py-3.5 hover:border-gh-sky/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+              className="fade-up hover-spring group flex items-center gap-2.5 rounded-xl border border-gh-border bg-gh-surface px-4 py-3.5 hover:border-gh-sky/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+              style={{ animationDelay: `${300 + i * 60}ms` }}
             >
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gh-navy/[0.06] text-gh-navy">
                 <Icon className="h-3.5 w-3.5" />
