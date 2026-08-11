@@ -32,8 +32,7 @@ const ROUND_SIZE = 15;
 // ceiling re-reading known companies and find nothing new. Bounded so a run is
 // always part re-check, part fresh ground.
 const RECHECK_PER_RUN = 20;
-const MAX_SCAN_MULTIPLIER = 6; // never scan more than target * this
-const ABSOLUTE_SCAN_CEILING = 240; // hard stop regardless of target, cost/time sanity
+import { MAX_SCAN_MULTIPLIER, ABSOLUTE_SCAN_CEILING } from "./scan-limits";
 
 // How many companies are classified at once. Each one is 1-2 OpenRouter calls
 // (classify, plus disprove when there's a signal to check), so this is bounded

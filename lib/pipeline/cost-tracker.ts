@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { UNIT_USD } from "./pricing";
 
 /**
  * Per-search cost metering.
@@ -35,19 +36,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 // MillionVerifier is ~$0.006 per single-email check. Both are ESTIMATES, same
 // caveat as everything above: the number exists for relative comparison, not
 // for the books.
-const UNIT_USD = {
-  classify_call: 0.012,
-  disprove_call: 0.012,
-  extract_call: 0.002,
-  intake_call: 0.001,
-  tavily_search: 0.008,
-  firecrawl_scrape: 0.01,
-  apify_maps_place: 0.004,
-  apify_serp_page: 0.0035,
-  apify_crawler_run: 0.013,
-  anymailfinder_lookup: 0.05,
-  millionverifier_check: 0.006,
-} as const;
+
 
 export type CostUnit = keyof typeof UNIT_USD;
 

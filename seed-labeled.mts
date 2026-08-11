@@ -166,14 +166,19 @@ if (!write) {
 // the run half-applied with new rows added and old ones still wrong.
 for (const r of contradicted) {
   const db = existing.get(r.domain)!;
+  const reason =
+    REJECTION_TEXT[r.reject_reason] ?? db.reason ?? "Cut by the hand audit.";
   const { error } = await sb
     .from("companies")
     .update({
       status: "rejected",
-      rejection_reason:
-        REJECTION_TEXT[r.reject_reason] ??
-        db.reason ??
-        "Cut by the hand audit.",
+      rejection_reason: reason,
+      // recheck_after, like the insert path 80 lines below and like all five
+      // orchestrator rejection writes. A NULL here is read as PERMANENT by the
+      // cross-search memory preload, so flipping a row to rejected WITHOUT a
+      // date silently blacklists it forever — in a script whose entire purpose
+      // is to keep the auditor's verdict authoritative and reconsiderable.
+      recheck_after: recheckAfterFor("rejected", reason),
     })
     .eq("id", db.id);
   if (error) console.warn(`  could not correct ${r.domain}: ${error.message}`);

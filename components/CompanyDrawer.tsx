@@ -176,7 +176,30 @@ export function CompanyDrawer({
                   that fit the ICP with no signal showed neither — it just
                   appeared. On a real folder that is most of the list, so most
                   of the list was unexplained. */}
-              {fit && (
+              {/* A CUT COMPANY GETS THE OPPOSITE PANEL.
+                  The drawer only ever opened on leads, so it had one story to
+                  tell: why this one is worth calling. Rejected rows are now
+                  clickable from the "Not a fit" tab, and they arrived here with
+                  explainFit returning null — no reason, no verdict, just an
+                  empty space where the explanation should be, under a status
+                  chip reading "Not yet classified". The reason it was cut is
+                  the ONLY thing this panel should say about it. */}
+              {company.status === "rejected" && (
+                <div className="rounded-lg border-l-2 border-gh-border-strong bg-gh-surface-sunken p-3.5">
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gh-ink-muted">
+                    Why this one was cut
+                  </p>
+                  <p className="text-sm font-medium text-gh-ink">
+                    {company.rejectionReason ?? "Cut by one of your gates."}
+                  </p>
+                  <p className="mt-2.5 border-t border-gh-border pt-2.5 text-xs leading-relaxed text-gh-ink-secondary">
+                    It is still on file. A future search reconsiders it when the
+                    reason is one that can stop being true.
+                  </p>
+                </div>
+              )}
+
+              {fit && company.status !== "rejected" && (
                 <div className="rounded-lg border-l-2 border-gh-sky bg-gh-surface-sunken p-3.5">
                   <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gh-ink-muted">
                     Why this one is here

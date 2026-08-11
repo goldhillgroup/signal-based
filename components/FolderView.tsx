@@ -20,6 +20,7 @@ import { BreakdownBars } from "./BreakdownBars";
 import { CompaniesTable } from "./CompaniesTable";
 import { CompanyDrawer } from "./CompanyDrawer";
 import { ArrowLeftIcon, RadarIcon, ZapIcon, InboxIcon, UsersIcon, DownloadIcon } from "./icons";
+import { ENRICH_CEILING_PER_COMPANY_USD } from "@/lib/pipeline/pricing";
 
 export function FolderView({ folder: folderProp, companies: companiesProp }: { folder: SearchFolder; companies: Company[] }) {
   const { fetchFolder, fetchCompanies, startEnrichment } = useSearches();
@@ -140,7 +141,15 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
         confirmLabel="Yes, look them up"
         cancelLabel="No, go back"
         onConfirm={handleEnrich}
-        onCancel={() => setConfirmEnrich(false)}
+        onCancel={() => {
+          setConfirmEnrich(false);
+          // Clearing the pick is the whole point. `confirmEnrich` and
+          // `pendingPick` are two pieces of state for one dialog, and leaving
+          // the pick armed meant the next press of the folder-wide "Enrich
+          // contacts" button re-opened on a selection the user had already
+          // rejected — spending on companies they had backed out of.
+          setPendingPick(null);
+        }}
         body={
           <>
             <p>
@@ -165,7 +174,7 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
             <p className="mt-2">
               Costs up to{" "}
               <strong className="font-semibold text-gh-ink">
-                ${(enrichCount * 0.05).toFixed(2)}
+                ${(enrichCount * ENRICH_CEILING_PER_COMPANY_USD).toFixed(2)}
               </strong>
               , charged only for the addresses actually found.
             </p>
@@ -263,7 +272,11 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
         </div>
         <button
           type="button"
-          onClick={() => setConfirmEnrich(true)}
+          onClick={() => {
+            // Folder-wide: explicitly NOT a pick, so any stale one is dropped.
+            setPendingPick(null);
+            setConfirmEnrich(true);
+          }}
           disabled={folder.enrichmentStatus === "running"}
           className="shrink-0 rounded-lg bg-gh-navy px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-gh-navy-2 disabled:cursor-not-allowed disabled:opacity-50"
         >

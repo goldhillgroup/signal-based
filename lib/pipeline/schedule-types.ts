@@ -1,3 +1,4 @@
+import { scansFor, SECONDS_PER_COMPANY } from "./scan-limits";
 import type { Industry, SearchMode } from "../supabase/types";
 
 /**
@@ -171,4 +172,44 @@ export function weeklyLabel(industry: Industry, now: Date): string {
   const when = now.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const what = industry === "home_builder" ? "Home builders" : "Landscaping";
   return `Weekly harvest: ${what}, ${when}`;
+}
+
+
+/**
+ * Whether a harvest can actually FINISH inside the server's function ceiling.
+ *
+ * The cron runs one pipeline per vertical SEQUENTIALLY inside a single
+ * invocation, so the cost of the whole harvest is per-vertical time multiplied
+ * by the number of verticals — and nothing anywhere checked that against the
+ * ceiling. The shipped default (both verticals, 20 companies each) needs about
+ * 21 minutes against a 13.3-minute ceiling, so the SECOND vertical was being
+ * killed roughly halfway through, every week, silently. reapStaleRuns closes
+ * the row out honestly, which is why it looked like a short week rather than a
+ * bug.
+ *
+ * 5.2 s/company is measured end to end (fetch + classify + disprove), not
+ * estimated. The scan ceiling mirrors the orchestrator's own so the two cannot
+ * drift.
+ */
+export function harvestEstimate(
+  targetPerRun: number,
+  verticals: number,
+  ceilingMs: number
+): { minutes: number; fits: boolean; perVerticalMinutes: number; maxTargetThatFits: number } {
+  const perVerticalSeconds = scansFor(targetPerRun) * SECONDS_PER_COMPANY;
+  const n = Math.max(verticals, 1);
+  const totalSeconds = perVerticalSeconds * n;
+
+  // Largest target whose whole harvest still fits, for the message.
+  let maxTargetThatFits = 0;
+  for (let t = 1; t <= 100; t++) {
+    if (scansFor(t) * SECONDS_PER_COMPANY * n * 1000 <= ceilingMs) maxTargetThatFits = t;
+  }
+
+  return {
+    minutes: totalSeconds / 60,
+    perVerticalMinutes: perVerticalSeconds / 60,
+    fits: totalSeconds * 1000 <= ceilingMs,
+    maxTargetThatFits,
+  };
 }

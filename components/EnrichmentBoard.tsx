@@ -7,6 +7,7 @@ import { CountUp } from "./CountUp";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { EnrichProgress } from "./EnrichProgress";
 import { UsersIcon, CheckIcon } from "./icons";
+import { ENRICH_CEILING_PER_COMPANY_USD } from "@/lib/pipeline/pricing";
 
 /**
  * Contact enrichment as its own job, across every search.
@@ -40,8 +41,8 @@ function signalCount(f: SearchFolder): number {
   return f.qualifiedCount + f.verifyCount;
 }
 
-/** ~$0.05 per address at AnymailFinder's rate; they bill only on a find. */
-const PER_EMAIL_USD = 0.05;
+/** The real ceiling per company — see ENRICH_CEILING_PER_COMPANY_USD. */
+const PER_EMAIL_USD = ENRICH_CEILING_PER_COMPANY_USD;
 
 export function EnrichmentBoard() {
   const { folders, loading, startEnrichment, refreshFolders } = useSearches();

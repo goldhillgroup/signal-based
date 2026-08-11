@@ -8,6 +8,8 @@ import { INDUSTRY_META } from "@/lib/signal-meta";
 import type { Industry } from "@/lib/supabase/types";
 import { StatePicker } from "./StatePicker";
 import { CheckIcon } from "./icons";
+import { harvestEstimate } from "@/lib/pipeline/schedule-types";
+import { RUN_CEILING_MS } from "@/lib/pipeline/reap";
 
 const TARGETS = [10, 20, 50];
 
@@ -55,6 +57,19 @@ export function WeeklySchedule({
       setSaving(false);
     }
   }
+
+  // Recomputed on every change, because the answer depends on the target AND
+  // how many verticals are ticked — the two controls that sit next to it.
+  const estimate = harvestEstimate(
+    schedule.targetPerRun,
+    schedule.industries.length,
+    RUN_CEILING_MS
+  );
+  // Snapped to an option the picker actually offers. The raw answer is the
+  // largest target that fits (12 for two verticals), and offering a number the
+  // three chips below cannot represent would leave none of them selected after
+  // the fix — a control that looks broken because it accepted your input.
+  const suggested = [...TARGETS].reverse().find((n) => n <= estimate.maxTargetThatFits) ?? null;
 
   const patch = (p: Partial<Schedule>) => setSchedule({ ...schedule, ...p });
   const canEnable = schedule.states.length > 0 && schedule.industries.length > 0;
@@ -294,6 +309,52 @@ export function WeeklySchedule({
             </button>
           ))}
         </div>
+
+        {/* THE TIME BUDGET, said out loud.
+            The cron runs one pipeline per vertical sequentially inside a single
+            function invocation, and nothing anywhere checked that total against
+            the server's ceiling. The shipped default — both verticals, 20 each —
+            needs about 21 minutes against a 13.3-minute limit, so the second
+            vertical was killed roughly halfway through every week. It looked
+            like a quiet week rather than a bug, because reapStaleRuns closes the
+            row out honestly.
+
+            Shown as a warning rather than enforced as a cap: the ceiling depends
+            on the hosting plan, so the honest thing is to state the arithmetic
+            and let the choice be made with it visible. */}
+        {!estimate.fits && (
+          <p className="fade-in mt-3 rounded-lg border border-gh-warning/40 bg-gh-warning/[0.10] px-3 py-2 text-[11px] leading-relaxed text-gh-ink-secondary">
+            <strong className="font-semibold text-gh-ink">
+              This will not finish in one run.
+            </strong>{" "}
+            {schedule.industries.length} vertical
+            {schedule.industries.length === 1 ? "" : "s"} at {schedule.targetPerRun} each is
+            about {estimate.minutes.toFixed(0)} minutes of scanning, and the server stops a
+            run at {Math.round(RUN_CEILING_MS / 60000)}. Whatever it has found is saved, but
+            the rest is cut off.{" "}
+            {suggested !== null ? (
+              <>
+                Drop to{" "}
+                <button
+                  type="button"
+                  onClick={() => patch({ targetPerRun: suggested })}
+                  className="cursor-pointer font-semibold text-gh-sky underline-offset-2 hover:underline"
+                >
+                  {suggested} each
+                </button>{" "}
+                to fit, or scan one vertical.
+              </>
+            ) : (
+              <>Scan one vertical at a time.</>
+            )}
+          </p>
+        )}
+        {estimate.fits && schedule.enabled && (
+          <p className="mt-3 text-[11px] text-gh-ink-muted">
+            About {estimate.minutes < 1 ? "under a minute" : `${estimate.minutes.toFixed(0)} minutes`} of
+            scanning per week, inside the {Math.round(RUN_CEILING_MS / 60000)} minute server limit.
+          </p>
+        )}
 
         {schedule.lastRunOn && (
           <p className="mt-3 text-[11px] text-gh-ink-muted">

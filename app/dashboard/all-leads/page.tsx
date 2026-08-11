@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearches, type SearchFolder } from "@/lib/searches-store";
 import { Company } from "@/lib/company";
-import { getSummaryStats } from "@/lib/stats";
+
 import { downloadCompaniesCsv } from "@/lib/csv-export";
 import { CompaniesTable } from "@/components/CompaniesTable";
 import { CompanyDrawer } from "@/components/CompanyDrawer";
@@ -19,6 +19,7 @@ import {
   RadarIcon,
   TrashIcon,
 } from "@/components/icons";
+import { ENRICH_CEILING_PER_COMPANY_USD } from "@/lib/pipeline/pricing";
 
 /**
  * Every lead ever found, ONE FOLDER AT A TIME, and folders first.
@@ -241,7 +242,7 @@ export default function AllLeadsPage() {
             <p className="mt-2">
               Costs up to{" "}
               <strong className="font-semibold text-gh-ink">
-                ${(pendingPick.length * 0.05).toFixed(2)}
+                ${(pendingPick.length * ENRICH_CEILING_PER_COMPANY_USD).toFixed(2)}
               </strong>
               , charged only for the addresses actually found.
             </p>
@@ -293,7 +294,6 @@ export default function AllLeadsPage() {
     // The button says so, because a file three times the size of the screen is
     // a surprise worth spending eight words on.
     const visibleLeads = visible.filter((c) => c.status === "qualified").length;
-    const stats = getSummaryStats(visible);
     const selected = visible.find((c) => c.id === selectedId) ?? null;
 
     return (
@@ -320,7 +320,7 @@ export default function AllLeadsPage() {
                 {openFolder.label}
               </h1>
               <p className="mt-1 text-sm text-gh-ink-secondary">
-                {stats.total} lead{stats.total === 1 ? "" : "s"} · scraped{" "}
+                {visibleLeads} lead{visibleLeads === 1 ? "" : "s"} · scraped{" "}
                 {dayLabel(dayKey(openFolder.createdAt))}
               </p>
             </div>

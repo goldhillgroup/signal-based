@@ -6,6 +6,7 @@ import { getSchedule, saveSchedule } from "@/lib/pipeline/schedule";
 import { shouldRunNow, isoDay, weeklyLabel } from "@/lib/pipeline/schedule-types";
 import { preflightBlocker, creditBlockerFor, recordHarvestHealth } from "@/lib/pipeline/preflight";
 import { stateNameFor } from "@/lib/pipeline/us-states";
+import type { Industry } from "@/lib/supabase/types";
 
 // Same ceiling as the interactive route — this runs the identical pipeline.
 // See app/api/search/route.ts for why 800 and what it requires.
@@ -100,7 +101,12 @@ export async function GET(req: Request) {
   // direction is a skipped week; in the other it is a doubled bill.
   await saveSchedule({ ...schedule, lastRunOn: isoDay(now) });
 
-  const started: { id: string; label: string }[] = [];
+  // The INDUSTRY travels with the row. `started` is only appended to on a
+  // successful insert while `schedule.industries` is not, so indexing one by
+  // the other's position desynchronised the moment any insert failed — the
+  // surviving folder would then be run with the wrong vertical's search terms
+  // and labelled as the vertical it is not.
+  const started: { id: string; label: string; industry: Industry }[] = [];
   const failed: string[] = [];
 
   // One search per vertical, so each lands as its own folder — the same shape
@@ -133,7 +139,7 @@ export async function GET(req: Request) {
       failed.push(`${industry}: ${error?.message ?? "insert failed"}`);
       continue;
     }
-    started.push({ id: search.id, label: search.label });
+    started.push({ id: search.id, label: search.label, industry });
   }
 
   if (started.length === 0) {
@@ -154,11 +160,11 @@ export async function GET(req: Request) {
   // budget guards exist to prevent, and the fastest way to burn a monthly
   // quota in a single night.
   after(async () => {
-    for (let i = 0; i < started.length; i++) {
-      const industry = schedule.industries[i];
+    for (const run of started) {
+      const industry = run.industry;
       try {
         await runSearchPipeline(
-          started[i].id,
+          run.id,
           industry,
           schedule.states,
           schedule.targetPerRun,

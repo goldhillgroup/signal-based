@@ -434,6 +434,12 @@ button:not(:disabled):not(.lift):not(.hover-spring):active,
   100% { transform: scale(2.2); opacity: 0; }
 }
 .ping-ring {
+  /* Base opacity on the ELEMENT, not only inside the keyframe. It used to live
+     only in the 0% frame, so the moment the animation was not running — under
+     prefers-reduced-motion, or during the stagger delay before the first frame
+     — opacity fell back to 1 and the rings rendered as solid discs over the
+     radar mark. */
+  opacity: var(--gh-ring-opacity, 0.2);
   animation: ghPing 2.4s cubic-bezier(0, 0, 0.2, 1) infinite;
   animation-delay: var(--gh-ring-delay, 0ms);
 }

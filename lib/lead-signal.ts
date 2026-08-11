@@ -104,9 +104,27 @@ export interface Lead {
   sourceUrl: string | null;
 }
 
+/**
+ * Is this actually a person's name, or a placeholder standing in for one?
+ *
+ * The pipeline and the audit both write "-", "n/a", "unknown", "none" and the
+ * empty string when a name is absent, and a plain truthiness test passes every
+ * one of them through. They were rendering as the named contact in the "Who to
+ * reach" column, on the card, and in the CSV's `next_gen` field — a lead list
+ * whose contact column reads "-" is worse than one that says nothing, because
+ * it looks like data.
+ */
+function realName(v: string | null): boolean {
+  if (!v) return false;
+  const t = v.trim();
+  if (t.length < 2) return false;
+  return !/^(-+|n\/?a|none|null|unknown|not stated|not listed|tbd|\?+)$/i.test(t);
+}
+
 /** The people whose presence IS the signal. */
 export function leadPeople(c: Company): { founder: string | null; nextGen: string | null } {
-  const fmt = (n: string | null, t: string | null) => (n ? (t ? `${n}, ${t}` : n) : null);
+  const fmt = (n: string | null, t: string | null) =>
+    realName(n) ? (realName(t) ? `${n!.trim()}, ${t!.trim()}` : n!.trim()) : null;
   return { founder: fmt(c.founderName, c.founderTitle), nextGen: fmt(c.nextGenName, c.nextGenTitle) };
 }
 
@@ -189,8 +207,19 @@ export function toLead(c: Company): Lead {
 
   // The signal detail, best available first: the company's own words, then the
   // people found, then an honest statement that neither exists yet.
+  //
+  // The INFERRED sentences are suppressed for a cut company. They are built
+  // from founder/next-gen fields the classifier populated before the gates ran,
+  // so a company rejected for having only one generation on the page was still
+  // printing "A and B are both named on the site" immediately above "Cut
+  // because: only one generation is on the leadership page". A real quote is
+  // kept — that is something the site actually said, and it is evidence either
+  // way — but the derived claim contradicts the verdict and has to go.
   const detail =
     c.evidence?.quote ??
+    (c.status === "rejected"
+      ? "Cut before this was established. The reason is below."
+      : null) ??
     (founder && nextGen
       ? `${founder} and ${nextGen} are both named on the site.`
       : founder
