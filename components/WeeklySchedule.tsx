@@ -8,13 +8,17 @@ import { INDUSTRY_META } from "@/lib/signal-meta";
 import type { Industry } from "@/lib/supabase/types";
 import { StatePicker } from "./StatePicker";
 import { CheckIcon } from "./icons";
-import { harvestEstimate } from "@/lib/pipeline/schedule-types";
-import { RUN_CEILING_MS } from "@/lib/pipeline/reap";
+import { harvestEstimate, monthlyPageUse, HARVEST_CEILING_MS } from "@/lib/pipeline/schedule-types";
 
-const TARGETS = [10, 20, 50];
+// 50 is gone, and 15 replaces 20. A weekly harvest reads target x 6 companies
+// per vertical, 4.3 times a month, and each company costs one Firecrawl page
+// against a 1,025/month quota. Two verticals at 20 is 1,032 — over, every
+// month. At 15 it is 774. Offering a number that cannot run for a full month
+// is offering a broken setting.
+const TARGETS = [5, 10, 15];
 
 /**
- * On/off switch and configuration for the monthly harvest.
+ * On/off switch and configuration for the weekly harvest.
  *
  * The whole point is that it is HIS to control. A scheduled job that spends
  * money without a visible switch is not a feature, it is a surprise on a
@@ -60,25 +64,32 @@ export function WeeklySchedule({
 
   // Recomputed on every change, because the answer depends on the target AND
   // how many verticals are ticked — the two controls that sit next to it.
+  // Measured against the HARVEST's own driver (GitHub Actions, 90-minute job),
+  // not the Vercel function ceiling. Warning about 5 minutes here was left over
+  // from when Vercel's cron drove it, and told the user a perfectly runnable
+  // harvest would be cut off.
   const estimate = harvestEstimate(
     schedule.targetPerRun,
     schedule.industries.length,
-    RUN_CEILING_MS
+    HARVEST_CEILING_MS
   );
   // Snapped to an option the picker actually offers. The raw answer is the
   // largest target that fits (12 for two verticals), and offering a number the
   // three chips below cannot represent would leave none of them selected after
   // the fix — a control that looks broken because it accepted your input.
   const suggested = [...TARGETS].reverse().find((n) => n <= estimate.maxTargetThatFits) ?? null;
+  // The OTHER limit, and the one the shipped default actually broke: a harvest
+  // reads one Firecrawl page per company, every week, against a monthly quota.
+  const pages = monthlyPageUse(schedule.targetPerRun, schedule.industries.length);
 
   const patch = (p: Partial<Schedule>) => setSchedule({ ...schedule, ...p });
   const canEnable = schedule.states.length > 0 && schedule.industries.length > 0;
 
   return (
     <section>
-      <h2 className="font-display text-lg font-semibold text-gh-ink">Monthly harvest</h2>
+      <h2 className="font-display text-lg font-semibold text-gh-ink">Weekly harvest</h2>
       <p className="mt-0.5 text-sm text-gh-ink-secondary">
-        Scan automatically once a month and drop the results in a new folder -
+        Scan automatically once a week and drop the results in a new folder -
         so there are fresh leads waiting without running a search yourself.
       </p>
 
@@ -106,7 +117,7 @@ export function WeeklySchedule({
             type="button"
             role="switch"
             aria-checked={schedule.enabled}
-            aria-label="Monthly harvest"
+            aria-label="Weekly harvest"
             disabled={!schedule.enabled && !canEnable}
             onClick={() => save({ ...schedule, enabled: !schedule.enabled })}
             className={`relative h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 disabled:cursor-not-allowed disabled:opacity-40 ${
@@ -171,7 +182,7 @@ export function WeeklySchedule({
           })}
         </div>
         <p className="mt-1.5 text-[11px] text-gh-ink-muted">
-          Each vertical becomes its own folder every month.
+          Each vertical becomes its own folder every week.
         </p>
 
         <div className="mt-4">
@@ -322,7 +333,7 @@ export function WeeklySchedule({
             function invocation, and nothing anywhere checked that total against
             the server's ceiling. The shipped default — both verticals, 20 each —
             needs about 21 minutes against a 13.3-minute limit, so the second
-            vertical was killed roughly halfway through every month. It looked
+            vertical was killed roughly halfway through every week. It looked
             like a quiet week rather than a bug, because reapStaleRuns closes the
             row out honestly.
 
@@ -337,7 +348,7 @@ export function WeeklySchedule({
             {schedule.industries.length} vertical
             {schedule.industries.length === 1 ? "" : "s"} at {schedule.targetPerRun} each is
             about {estimate.minutes.toFixed(0)} minutes of scanning, and the server stops a
-            run at {Math.round(RUN_CEILING_MS / 60000)}. Whatever it has found is saved, but
+            run at {Math.round(HARVEST_CEILING_MS / 60000)}. Whatever it has found is saved, but
             the rest is cut off.{" "}
             {suggested !== null ? (
               <>
@@ -356,12 +367,39 @@ export function WeeklySchedule({
             )}
           </p>
         )}
+        {!pages.fits && (
+          <p className="fade-in mt-3 rounded-lg border border-gh-warning/40 bg-gh-warning/[0.10] px-3 py-2 text-[11px] leading-relaxed text-gh-ink-secondary">
+            <strong className="font-semibold text-gh-ink">
+              This would run out of page credits.
+            </strong>{" "}
+            {schedule.industries.length} vertical
+            {schedule.industries.length === 1 ? "" : "s"} at {schedule.targetPerRun} each,
+            every week, reads about {Math.round(pages.pages).toLocaleString()} pages a month
+            against a {pages.quota.toLocaleString()} allowance — so the last week of each
+            month would find nothing.{" "}
+            {pages.maxTargetThatFits > 0 && (
+              <>Drop to {pages.maxTargetThatFits} or fewer, or scan one vertical.</>
+            )}
+          </p>
+        )}
+
         {estimate.fits && schedule.enabled && (
           <p className="mt-3 text-[11px] text-gh-ink-muted">
             About {estimate.minutes < 1 ? "under a minute" : `${estimate.minutes.toFixed(0)} minutes`} of
-            scanning per month, inside the {Math.round(RUN_CEILING_MS / 60000)} minute server limit.
+            scanning per week, inside the {Math.round(HARVEST_CEILING_MS / 60000)} minute job limit.
           </p>
         )}
+
+        {/* DISCOVERY ONLY. A harvest runs the same pipeline a manual search does
+            — find companies, read their pages, judge the signal — and stops
+            there. It never calls AnymailFinder or MillionVerifier, so it cannot
+            spend the email budget while nobody is watching. Buying an address
+            stays a deliberate act with a confirmation in front of it. */}
+        <p className="mt-3 text-[11px] leading-relaxed text-gh-ink-muted">
+          Finds and judges companies only. It never looks up email addresses —
+          that stays a separate step you press yourself, so nothing buys
+          contacts overnight.
+        </p>
 
         {schedule.lastRunOn && (
           <p className="mt-3 text-[11px] text-gh-ink-muted">

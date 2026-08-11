@@ -87,53 +87,54 @@ export function daysBetween(fromIso: string, toIso: string): number {
  * `dayOfWeek` is therefore the EARLIEST preferred day, not a hard gate.
  */
 /**
- * MONTHLY, not weekly, and the reason is the vendors rather than the leads.
+ * Weekly. The cadence is fine; the SIZE was the problem.
  *
- * Measured against the real quotas at the shipped default (2 verticals, 20
- * companies each = 240 companies per harvest):
+ * A harvest spends Apify, Tavily, Firecrawl and OpenRouter. It does NOT spend
+ * AnymailFinder or MillionVerifier — those are the manual enrichment step, and
+ * nothing in the harvest path calls them. So the binding constraint is
+ * Firecrawl's monthly page quota, and it depends entirely on the target:
  *
- *              weekly (4.3/mo)     monthly (1/mo)
- *   companies  1,032               240
- *   cost       $21.88/mo, $262/yr  $5.09/mo, $61/yr
- *   Firecrawl  1,032 of 1,025      240 of 1,025
- *   AnymailFdr 365 credits: 2.1mo  9.1 months
+ *   target  companies/run  pages/month  vs 1,025 quota
+ *     10        120            516      fits
+ *     15        180            774      fits
+ *     18        216            929      fits
+ *     20        240          1,032      OVER
+ *     50        480          2,064      OVER
  *
- * Weekly EXCEEDS the Firecrawl page quota every month and burns the
- * AnymailFinder balance in two. Monthly fits every vendor with room, at a
- * quarter of the cost — and for a signal that changes on the timescale of a
- * son or daughter joining the business, a month is the honest cadence anyway.
+ * So a weekly harvest is affordable up to a target of 19 across two verticals,
+ * and the shipped default of 20 was one notch past it. Capping the target is
+ * the right fix rather than stretching the cadence — weekly is what makes the
+ * product feel alive, and the overspend was never about how often it ran.
  */
-const CADENCE_DAYS = 28;
+const CADENCE_DAYS = 7;
 
 /**
  * Off-day catch-up. Past this many days the harvest stops holding out for its
  * preferred weekday and runs on the next ping, whatever day that is.
  *
- * CADENCE + 3: long enough that the anchor day gets a fair chance to come
- * round, short enough that one bad deploy does not cost a whole extra month.
+ * 10, not 14: a fortnight means a whole extra Monday passes before anything
+ * happens, which is a full week of leads lost to one bad deploy.
  */
-const CATCH_UP_DAYS = CADENCE_DAYS + 3;
+const CATCH_UP_DAYS = 10;
 
 /**
  * Minimum gap when it IS the preferred day.
  *
- * What makes the schedule self-correcting. Its whole job is the case AFTER an
- * off-day catch-up: a catch-up on the 30th sets lastRunOn to the 30th, and a
- * full 28-day cooldown would then skip the next anchor day and push the
- * schedule out by another month. At 21 days the next anchor runs and the
- * cadence is back where it belongs.
- *
- * Three weeks, not two: it must never be small enough to allow two harvests
- * inside one month, which is exactly the overspend this cadence exists to
- * prevent.
+ * Deliberately small, and it is what makes the schedule self-correcting. The
+ * preferred day only comes round every 7 days, so this can never cause two
+ * runs in a week by itself — its whole job is the case AFTER an off-day
+ * catch-up. A catch-up on Thursday sets lastRunOn to Thursday; the next Monday
+ * is then only 4 days later, and a 7-day cooldown would skip it and push the
+ * schedule out to the Monday after. With this, that Monday runs and the
+ * cadence is back on its anchor immediately.
  */
-const PREFERRED_DAY_MIN_DAYS = 21;
+const PREFERRED_DAY_MIN_DAYS = 2;
 
 export function shouldRunNow(
   s: WeeklySchedule,
   now: Date
 ): { run: boolean; reason: string } {
-  if (!s.enabled) return { run: false, reason: "Monthly harvest is switched off." };
+  if (!s.enabled) return { run: false, reason: "Weekly harvest is switched off." };
   if (s.states.length === 0 || s.industries.length === 0) {
     return { run: false, reason: "Nothing configured to scan." };
   }
@@ -143,9 +144,9 @@ export function shouldRunNow(
 
   if (s.lastRunOn) {
     const days = daysBetween(s.lastRunOn, today);
-    // The cooldown IS the spend limit. A month of nothing changing is the whole
-    // reason not to re-ask sooner — see recheck-policy.ts, which applies the
-    // same idea per company.
+    // The cooldown IS the weekly limit. Seven days of nothing changing is the
+    // whole reason not to re-ask sooner — see recheck-policy.ts, which applies
+    // the same idea per company.
     const isPreferredDay = now.getDay() === s.dayOfWeek;
 
     // On the anchor day, a short gap is enough — see PREFERRED_DAY_MIN_DAYS.
@@ -195,7 +196,7 @@ export function shouldRunNow(
 export function weeklyLabel(industry: Industry, now: Date): string {
   const when = now.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const what = industry === "home_builder" ? "Home builders" : "Landscaping";
-  return `Monthly harvest: ${what}, ${when}`;
+  return `Weekly harvest: ${what}, ${when}`;
 }
 
 
@@ -215,6 +216,43 @@ export function weeklyLabel(industry: Industry, now: Date): string {
  * estimated. The scan ceiling mirrors the orchestrator's own so the two cannot
  * drift.
  */
+/**
+ * How long the harvest's actual driver allows.
+ *
+ * NOT the Vercel function ceiling. The harvest runs in GitHub Actions — see
+ * .github/workflows/weekly-harvest.yml, whose job timeout is 90 minutes — and
+ * vercel.json has no cron block, because at 300s that driver could only ever
+ * half-finish a harvest and would still consume the week.
+ *
+ * The schedule screen used to warn against the 300s ceiling, which was correct
+ * when Vercel drove it and became misleading the moment Actions did: it told
+ * someone a perfectly runnable harvest would be cut off.
+ */
+export const HARVEST_CEILING_MS = 90 * 60_000;
+
+/** Firecrawl's monthly page allowance — the binding limit on harvest size. */
+export const FIRECRAWL_PAGES_PER_MONTH = 1025;
+/** Weeks in a month, for turning a per-run figure into a monthly one. */
+const RUNS_PER_MONTH = 4.3;
+
+/**
+ * Pages a weekly harvest of this shape consumes per month, and whether that
+ * fits. The harvest reads one page per company; enrichment is a separate,
+ * manual step and is not counted here because no harvest path calls it.
+ */
+export function monthlyPageUse(
+  targetPerRun: number,
+  verticals: number
+): { pages: number; quota: number; fits: boolean; maxTargetThatFits: number } {
+  const n = Math.max(verticals, 1);
+  const pages = scansFor(targetPerRun) * n * RUNS_PER_MONTH;
+  let maxTargetThatFits = 0;
+  for (let t = 1; t <= 100; t++) {
+    if (scansFor(t) * n * RUNS_PER_MONTH <= FIRECRAWL_PAGES_PER_MONTH) maxTargetThatFits = t;
+  }
+  return { pages, quota: FIRECRAWL_PAGES_PER_MONTH, fits: pages <= FIRECRAWL_PAGES_PER_MONTH, maxTargetThatFits };
+}
+
 export function harvestEstimate(
   targetPerRun: number,
   verticals: number,

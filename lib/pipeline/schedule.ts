@@ -4,7 +4,7 @@ import type { WeeklySchedule } from "./schedule-types";
 import type { Industry, SearchMode } from "../supabase/types";
 
 /**
- * SERVER-ONLY half of the monthly harvest. Reads and writes the stored config.
+ * SERVER-ONLY half of the weekly harvest. Reads and writes the stored config.
  *
  * Anything a Client Component needs at runtime lives in ./schedule-types —
  * this file reaches lib/supabase/server and therefore `next/headers`, and
@@ -32,7 +32,10 @@ export const DEFAULT_SCHEDULE: WeeklySchedule = {
   dayOfWeek: 1, // Monday: results are waiting at the start of his week
   industries: ["landscaping", "home_builder"],
   states: [...AGREED_STATES],
-  targetPerRun: 20,
+  // 10, not 20. Two verticals at 20 reads 1,032 Firecrawl pages a month against
+  // a 1,025 quota — the shipped default was over the limit every month. 10 is
+  // 516, which leaves room for manual searches on top.
+  targetPerRun: 10,
   mode: "hybrid",
   // Same baseline the one-off form defaults to, so a scheduled scan and a
   // manual one for the same thing return the same companies.

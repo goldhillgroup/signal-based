@@ -31,13 +31,13 @@ import { SheetsButton } from "@/components/SheetsButton";
  *    straight onto one folder's rows with the others as chips above them,
  *    which answered "what is in this folder" before he had asked which folder.
  *    You now pick, then look. There is no "Everything" any more either: a
- *    combined table grows without bound, so it got less useful every month, and
+ *    combined table grows without bound, so it got less useful every week, and
  *    it was never the question anyone actually had.
  *
  * 2. THE FOLDER IS NAMED FOR WHAT IS IN IT; the date is a specification, not a
  *    title. An interim version keyed on the day ("Today", "Yesterday") and that
  *    was wrong: a date cannot tell you whether a folder holds landscapers in
- *    Texas or home builders in Florida, and once the monthly harvest runs there
+ *    Texas or home builders in Florida, and once the weekly harvest runs there
  *    are two folders sharing every date.
  *
  * 3. ONLY LEADS. Rejected companies are not shown here, or anywhere else in the

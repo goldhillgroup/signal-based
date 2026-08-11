@@ -45,11 +45,11 @@ export async function POST(req: Request) {
     : current.industries;
 
   // Turning it ON with nothing to scan would create a schedule that fires and
-  // silently does nothing every month. Refuse rather than store it.
+  // silently does nothing every week. Refuse rather than store it.
   const enabled = typeof body.enabled === "boolean" ? body.enabled : current.enabled;
   if (enabled && (states.length === 0 || industries.length === 0)) {
     return NextResponse.json(
-      { error: "Pick at least one vertical and one state before switching the monthly harvest on." },
+      { error: "Pick at least one vertical and one state before switching the weekly harvest on." },
       { status: 400 }
     );
   }

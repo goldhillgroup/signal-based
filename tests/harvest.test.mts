@@ -43,40 +43,32 @@ ok("Monday ping runs", shouldRunNow(cfg({}), MON).run, shouldRunNow(cfg({}), MON
 ok("Tuesday ping does not run before a first run",
    !shouldRunNow(cfg({}), TUE).run, shouldRunNow(cfg({}), TUE).reason);
 
-// ── after a Monday run, the next one is FOUR Mondays later ────────────────
-// The cadence is monthly (28 days) because weekly exceeds the Firecrawl page
-// quota every month and burns the AnymailFinder balance in two — see
-// CADENCE_DAYS. Monday is still the anchor; it is simply a Monday a month on.
+// ── after a Monday run, the next one is the following Monday ──────────────
+// Weekly, with the SIZE capped instead of the cadence stretched: the Firecrawl
+// page quota is what limits a harvest, and it depends on the target, not on how
+// often it runs. See CADENCE_DAYS and monthlyPageUse.
 const ranMon = cfg({ lastRunOn: isoDay(MON) });
 ok("does not run twice on the same Monday", !shouldRunNow(ranMon, MON).run);
 ok("does not run on Tuesday", !shouldRunNow(ranMon, TUE).run);
 ok("does not run mid-week", !shouldRunNow(ranMon, new Date("2026-08-13T13:00:00Z")).run);
 ok("does not run on day six", !shouldRunNow(ranMon, new Date("2026-08-16T13:00:00Z")).run);
-// The heart of the change: a week is no longer enough, even on the anchor day.
-ok("does NOT run on the next Monday, a week is not a month",
-   !shouldRunNow(ranMon, NEXT_MON).run, shouldRunNow(ranMon, NEXT_MON).reason);
-ok("does not run at a fortnight either",
-   !shouldRunNow(ranMon, new Date("2026-08-24T13:00:00Z")).run);
-ok("RUNS four Mondays later", shouldRunNow(ranMon, new Date("2026-09-07T13:00:00Z")).run,
-   shouldRunNow(ranMon, new Date("2026-09-07T13:00:00Z")).reason);
+ok("RUNS on the next Monday", shouldRunNow(ranMon, NEXT_MON).run,
+   shouldRunNow(ranMon, NEXT_MON).reason);
 
 // ── MONDAY IS AN ANCHOR: a run past the cooldown still waits for Monday ───
 // Without this the schedule drifts a day per incident and never returns.
 const ranTue = cfg({ lastRunOn: "2026-08-04" }); // a Tuesday
-ok("does not fire on a later Tuesday just because the cadence elapsed",
-   !shouldRunNow(ranTue, new Date("2026-09-01T13:00:00Z")).run,
-   shouldRunNow(ranTue, new Date("2026-09-01T13:00:00Z")).reason);
-// 27 days later and it IS Monday: past PREFERRED_DAY_MIN_DAYS, so it re-anchors
-// rather than pushing the schedule out by another whole month.
-ok("returns to Monday", shouldRunNow(ranTue, new Date("2026-08-31T13:00:00Z")).run,
-   shouldRunNow(ranTue, new Date("2026-08-31T13:00:00Z")).reason);
+ok("does not fire on the following Tuesday just because 7 days passed",
+   !shouldRunNow(ranTue, new Date("2026-08-11T13:00:00Z")).run,
+   shouldRunNow(ranTue, new Date("2026-08-11T13:00:00Z")).reason);
+ok("returns to Monday", shouldRunNow(ranTue, new Date("2026-08-17T13:00:00Z")).run,
+   shouldRunNow(ranTue, new Date("2026-08-17T13:00:00Z")).reason);
 
-// ── but a long gap catches up rather than waiting out another month ───────
-const stale = cfg({ lastRunOn: "2026-06-28" }); // 44 days before TUE
-ok("a 44-day gap runs on the next ping, whatever day",
+// ── but a long gap catches up rather than waiting out another week ────────
+const stale = cfg({ lastRunOn: "2026-07-28" }); // 12 days before TUE
+ok("a 12-day gap runs on the next ping, whatever day",
    shouldRunNow(stale, TUE).run, shouldRunNow(stale, TUE).reason);
 ok("a 6-day gap still waits", !shouldRunNow(cfg({ lastRunOn: "2026-08-05" }), TUE).run);
-ok("a 20-day gap still waits", !shouldRunNow(cfg({ lastRunOn: "2026-07-22" }), TUE).run);
 
 // ── off means off ─────────────────────────────────────────────────────────
 ok("disabled never runs", !shouldRunNow(cfg({ enabled: false }), MON).run);

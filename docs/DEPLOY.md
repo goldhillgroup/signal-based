@@ -19,7 +19,7 @@ designed for that and row-level security is what protects the data. The
 service-role key must **never** be given a `NEXT_PUBLIC_` prefix; it bypasses
 RLS entirely.
 
-`CRON_SECRET` can be any long random string. Without it the monthly harvest
+`CRON_SECRET` can be any long random string. Without it the weekly harvest
 endpoint returns 503 and refuses to run, rather than defaulting open — an
 unauthenticated endpoint that spends money on every GET is the one failure mode
 that must not be reachable by accident.
@@ -66,7 +66,7 @@ closing out runs that are still writing.
 
 ---
 
-## The monthly harvest
+## The weekly harvest
 
 Currently **off**, and it should stay off until the product is in regular use —
 it costs ~$61/year and produces folders whether or not anyone opens them.

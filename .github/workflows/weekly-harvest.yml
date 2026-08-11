@@ -1,4 +1,4 @@
-# The monthly harvest, run here rather than in a serverless function.
+# The weekly harvest, run here rather than in a serverless function.
 #
 # WHY. On Vercel the crawl runs inside `after()` and is bounded by the
 # function's maxDuration — 300s by default on every plan, raisable to 800s only
@@ -18,7 +18,7 @@
 # penny until someone turns it on — this file just means that when they do, it
 # will actually complete.
 
-name: Monthly harvest
+name: Weekly harvest
 
 on:
   schedule:
