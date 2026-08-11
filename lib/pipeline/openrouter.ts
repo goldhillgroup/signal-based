@@ -436,7 +436,7 @@ Respond with ONLY a JSON object (no markdown fences, no prose) matching this sha
   "rejectionReason": string | null
 }
 "city" is the town or city the business is based in, exactly as the page writes it, with no state and no street address — "Bakersfield", not "Bakersfield, CA" and not "1400 Oak St, Bakersfield". Read it from a Contact/About section, a footer address, or a "serving X since" line. Null if the page genuinely never says. Do NOT infer it from the service-area list: "we serve the Bay Area" is not a city.
-"quote" must be a short direct excerpt (<= 40 words) copied verbatim from the page text that best supports the decision — required when qualifies is true, null when false unless a quote explains the rejection well.
+"quote" must be a short direct excerpt (<= 40 words) copied verbatim from the page text that best supports the decision — required when qualifies is true, null when false unless a quote explains the rejection well. Prefer ONE continuous passage where the page offers one.
 "rejectionReason" when qualifies is false should read like one of: "Cut — only one generation is on the leadership page, no founder-and-next-gen pair shown together." / "No mention of any leadership team or family members." / a specific, concrete reason in that same plain style. (Size and ownership gates are applied separately after this call, not inside rejectionReason.)
 Before answering, double-check: if founderName is null, are you certain no individual is named anywhere on the page — not just that there's no succession story?`;
 

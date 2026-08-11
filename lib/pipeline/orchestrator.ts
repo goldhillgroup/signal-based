@@ -189,6 +189,55 @@ export function quoteAppears(quote: string, pageText: string): boolean {
 }
 
 /**
+ * Reduce a STITCHED quote to its longest continuous run that is really on the
+ * page — or return null if none of it is.
+ *
+ * Measured across 44 signal leads: 63% of quotes were stitched. The model joins
+ * separated snippets with "..." or quotes two phrases side by side, producing
+ * receipts like
+ *
+ *   "2nd generation." "took over."
+ *   "father daughter duo." "family company."
+ *
+ * Every fragment is real, so the finding is sound — but the QUOTE is not
+ * something Jonathan can check. He opens the page, searches for what the card
+ * told him, and does not find it. On a product whose entire promise is "here is
+ * the sentence that proves it", a receipt that cannot be found is worse than a
+ * shorter one that can.
+ *
+ * THIS DOES THE WHOLE JOB, and deliberately so. The obvious fix was to forbid
+ * stitching in the classifier prompt. That was tried and dropped in favour of
+ * this — not because it hurt recall (it was suspected of costing a lead, and
+ * six runs against the 72-company set say otherwise: 12, 13, 11, 12, 11, 11,
+ * mean 11.7/13, which is the noise floor of the eval rather than a signal) but
+ * because a deterministic post-process is simply better than an instruction the
+ * model may or may not follow on any given page. The prompt now merely PREFERS
+ * a continuous passage.
+ *
+ * Worth knowing when reading that eval: its mean sits ON the 90% acceptance
+ * bar, and single runs swing +/- one lead. No single run of it should be taken
+ * as evidence that a change helped or hurt.
+ *
+ * So the repair is post-processing: split on the joins the model actually uses,
+ * keep the longest piece that verifies against the page, and drop the quote
+ * entirely rather than show one that cannot be found. Never invents or edits
+ * words. Deterministic, free, and it cannot affect what gets qualified.
+ */
+export function longestVerifiableQuote(quote: string, pageText: string): string | null {
+  const pieces = quote
+    .split(/\s*(?:\.\.\.|…)\s*/)
+    .flatMap((p) => p.split(/"\s*"/))
+    .map((p) => p.replace(/^["“”\s]+|["“”\s]+$/g, "").trim())
+    .filter((p) => p.split(/\s+/).length >= 4);
+
+  const verified = pieces
+    .filter((p) => quoteAppears(p, pageText))
+    .sort((a, b) => b.length - a.length);
+
+  return verified[0] ?? null;
+}
+
+/**
  * Does a previously-settled company still bind THIS search?
  *
  * True  -> skip it, we already have our answer and it is still the right answer.
@@ -830,10 +879,24 @@ export async function runSearchPipeline(
         // zero API calls; a quote that can't be found on the page the model
         // was shown drops the company to "verify" and says why.
         let quoteWarning: string | null = null;
-        if (classification.qualifies && classification.quote && !quoteAppears(classification.quote, classifyText)) {
-          quoteWarning =
-            "Evidence quote could not be located verbatim on the fetched page, flagged for manual verification.";
-          classification = { ...classification, confidence: "verify" as const };
+        if (classification.qualifies && classification.quote) {
+          const stitched = /\.\.\.|…/.test(classification.quote) || (classification.quote.match(/"/g) ?? []).length >= 4;
+          if (stitched) {
+            // Keep the longest piece that actually verifies. The finding stands
+            // — the fragments are real — but the receipt shown to the client
+            // has to be something he can find on the page.
+            const repaired = longestVerifiableQuote(classification.quote, classifyText);
+            classification = { ...classification, quote: repaired };
+            if (!repaired) {
+              quoteWarning =
+                "No single continuous passage on the page could be quoted as evidence, flagged for manual verification.";
+              classification = { ...classification, confidence: "verify" as const };
+            }
+          } else if (!quoteAppears(classification.quote, classifyText)) {
+            quoteWarning =
+              "Evidence quote could not be located verbatim on the fetched page, flagged for manual verification.";
+            classification = { ...classification, confidence: "verify" as const };
+          }
         }
 
         // What the classifier actually found, independent of what this
