@@ -83,7 +83,9 @@ export const SIGNAL_TYPE_META: Record<
 export interface Lead {
   signalType: SignalType;
   /** The specific fact, in the company's own words where one was quoted. */
-  signalDetail: string;
+  /** The company's own words. Null for a cut company with no quote — the
+   *  reason is shown in its own block and does not need repeating. */
+  signalDetail: string | null;
   /** Why this one is worth a call. */
   whyThisLead: string;
   /** What is missing, when something is. */
@@ -355,16 +357,23 @@ export function toLead(c: Company): Lead {
   // because: only one generation is on the leadership page". A real quote is
   // kept — that is something the site actually said, and it is evidence either
   // way — but the derived claim contradicts the verdict and has to go.
-  const detail =
+  // NULL for a cut company with no quote, not a filler sentence.
+  //
+  // It used to read "Cut before this was established. The reason is below." —
+  // which sat between two copies of the reason itself, because the card prints
+  // "Cut because: X" above it and whyThisLead printed X again underneath. Three
+  // blocks, one fact, and the middle one pointing at the wrong place. A real
+  // quote is still shown: that is something the site actually said, and it is
+  // evidence either way.
+  const detail: string | null =
     c.evidence?.quote ??
     (c.status === "rejected"
-      ? "Cut before this was established. The reason is below."
-      : null) ??
-    (founder && nextGen
-      ? `${founder} and ${nextGen} are both named on the site.`
-      : founder
-        ? `${founder} is named as the person in charge. No successor on the page yet.`
-        : "No individual is named on the site yet.");
+      ? null
+      : founder && nextGen
+        ? `${founder} and ${nextGen} are both named on the site.`
+        : founder
+          ? `${founder} is named as the person in charge. No successor on the page yet.`
+          : "No individual is named on the site yet.");
 
   const location = [c.city, c.state].filter((s) => s && s !== "-").join(", ");
 
@@ -376,7 +385,9 @@ export function toLead(c: Company): Lead {
     // For a cut company the useful sentence is why it was CUT, not why it would
     // have been worth calling. explainFit answers the second question and would
     // otherwise print an argument for a company the test rejected.
-    whyThisLead: rejected ? (c.rejectionReason ?? "Cut by one of your gates.") : (fit?.headline ?? ""),
+    // Empty for a cut company: the card already prints "Cut because: <reason>"
+    // in its own block, and repeating it here was the third copy.
+    whyThisLead: rejected ? "" : (fit?.headline ?? ""),
     missing: rejected ? null : (fit?.missing ?? null),
     surfacedAt: c.firstSeenAt,
     location: location || "Location not stated",

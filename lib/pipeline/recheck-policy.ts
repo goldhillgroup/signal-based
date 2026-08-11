@@ -182,6 +182,59 @@ export function recheckAfterFor(
  * which is the conservative direction: it costs a re-scan we might have
  * skipped, never a lead we should have seen.
  */
+/**
+ * Is this simply a DIFFERENT KIND OF BUSINESS, rather than a company that
+ * failed one of Jonathan's gates?
+ *
+ * A separate question from when to re-crawl it, which is what the rules above
+ * decide. This one is about what to put in front of a person.
+ *
+ * The "Not a fit" tab exists so a cut can be argued with — Jonathan sees the
+ * reason and enriches it anyway if he disagrees. That is a real and useful
+ * thing for "no longer family-owned", "too big", "only one generation named":
+ * right kind of company, failed a test, reasonable people could differ.
+ *
+ * It is not a useful thing for a funeral home. A live run cut 37 companies and
+ * 24 of them were an obituary site, a high school reunion page, a political
+ * campaign, a newspaper sports report, an appliance retailer, an advertising
+ * agency, a permit expediter, an architecture firm and eight funeral homes.
+ * None is a judgement he would want to revisit; they are search noise, and
+ * putting them in the same list as the arguable cuts buries the arguable ones.
+ *
+ * So these are hidden by default and counted, never deleted — they remain
+ * cross-search memory, and the count is shown so nothing is silently dropped.
+ */
+// Stems are deliberately NOT closed with \b. A first version wrote
+// `\bobituar\b`, which cannot match "obituary" — the boundary fails against
+// the following "y" — so eight obituary sites, a Q&A platform and a 404 page on
+// Legacy.com all sat in the arguable-cuts list. Open the stem, anchor only the
+// front.
+const WRONG_KIND_RE = new RegExp(
+  [
+    "funeral", "cremat", "obituar", "cemeter", "memorial (home|park|garden)",
+    "newspaper", "news(paper)?[ /]?(media|outlet|site|article)", "media (company|outlet|brand|platform|/events)",
+    "magazine", "publishing", "publication", "journalis",
+    "political campaign", "candidate", "reunion", "q&a platform",
+    "nonprofit", "non-profit", "trade association", "membership organi",
+    "brokerage", "real estate", "architect", "advertising", "marketing agency",
+    "law firm", "attorney", "software", "saas", "e-?commerce", "retailer", "dealer",
+    "marketplace", "directory", "lead-?gen", "permit (expedit|consult)",
+    "insurance", "staffing", "recruit",
+  ].map((w) => `\\b${w}`).join("|"),
+  "i"
+);
+
+export function isWrongKindOfBusiness(rejectionReason: string | null | undefined): boolean {
+  if (!rejectionReason) return false;
+  // "No longer family-owned", "too big", "only one generation" and a failed
+  // fetch are all the RIGHT kind of company — never hide those, whatever else
+  // the sentence happens to mention.
+  if (/no longer family-owned|acquired|consolidat|roll-?up|too big|too small|above the|below the|upper bound|lower bound|only one (individual|generation)|no mention of any leadership|could not be fetched|too thin|could not be judged/i.test(rejectionReason)) {
+    return false;
+  }
+  return WRONG_KIND_RE.test(rejectionReason);
+}
+
 export function rejectionScope(rejectionReason: string | null): RejectionScope {
   const rule = RULES.find((r) => r.test.test(rejectionReason ?? ""));
   return rule ? rule.scope : "global";

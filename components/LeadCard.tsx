@@ -117,16 +117,23 @@ export function LeadCard({
 
         </div>
 
-        {/* THE SIGNAL — the company's own words where there are any. */}
-        <blockquote
-          className="mt-3 rounded-lg border-l-2 bg-gh-surface-sunken p-3 text-xs leading-relaxed text-gh-ink-secondary"
-          style={{ borderColor: meta.color }}
-        >
-          {lead.signalDetail}
-        </blockquote>
+        {/* THE SIGNAL — the company's own words where there are any. Omitted
+            entirely for a cut company with no quote, rather than filled with a
+            sentence pointing at the reason printed directly above it. */}
+        {lead.signalDetail && (
+          <blockquote
+            className="mt-3 rounded-lg border-l-2 bg-gh-surface-sunken p-3 text-xs leading-relaxed text-gh-ink-secondary"
+            style={{ borderColor: meta.color }}
+          >
+            {lead.signalDetail}
+          </blockquote>
+        )}
 
-        {/* WHY THIS LEAD, and what is missing when something is. */}
-        <p className="mt-2.5 text-xs leading-relaxed text-gh-ink">{lead.whyThisLead}</p>
+        {/* WHY THIS LEAD, and what is missing when something is. Empty for a
+            cut company — "Cut because:" above already said it. */}
+        {lead.whyThisLead && (
+          <p className="mt-2.5 text-xs leading-relaxed text-gh-ink">{lead.whyThisLead}</p>
+        )}
         {lead.missing && (
           <p className="mt-1 text-[11px] leading-relaxed text-gh-ink-muted">{lead.missing}</p>
         )}

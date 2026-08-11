@@ -6,6 +6,7 @@ import { INDUSTRY_META } from "@/lib/signal-meta";
 import type { Industry } from "@/lib/supabase/types";
 import { scoreFactors, signalTypeOf, SIGNAL_TYPE_META, type SignalType } from "@/lib/lead-signal";
 import { SearchIcon, GridIcon, RowsIcon } from "./icons";
+import { isWrongKindOfBusiness } from "@/lib/pipeline/recheck-policy";
 import { LeadCard } from "./LeadCard";
 import { LeadTable } from "./LeadTable";
 
@@ -57,7 +58,15 @@ function matchesTab(c: Company, tab: Tab) {
   // return true for everything, so the default view of a folder was mostly
   // rejects and the real count was buried.
   if (tab === "all") return c.status === "qualified";
-  if (tab === "not_a_fit") return c.status === "rejected";
+  // Cut companies, MINUS the ones that were simply a different kind of
+  // business. The point of this tab is that a cut might be wrong and worth
+  // arguing with — true of "no longer family-owned" or "only one generation
+  // named", useless for a funeral home. A live run cut 37 and 24 of them were
+  // obituary sites, newspapers, a school reunion page and eight funeral homes;
+  // leaving those in buries the handful actually worth a second look. They are
+  // counted below, never deleted. See isWrongKindOfBusiness.
+  if (tab === "not_a_fit")
+    return c.status === "rejected" && !isWrongKindOfBusiness(c.rejectionReason);
   // Signal covers confirmed AND needs-a-look. Both are a founder-and-successor
   // claim; only the confidence differs, and the card says which.
   return c.status === "qualified" && c.hasSignal === true;
@@ -190,6 +199,17 @@ export function CompaniesTable({
         acc[t.key] = companies.filter((c) => matchesTab(c, t.key)).length;
         return acc;
       }, {} as Record<Tab, number>),
+    [companies]
+  );
+
+  // Cut companies left out of the "Not a fit" tab because they were a
+  // different kind of business rather than a failed gate. Counted so the
+  // omission is stated rather than silent — see isWrongKindOfBusiness.
+  const offTradeCount = useMemo(
+    () =>
+      companies.filter(
+        (c) => c.status === "rejected" && isWrongKindOfBusiness(c.rejectionReason)
+      ).length,
     [companies]
   );
 
@@ -329,6 +349,19 @@ export function CompaniesTable({
       <p className="px-4 pt-3 text-xs text-gh-ink-muted">
         Showing <span className="font-semibold text-gh-ink-secondary">{filtered.length}</span> of{" "}
         {counts[tab]} {tab === "not_a_fit" ? "cut" : "leads"}
+        {/* NEVER a silent filter. The wrong-kind rows are left out because
+            arguing with them is pointless, but a list that quietly shrinks is
+            worse than a cluttered one — say how many and why. */}
+        {tab === "not_a_fit" && offTradeCount > 0 && (
+          <>
+            {" · "}
+            <span>
+              {offTradeCount} more {offTradeCount === 1 ? "was" : "were"} a different kind of business
+              entirely (funeral homes, newspapers, directories) and {offTradeCount === 1 ? "is" : "are"} not
+              shown
+            </span>
+          </>
+        )}
       </p>
 
       {/* Cards, not table rows. The two fields that decide whether he calls —

@@ -33,7 +33,7 @@ const COLUMNS: { header: string; get: (c: Company) => string }[] = [
   { header: "verdict", get: (c) => (c.status === "rejected" ? "NOT A FIT" : "lead") },
   { header: "not_a_fit_reason", get: (c) => (c.status === "rejected" ? (c.rejectionReason ?? "") : "") },
   { header: "signal_type", get: (c) => SIGNAL_TYPE_META[toLead(c).signalType].label },
-  { header: "signal_detail", get: (c) => toLead(c).signalDetail },
+  { header: "signal_detail", get: (c) => toLead(c).signalDetail ?? "" },
   {
     header: "why_this_lead",
     get: (c) => {

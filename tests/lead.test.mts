@@ -70,13 +70,26 @@ ok("a verified email beats an unverified one",
    scoreFactors(make({ contact: { email: "a@b.com", verificationStatus: "risky", findStatus: "found", name: null, nameInferred: false, title: null } })).score);
 ok("every score carries its reasons", scoreFactors(strong).factors.length >= 3);
 
-// ── the detail is never empty, whatever is missing ────────────────────────
-ok("quote is used when there is one", toLead(strong).signalDetail.includes("joined by his son"));
+// ── the detail is never empty for a LEAD, and never filler for a cut ──────
+ok("quote is used when there is one", (toLead(strong).signalDetail ?? "").includes("joined by his son"));
 ok("falls back to the people when there is no quote",
-   toLead(make({ founderName: "Bill", nextGenName: "Beth" })).signalDetail.includes("Bill"));
+   (toLead(make({ founderName: "Bill", nextGenName: "Beth" })).signalDetail ?? "").includes("Bill"));
 ok("says so plainly when nobody is named",
-   /No individual is named/.test(toLead(make({})).signalDetail));
-ok("detail is never blank", toLead(make({})).signalDetail.trim().length > 0);
+   /No individual is named/.test(toLead(make({})).signalDetail ?? ""));
+
+// A cut company said the reason once, in its own block. It used to appear
+// three times: "Cut because: X", a filler line pointing at it, then X again.
+{
+  const cut = toLead(make({ status: "rejected", rejectionReason: "Not a landscaping company." }));
+  ok("a cut company gets no filler quote", cut.signalDetail === null);
+  ok("a cut company does not repeat its reason", cut.whyThisLead === "");
+  const quoted = toLead(make({
+    status: "rejected", rejectionReason: "Too big.",
+    evidence: { quote: "Founded by Ray and now run by his daughter.", sourceUrl: "https://example.com/about", pageType: "about" },
+  }));
+  ok("a real quote survives a rejection", String(quoted.signalDetail ?? "").includes("Ray"));
+}
+ok("a LEAD always has a detail", (toLead(make({})).signalDetail ?? "").trim().length > 0);
 
 // ── surfaced, not fabricated as an event date ─────────────────────────────
 is("surfaced uses first seen", toLead(strong).surfacedAt, base.firstSeenAt);

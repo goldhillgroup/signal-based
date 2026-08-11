@@ -177,7 +177,7 @@ export function LeadTable({
                     <Td title={CREWS[c.operatingModel ?? "unknown"] ?? ""}>
                       {CREWS[c.operatingModel ?? "unknown"] ?? <Muted>-</Muted>}
                     </Td>
-                    <Td title={lead.signalDetail}>{lead.signalDetail}</Td>
+                    <Td title={lead.signalDetail ?? ""}>{lead.signalDetail ?? <Muted>-</Muted>}</Td>
                     <Td title={who ?? ""}>{who ?? <Muted>nobody named</Muted>}</Td>
                     <Td title={contact?.email ?? ""}>
                       {contact?.email ? (
