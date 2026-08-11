@@ -138,7 +138,7 @@ function tsvCell(value: string): string {
   return value.replace(/[\t\r\n]+/g, " ").trim();
 }
 
-export function companiesToTsv(companies: Company[]): string {
+function companiesToTsv(companies: Company[]): string {
   const header = COLUMNS.map((c) => tsvCell(c.header)).join("\t");
   const rows = companies.map((c) => COLUMNS.map((col) => tsvCell(col.get(c))).join("\t"));
   return [header, ...rows].join("\n");

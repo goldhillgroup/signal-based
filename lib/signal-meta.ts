@@ -48,13 +48,6 @@ export const STATUS_META: Record<
   rejected: { label: "Rejected", color: "var(--gh-ink-muted)", bg: "var(--gh-surface-sunken)" },
 };
 
-// Not a CompanyStatus (the DB status is still "qualified" for these — they
-// passed every gate, just without a signal) — this is purely a display
-// label for status: 'qualified' + confidence: null in 'filter'/'hybrid'
-// mode, so a fit-only accepted company never renders as "Scanning"/pending
-// (which reads as "still being processed," not "final accepted result").
-export const FIT_ONLY_META = { label: "Fit only", color: "#3d5a80", bg: "#e1e9f2" };
-
 export const FIND_STATUS_META: Record<
   FindStatus,
   { label: string; color: string; bg: string }

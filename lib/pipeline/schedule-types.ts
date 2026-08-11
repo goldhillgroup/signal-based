@@ -42,10 +42,12 @@ export interface WeeklySchedule {
    * The harvest could set the vertical, the states, the band and the mode —
    * every structured input — but not this one, so the only thing a person can
    * say in their own words was the one thing a scheduled run could not be
-   * told. Passed to classification as a non-overriding hint; like the manual
-   * form it deliberately does NOT steer discovery, because letting free text
-   * choose which companies get FOUND is how a search drifts off the agreed
-   * vertical.
+   * told. Reaches both ends of the pipeline, exactly like the manual form:
+   * classification treats it as a non-overriding hint, and discovery turns it
+   * into quoted queries anchored to the trade (refinementQueries). The old
+   * worry — free text dragging a run off the agreed vertical — is handled by
+   * the vertical and states staying hard filters, so the focus only decides
+   * what is ASKED within them.
    */
   refinement: string | null;
   /** ISO date (YYYY-MM-DD) of the last run that actually started. */

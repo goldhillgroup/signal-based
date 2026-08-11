@@ -3,14 +3,12 @@ import {
   STATUS_META,
   FIND_STATUS_META,
   VERIFICATION_META,
-  INDUSTRY_META,
 } from "@/lib/signal-meta";
 import type {
   Confidence,
   CompanyStatus,
   FindStatus,
   VerificationStatus,
-  Industry,
 } from "@/lib/supabase/types";
 import { DotIcon } from "./icons";
 
@@ -64,15 +62,3 @@ export function VerificationBadge({ status }: { status: VerificationStatus }) {
   );
 }
 
-export function IndustryChip({ industry }: { industry: Industry }) {
-  const meta = INDUSTRY_META[industry];
-  return (
-    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gh-ink-secondary">
-      <span
-        className="h-2.5 w-2.5 shrink-0 rounded-[3px]"
-        style={{ background: meta.color }}
-      />
-      {meta.label}
-    </span>
-  );
-}

@@ -63,7 +63,7 @@ const REASONS: Reason[] = [
   },
 ];
 
-export interface ChannelWarning {
+interface ChannelWarning {
   channel: string;
   reason: string;
   actionable: boolean;
@@ -74,7 +74,7 @@ export interface ChannelWarning {
  * budget cap hit: this account has used $5.64 this cycle (cap: $5)") into
  * something worth putting in front of a user.
  */
-export function summarizeChannelError(raw: string): ChannelWarning {
+function summarizeChannelError(raw: string): ChannelWarning {
   // [\s\S] rather than the /s flag — the tsconfig target predates ES2018.
   const m = raw.match(/^(.*?) channel failed: ([\s\S]*)$/);
   const rawChannel = m ? m[1].trim() : "A discovery channel";

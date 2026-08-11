@@ -183,7 +183,7 @@ export async function reapStaleEnrichment(
  * happened, that nothing was lost, and what to do — a bare "timed out" reads
  * like the results are suspect when they are not.
  */
-export function stoppedEarlyMessage(scanned: number, kept: number): string {
+function stoppedEarlyMessage(scanned: number, kept: number): string {
   return (
     `Stopped early: this run hit the ${Math.round(RUN_CEILING_MS / 60000)} minute server limit after checking ${scanned} ` +
     `companies. The ${kept} it had already found are saved and complete. ` +

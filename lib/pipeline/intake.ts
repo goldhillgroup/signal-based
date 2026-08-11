@@ -67,7 +67,7 @@ interface Defaults {
  * Falls back to the delivered baseline ($3-15M, hybrid) when there's no
  * history to learn from.
  */
-export function defaultsFrom(history: SearchHistory[]): Defaults {
+function defaultsFrom(history: SearchHistory[]): Defaults {
   const learned: string[] = [];
   const mode = <T,>(vals: (T | null)[]): T | null => {
     const counts = new Map<T, number>();

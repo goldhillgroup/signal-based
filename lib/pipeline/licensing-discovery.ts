@@ -177,7 +177,7 @@ const DOMAIN_IN_NAME_RE = /([A-Za-z0-9][A-Za-z0-9 '&-]{0,60})\.(com|net|org|biz)
  * row simply cannot pay its way into the pipeline — which, per the header, is
  * the overwhelmingly common answer and is fine.
  */
-export function deriveDomain(row: LicenseRow): string | null {
+function deriveDomain(row: LicenseRow): string | null {
   // 1. Email column, if a source ever has one.
   if (row.email) {
     const at = row.email.trim().toLowerCase().split("@");
@@ -636,7 +636,7 @@ const EMIT_CAP = 200;
  * test cannot observe it. That will stop being true the moment the v2
  * name->domain resolver lands and a slice of California is 11,975 long.
  */
-export function rotateSlice<T>(items: T[], round: number, size: number): T[] {
+function rotateSlice<T>(items: T[], round: number, size: number): T[] {
   if (items.length === 0) return [];
   if (items.length <= size) return items;
   const start = ((round - 1) * size) % items.length;

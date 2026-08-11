@@ -236,8 +236,9 @@ export function WeeklySchedule({
             Signal focus <span className="font-normal text-gh-ink-muted">(optional)</span>
           </label>
           <p className="mb-1.5 text-[11px] leading-relaxed text-gh-ink-muted">
-            A hint for what to look for inside the verticals and states above. It
-            never changes which companies get searched.
+            What to look for inside the verticals and states above. It shapes
+            the questions each run asks, so it changes which companies get
+            found — the verticals and states themselves stay fixed.
           </p>
           {/* autoComplete off. Chrome and Safari offer a saved EMAIL into any
               unlabelled text box on an origin where a login form exists — so

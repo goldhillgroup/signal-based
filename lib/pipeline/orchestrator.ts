@@ -146,7 +146,7 @@ const CLASSIFY_TEXT_BUDGET = 12000;
  * real miss of exactly this shape). Same total budget as before; secondary
  * sections are labeled with their URL so a quote can still be traced.
  */
-export function buildClassifyText(primary: FetchedPage, all: FetchedPage[]): string {
+function buildClassifyText(primary: FetchedPage, all: FetchedPage[]): string {
   let text = primary.text.slice(0, CLASSIFY_TEXT_BUDGET);
   const remaining = CLASSIFY_TEXT_BUDGET - text.length;
 

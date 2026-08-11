@@ -19,7 +19,7 @@
  */
 
 /** Shared inboxes. Real, usable, but clearly not a named person. */
-export const ROLE_PREFIXES = new Set([
+const ROLE_PREFIXES = new Set([
   "info", "contact", "hello", "sales", "office", "admin", "support", "team",
   "enquiries", "inquiries", "mail", "help", "service", "customerservice",
   "estimates", "quotes", "scheduling", "billing", "accounting", "hr", "careers",

@@ -15,7 +15,7 @@ import { recordCost } from "./cost-tracker";
 // hard minority comfortably.
 const FIRECRAWL_BASE = "https://api.firecrawl.dev/v1";
 
-export async function getFirecrawlKey(): Promise<string | null> {
+async function getFirecrawlKey(): Promise<string | null> {
   return resolveSetting("FIRECRAWL_API_KEY", process.env.FIRECRAWL_API_KEY);
 }
 
