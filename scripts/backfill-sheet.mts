@@ -19,22 +19,27 @@ for (const line of fs.readFileSync(".env.local", "utf8").split("\n")) {
 }
 
 const { createServiceRoleClient } = await import("../lib/supabase/server.js");
-const { cleanRevenueBand, cleanTitle } = await import("../lib/lead-signal.js");
+const { cleanRevenueBand, cleanTitle, cleanPersonName } = await import("../lib/lead-signal.js");
 
 const sb = createServiceRoleClient();
 const write = process.argv.includes("--write");
 
 const { data } = await sb
   .from("companies")
-  .select("id, name, revenue_band, founder_title, next_gen_title");
+  .select("id, name, revenue_band, founder_title, next_gen_title, founder_name, next_gen_name");
 const rows = (data ?? []) as {
   id: string; name: string;
   revenue_band: string | null; founder_title: string | null; next_gen_title: string | null;
+  founder_name: string | null; next_gen_name: string | null;
 }[];
 
-const plan: { id: string; name: string; patch: { revenue_band?: string | null; founder_title?: string | null; next_gen_title?: string | null }; notes: string[] }[] = [];
+type Patch = {
+  revenue_band?: string | null; founder_title?: string | null; next_gen_title?: string | null;
+  founder_name?: string | null; next_gen_name?: string | null;
+};
+const plan: { id: string; name: string; patch: Patch; notes: string[] }[] = [];
 for (const r of rows) {
-  const patch: { revenue_band?: string | null; founder_title?: string | null; next_gen_title?: string | null } = {};
+  const patch: Patch = {};
   const notes: string[] = [];
   const rev = cleanRevenueBand(r.revenue_band);
   if (r.revenue_band && rev !== r.revenue_band) {
@@ -47,6 +52,16 @@ for (const r of rows) {
     if (cur && next !== cur) {
       patch[f] = next;
       notes.push(`${f}: "${cur.slice(0, 42)}" -> ${next ?? "(blank)"}`);
+    }
+  }
+  // A name field holding the sentence the person was found in. See
+  // cleanPersonName — rare (1 row in 625) but it renders as the founder.
+  for (const f of ["founder_name", "next_gen_name"] as const) {
+    const cur = r[f];
+    const next = cleanPersonName(cur);
+    if (cur && next !== cur) {
+      patch[f] = next;
+      notes.push(`${f}: "${cur.slice(0, 46)}" -> ${next ?? "(blank)"}`);
     }
   }
   if (notes.length) plan.push({ id: r.id, name: r.name, patch, notes });

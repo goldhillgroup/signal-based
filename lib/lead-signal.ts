@@ -122,6 +122,48 @@ function realName(v: string | null): boolean {
 }
 
 /**
+ * A name field holding a SENTENCE, trimmed back to the name.
+ *
+ * The classifier is asked for a person and occasionally returns the clause it
+ * found them in. One live signal lead read
+ *
+ *   founder: "Joe Harris started the family's lumber/building business"
+ *
+ * which is true, is useful, and is not a name — it renders as the founder on
+ * the card, in the drawer and in the exported sheet, where every other row
+ * holds two words. The fix is to cut at the verb that turned the name into
+ * prose and keep what came before it.
+ *
+ * DELIBERATELY NARROW. It cuts only at verbs and possessive connectives, never
+ * at a bare "and", because co-founders are real and common — "Bill and Beth
+ * Hewitt" and "John Hewitt and Jesse Hewitt" are correct values that a greedier
+ * rule would mangle. Measured across 625 companies this touches 1 row, which is
+ * the right size for a rule about a rare failure: anything it fires on more
+ * often is cutting names it should have left alone.
+ */
+const PROSE_WORDS =
+  "started|founded|joined|took|takes|runs|ran|leads|led|owns|owned|began|opened|works|worked|serves|served|built|created|established|acquired|purchased|bought|has|have|had|is|was|were|and his|and her|along with|together with";
+/** The verb that turns a name into a sentence, somewhere after the name. */
+const NAME_PROSE_RE = new RegExp(`\\s+\\b(?:${PROSE_WORDS})\\b`, "i");
+/** The same verb with nothing in front of it — no name to keep. */
+const STARTS_WITH_PROSE_RE = new RegExp(`^(?:${PROSE_WORDS})\\b`, "i");
+
+export function cleanPersonName(v: string | null | undefined): string | null {
+  if (!v) return null;
+  let t = String(v).replace(/\s+/g, " ").trim();
+  // A value that OPENS with the verb has no name in front of it to keep —
+  // "founded the company in 1962" is a fact about a founder, not a founder.
+  if (STARTS_WITH_PROSE_RE.test(t)) return null;
+  const cut = t.search(NAME_PROSE_RE);
+  if (cut > 0) t = t.slice(0, cut).trim();
+  // Dangling punctuation left by the cut — but NOT a trailing period, which is
+  // almost always an abbreviation ("Rich Cording, Sr.", "James E. Hornung").
+  // Stripping it turned a correct name into a subtly wrong one.
+  t = t.replace(/[,;:\-–—&]+$/, "").trim();
+  return realName(t) ? t : null;
+}
+
+/**
  * Is this a name Jonathan can actually act on?
  *
  * The product's promise is a person he can look up and call. "Francisco Sr."

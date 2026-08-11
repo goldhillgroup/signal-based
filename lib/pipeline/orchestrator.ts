@@ -6,7 +6,7 @@ import { verifyEmail } from "./millionverifier";
 import type { Industry, SearchMode, SearchRow } from "../supabase/types";
 import { recheckAfterFor, rejectionScope, sizeVerdictStillBinds, parseRevenueBand } from "./recheck-policy";
 import { extractEmails, bestEmailFor, type FoundEmail, bestPhoneFor, isSharedInbox } from "./page-email";
-import { callableName, cleanRevenueBand, cleanTitle, earnedConfidence } from "../lead-signal";
+import { callableName, cleanPersonName, cleanRevenueBand, cleanTitle, earnedConfidence } from "../lead-signal";
 import { buildWarningLine } from "./channel-health";
 import { channelRates, orderByYield } from "./channel-priors";
 import { runWithCounters, estimateUsd, describeCost, type CostCounters } from "./cost-tracker";
@@ -1137,8 +1137,13 @@ export async function runSearchPipeline(
         // page never gave a full name for both, the pair is not confirmed —
         // the company stays a fit lead, but it stops claiming a signal it
         // cannot support. See callableName.
-        const bothCallable =
-          callableName(classification.founderName) && callableName(classification.nextGenName);
+        // Cleaned ONCE, here, so the pair test, the confidence gate and the
+        // stored row all judge the same string. See cleanPersonName — a name
+        // field occasionally arrives holding the sentence the person was found
+        // in ("Joe Harris started the family's lumber business").
+        const founderName = cleanPersonName(classification.founderName);
+        const nextGenName = cleanPersonName(classification.nextGenName);
+        const bothCallable = callableName(founderName) && callableName(nextGenName);
         const finalHasSignal = hasSignal && signalStands && bothCallable;
 
         const { data: inserted, error: insertErr } = await supabase
@@ -1152,12 +1157,7 @@ export async function runSearchPipeline(
             // quote. See earnedConfidence.
             confidence:
               finalQualifies && finalHasSignal
-                ? earnedConfidence(
-                    finalConfidence,
-                    classification.quote,
-                    classification.founderName,
-                    classification.nextGenName
-                  )
+                ? earnedConfidence(finalConfidence, classification.quote, founderName, nextGenName)
                 : null,
             has_signal: finalQualifies ? finalHasSignal : null,
             operating_model: classification.operatingModel ?? null,
@@ -1169,9 +1169,9 @@ export async function runSearchPipeline(
             ),
             // Only a real figure reaches the sheet — see cleanRevenueBand.
             revenue_band: cleanRevenueBand(classification.revenueEstimate),
-            founder_name: classification.founderName,
+            founder_name: founderName,
             founder_title: cleanTitle(classification.founderTitle),
-            next_gen_name: classification.nextGenName,
+            next_gen_name: nextGenName,
             next_gen_title: cleanTitle(classification.nextGenTitle),
           })
           .select("id")

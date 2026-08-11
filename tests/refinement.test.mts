@@ -10,7 +10,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { refinementQueries, successionTermsFor, isOffTradeName } from "../lib/pipeline/apify.js";
-import { callableName, earnedConfidence, relationshipStated } from "../lib/lead-signal.js";
+import { callableName, cleanPersonName, earnedConfidence, relationshipStated } from "../lib/lead-signal.js";
 
 test("no refinement leaves the proven rotation exactly as it was", () => {
   const base = successionTermsFor("landscaping", 1);
@@ -168,4 +168,45 @@ test("Jonathan's own hand-audited leads are exempt", () => {
 test("the gate only ever lowers, and never invents a label", () => {
   assert.equal(earnedConfidence(null, "son of the founder", "A Person", "B Person"), null);
   assert.equal(earnedConfidence("verify", null, "A Person", "B Person"), "verify");
+});
+
+test("a name field holding a sentence is trimmed back to the name", () => {
+  // The real row: true, useful, and not a name.
+  assert.equal(
+    cleanPersonName("Joe Harris started the family's lumber/building business"),
+    "Joe Harris"
+  );
+  assert.equal(cleanPersonName("Ross Ritzel founded the company in 1998"), "Ross Ritzel");
+  assert.equal(cleanPersonName("Sean Van Slyke joined the business in 1997"), "Sean Van Slyke");
+  assert.equal(cleanPersonName("Bret Wade took over in 1992"), "Bret Wade");
+});
+
+test("co-founders survive — the rule never cuts at a bare 'and'", () => {
+  // The trade never to make: these are correct values on real leads, and a
+  // greedier rule mangles every one of them.
+  for (const ok of [
+    "Bill and Beth Hewitt",
+    "John Hewitt and Jesse Hewitt",
+    "Anthony Luciano and Lorenzo Luciano",
+    "Steve Armstrong & Sharon Armstrong",
+    "Katy Hawes and Victoria Hawes",
+    "Rich Cording, Sr.",
+    "James E. Hornung Jr.",
+    "Mary-Jane O'Brien",
+  ]) {
+    assert.equal(cleanPersonName(ok), ok, `must be left alone: ${ok}`);
+  }
+});
+
+test("possessive connectives are prose, bare conjunctions are not", () => {
+  assert.equal(cleanPersonName("Donnie Marchant and his son Seth"), "Donnie Marchant");
+  assert.equal(cleanPersonName("Perry Tollman along with Austin"), "Perry Tollman");
+});
+
+test("placeholders and empties still come back null", () => {
+  for (const junk of ["", "  ", "-", "N/A", "unknown", "not stated", null, undefined]) {
+    assert.equal(cleanPersonName(junk), null, `must be null: ${JSON.stringify(junk)}`);
+  }
+  // Prose with no name in front of it has nothing to keep.
+  assert.equal(cleanPersonName("founded the company in 1962"), null);
 });
