@@ -360,12 +360,61 @@ export async function runSearchPipeline(
       );
     }
 
+    // ── SEEDED FROM WHAT THIS FOLDER ALREADY HOLDS ──────────────────────
+    //
+    // These used to start at zero and the final write OVERWRITES the row's
+    // counts, which is correct for a first pass and destroys a second one: a
+    // continuation would report only its own numbers, so a folder with 43
+    // companies that gained 20 more would suddenly read 20.
+    //
+    // Seeding makes a run RESUMABLE. Target 100 needs ~20 minutes of scanning
+    // and no serverless invocation on any plan will do that in one go, so the
+    // only way to reach it is several passes accumulating into one folder.
+    // Everything else already supported that — the companies attach by
+    // search_id, cross-search memory skips what is settled, and the scan
+    // ceiling is measured against totalScanned — this was the one place that
+    // did not.
+    //
+    // Counting rows rather than trusting the stored counters on purpose: the
+    // rows are the truth, and a counter that drifted for any other reason gets
+    // quietly corrected by every continuation.
     let totalScanned = 0;
     let qualified = 0; // signal found, confidence high/medium (or fit-only accepted in filter/hybrid, no signal)
     let verify = 0; // signal found, confidence verify
     let fitOnly = 0; // filter/hybrid only: accepted on ICP fit, no signal found
     let accepted = 0; // qualified + verify + fitOnly, the denominator filter/hybrid targets against
     let rejected = 0;
+    {
+      // SEEDED FROM THE ROW THIS PIPELINE ITSELF WROTE, not by re-counting
+      // companies. The two are not the same number and the difference is not a
+      // bug in either: `companies_scanned` counts candidates PROCESSED, while
+      // the companies table holds the ones that produced a row. Measured on a
+      // real folder: 38 scanned, 32 rows.
+      //
+      // Counting rows therefore made a continuation's progress bar go
+      // BACKWARDS — read 35 then 34, kept 20 then 15 — which is indistinguish-
+      // able from the search losing work it had already done. Reading back the
+      // counters keeps every number continuous and keeps the scan ceiling
+      // measured in the same units the ceiling was written in.
+      const { data: prior } = await supabase
+        .from("searches")
+        .select("companies_scanned, qualified_count, verify_count, fit_only_count, rejected_count")
+        .eq("id", searchId)
+        .single();
+      if (prior) {
+        totalScanned = prior.companies_scanned ?? 0;
+        qualified = prior.qualified_count ?? 0;
+        verify = prior.verify_count ?? 0;
+        fitOnly = prior.fit_only_count ?? 0;
+        rejected = prior.rejected_count ?? 0;
+        accepted = qualified + verify + fitOnly;
+      }
+      if (totalScanned > 0) {
+        console.log(
+          `Search ${searchId}: continuing — ${totalScanned} already read, ${accepted} kept, ${rejected} cut.`
+        );
+      }
+    }
 
     // What counts toward the target differs by mode:
     //  - 'signal': only companies with a real, confirmed succession signal

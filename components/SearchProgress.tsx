@@ -25,6 +25,15 @@ interface Props {
 // fitOnly too, since that's most of what those modes actually accept. Get
 // this wrong and a filter-mode run looks permanently stuck at 0% while it's
 // successfully finding company after company in the background.
+/**
+ * How many automatic passes a single press may take.
+ *
+ * 6 x ~57 companies covers the 240-company absolute scan ceiling, so the
+ * server's own limits are always the ones that actually stop it. This exists
+ * only so a bug in those limits cannot spend without bound.
+ */
+const MAX_AUTO_PASSES = 6;
+
 function foundCount(folder: SearchFolder): number {
   const signalFound = folder.qualifiedCount + folder.verifyCount;
   return folder.mode === "signal" ? signalFound : signalFound + folder.fitOnlyCount;
@@ -82,12 +91,36 @@ export function SearchProgress({ searchId, query, onComplete, onError, onDismiss
   const { fetchFolder } = useSearches();
   const [folder, setFolder] = useState<SearchFolder | null>(null);
   const stopRef = useRef(false);
+  /**
+   * Passes taken so far. A ref because the polling loop closes over it, and a
+   * mirrored state value because the dialog renders it.
+   */
+  const passRef = useRef(1);
+  const [pass, setPass] = useState(1);
+  // Initialised to 0, not Date.now(): calling an impure function during render
+  // is exactly the unstable-across-re-renders trap React warns about. The
+  // effect below stamps it before the first poll, which is the only moment it
+  // needs to be right.
+  const passStartedRef = useRef(0);
+  const [stopReason, setStopReason] = useState<string | null>(null);
 
   useEffect(() => {
+    // A LOCAL token, not the shared ref. React re-invokes effects — guaranteed
+    // in development's StrictMode, and possible in production on a remount —
+    // and the old code's cleanup set a SHARED flag that the next effect
+    // promptly reset to false, resurrecting the loop it had just stopped. Two
+    // live polling loops then each fired their own continuation, which is how
+    // two passes came to run concurrently and corrupt the counts.
+    //
+    // Captured per effect, so a cancelled run can never be revived by its
+    // successor. The server's atomic claim is the real guard; this stops the
+    // duplicate request being made at all.
+    const alive = { current: true };
     stopRef.current = false;
+    passStartedRef.current = Date.now();
 
     async function poll() {
-      while (!stopRef.current) {
+      while (alive.current && !stopRef.current) {
         const f = await fetchFolder(searchId);
         if (!f) {
           onError("Search vanished. Try again.");
@@ -100,6 +133,44 @@ export function SearchProgress({ searchId, query, onComplete, onError, onDismiss
           return;
         }
         if (f.status === "complete") {
+          // ── AUTOMATIC CONTINUATION ──────────────────────────────────────
+          //
+          // A pass reads about 57 companies before the server stops it, and a
+          // target of 100 needs 240. So a large target is several passes, and
+          // making the user notice that and press a button again is asking
+          // them to do the scheduler's job — they asked for 100, not for
+          // "as many as fit in five minutes".
+          //
+          // The server decides whether another pass is allowed; this only
+          // asks. /continue refuses when the target is met, the pool is dry,
+          // or the scan ceiling is reached, so the loop terminates on the
+          // server's terms rather than the browser's.
+          //
+          // MAX_AUTO_PASSES is a second, independent brake. The server-side
+          // reasons should always fire first; this is the one that holds if a
+          // bug means they never do, because an unbounded continuation loop
+          // is the failure mode that turns a $0.70 search into a bill.
+          if (foundCount(f) < f.targetSignals && passRef.current < MAX_AUTO_PASSES) {
+            passRef.current += 1;
+            setPass(passRef.current);
+            const res = await fetch(`/api/search/${searchId}/continue`, { method: "POST" });
+            if (!alive.current) return;
+            const body = await res.json().catch(() => ({}));
+            if (res.ok && body?.continued) {
+              // Restart the abandon timer. It measures ONE pass against the
+              // function ceiling; leaving it at the first pass's start would
+              // give up part-way through pass two of five on a search that is
+              // working perfectly.
+              passStartedRef.current = Date.now();
+              // Keep polling: the row is 'running' again and the counts carry
+              // on from where they were, because the orchestrator seeds them
+              // from the companies already in the folder.
+              await new Promise((r) => setTimeout(r, 1200));
+              continue;
+            }
+            // Refused, and the reason is the honest end of the search.
+            if (body?.reason) setStopReason(String(body.reason));
+          }
           onComplete(f);
           return;
         }
@@ -109,7 +180,12 @@ export function SearchProgress({ searchId, query, onComplete, onError, onDismiss
         // Polling it forever is what turned a killed run into a dialog frozen
         // at "16 of 20" with no way out. Stop and hand back what it found —
         // reapStaleRuns settles the row itself on the next dashboard load.
-        if (Date.now() - new Date(f.createdAt).getTime() > RUN_CEILING_MS + REAP_GRACE_MS) {
+        //
+        // Dated from the CURRENT PASS, not the folder: with continuation a
+        // healthy search legitimately lives far longer than one ceiling, and
+        // measuring from createdAt would abandon the dialog mid-way through
+        // pass two of five.
+        if (Date.now() - passStartedRef.current > RUN_CEILING_MS + REAP_GRACE_MS) {
           onComplete(f);
           return;
         }
@@ -120,6 +196,7 @@ export function SearchProgress({ searchId, query, onComplete, onError, onDismiss
 
     poll();
     return () => {
+      alive.current = false;
       stopRef.current = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -242,6 +319,20 @@ export function SearchProgress({ searchId, query, onComplete, onError, onDismiss
         <p className="mt-3 text-center text-[11px] text-gh-ink-muted">
           {folder.companiesScanned} checked. Nothing found is ever discarded.
         </p>
+
+        {/* Say that it is on pass two, rather than letting the bar appear to
+            stall while the next one starts. A big target legitimately takes
+            several passes and silence about that reads as a fault. */}
+        {pass > 1 && (
+          <p className="fade-in mt-1 text-center text-[11px] text-gh-ink-secondary">
+            Pass {pass} — the server stops each one at{" "}
+            {Math.round(RUN_CEILING_MS / 60000)} minutes, so a large target
+            continues automatically.
+          </p>
+        )}
+        {stopReason && (
+          <p className="fade-in mt-1 text-center text-[11px] text-gh-ink-muted">{stopReason}</p>
+        )}
 
         {/* The run lives on the server (see `after()` in app/api/search/route.ts),
             not in this tab — closing the dialog, navigating away or quitting
