@@ -29,11 +29,10 @@ export interface HeroStat {
 export function HeroStats({ stats }: { stats: HeroStat[] }) {
   return (
     <div className="stagger grid grid-cols-2 gap-3 lg:grid-cols-4">
-      {stats.map((s, i) => (
+      {stats.map((s) => (
         <div
           key={s.label}
           className="fade-up hover-spring relative overflow-hidden rounded-xl border border-gh-border bg-gh-surface p-4"
-          style={{ animationDelay: `${i * 70}ms` }}
         >
           {/* A wash of the stat's own colour, so the four tiles read as four
               different things at a glance rather than one grid of grey. */}

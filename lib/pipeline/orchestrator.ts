@@ -637,12 +637,23 @@ export async function runSearchPipeline(
         try {
           classification = await classifySignal(candidate.title, page.url, classifyText, refinement);
         } catch (e) {
+          console.warn(
+            `classify failed for ${candidate.domain}: ${(e as Error).message}`.slice(0, 500)
+          );
           await supabase.from("companies").insert({
             ...base,
             name: resolveName(page.siteName, null, candidate.domain),
             industry,
             status: "rejected",
-            rejection_reason: `Classification failed: ${(e as Error).message}`.slice(0, 500),
+            // A SENTENCE, not the exception. The thrown message is
+            // `Could not parse JSON from model output: {"companyName": ...` —
+            // a fragment of the model's own output — and rejection_reason is
+            // now rendered verbatim on the card and shipped in the CSV, so the
+            // raw string would put debug text in front of the client inside the
+            // one panel whose entire argument is that a careful test ran.
+            // The technical detail still goes to the server log.
+            rejection_reason:
+              "Could not be judged automatically. The page was read but the result came back unreadable, so it is queued to be checked again rather than counted either way.",
             recheck_after: recheckAfterFor("rejected", "classification failed"),
           });
           rejected++;
