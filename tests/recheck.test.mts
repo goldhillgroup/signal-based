@@ -10,7 +10,7 @@
  * Marking something NEVER when it could change costs a lead, permanently and
  * invisibly. When in doubt these should schedule, not blacklist.
  */
-import { recheckAfterFor, NEVER } from "./lib/pipeline/recheck-policy.js";
+import { recheckAfterFor, NEVER } from "../lib/pipeline/recheck-policy.js";
 
 const NOW = new Date(2026, 7, 7);
 
@@ -74,9 +74,9 @@ let failed = fails.length > 0;
 // applied to every future search; on live data that was 49% of all rejections.
 // ═══════════════════════════════════════════════════════════════════════════
 const { rejectionScope, sizeVerdictStillBinds, parseRevenueBand } = await import(
-  "./lib/pipeline/recheck-policy.js"
+  "../lib/pipeline/recheck-policy.js"
 );
-const { bindsThisSearch } = await import("./lib/pipeline/orchestrator.js");
+const { bindsThisSearch } = await import("../lib/pipeline/orchestrator.js");
 
 let p2 = 0;
 const f2: string[] = [];

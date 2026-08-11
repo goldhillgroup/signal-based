@@ -7,7 +7,7 @@
  * sound, but Jonathan cannot search a page for a quote that was never contiguous
  * on it.
  */
-const { longestVerifiableQuote, quoteAppears } = await import("./lib/pipeline/orchestrator.js");
+const { longestVerifiableQuote, quoteAppears } = await import("../lib/pipeline/orchestrator.js");
 
 let pass = 0;
 const fail: string[] = [];

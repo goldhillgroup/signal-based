@@ -67,7 +67,7 @@ jobs:
       - name: Run the harvest
         env:
           # Every one of these is a repository secret. None is ever echoed —
-          # harvest.mts checks only for PRESENCE and prints names, not values.
+          # scripts/harvest.mts checks only for PRESENCE and prints names, not values.
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -83,7 +83,7 @@ jobs:
           MILLIONVERIFIER_API_KEY: ${{ secrets.MILLIONVERIFIER_API_KEY }}
         run: |
           case "${{ github.event.inputs.mode }}" in
-            dry)   npx tsx harvest.mts --dry ;;
-            force) npx tsx harvest.mts --force ;;
-            *)     npx tsx harvest.mts ;;
+            dry)   npx tsx scripts/harvest.mts --dry ;;
+            force) npx tsx scripts/harvest.mts --force ;;
+            *)     npx tsx scripts/harvest.mts ;;
           esac

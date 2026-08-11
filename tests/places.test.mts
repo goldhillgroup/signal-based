@@ -11,7 +11,7 @@
  * "landscaping company" / "Nashville, Tennessee, USA". Keys and shapes are
  * unedited; only unused fields were dropped.
  */
-import { placeToCandidate, type RawPlace } from "./lib/pipeline/apify.js";
+import { placeToCandidate, type RawPlace } from "../lib/pipeline/apify.js";
 
 const REAL: RawPlace & Record<string, unknown> = {
   title: "Park View Lawn Care and Landscape",

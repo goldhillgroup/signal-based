@@ -6,7 +6,7 @@
  * The rule these assert: cut ONLY when there is a real estimated range and
  * that range cannot overlap the requested band. Unknown size never cuts.
  */
-import { parseRevenueBand } from "./lib/pipeline/recheck-policy.js";
+import { parseRevenueBand } from "../lib/pipeline/recheck-policy.js";
 
 // Mirrors the gate in orchestrator.ts. Kept in step by asserting the same
 // inputs that produced the live rejections.

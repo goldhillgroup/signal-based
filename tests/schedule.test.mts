@@ -7,8 +7,8 @@
  * to run costs a week's leads, running when it shouldn't costs real money and
  * can do so repeatedly before anyone notices.
  */
-import { shouldRunNow, isoDay, daysBetween, weeklyLabel } from "./lib/pipeline/schedule-types.js";
-import type { WeeklySchedule } from "./lib/pipeline/schedule-types.js";
+import { shouldRunNow, isoDay, daysBetween, weeklyLabel } from "../lib/pipeline/schedule-types.js";
+import type { WeeklySchedule } from "../lib/pipeline/schedule-types.js";
 
 const base: WeeklySchedule = {
   enabled: true,

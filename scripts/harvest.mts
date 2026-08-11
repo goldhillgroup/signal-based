@@ -52,9 +52,9 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
-const { getSchedule } = await import("./lib/pipeline/schedule.js");
-const { shouldRunNow, isoDay, harvestEstimate } = await import("./lib/pipeline/schedule-types.js");
-const { planHarvest, executeHarvest } = await import("./lib/pipeline/harvest.js");
+const { getSchedule } = await import("../lib/pipeline/schedule.js");
+const { shouldRunNow, isoDay, harvestEstimate } = await import("../lib/pipeline/schedule-types.js");
+const { planHarvest, executeHarvest } = await import("../lib/pipeline/harvest.js");
 
 const dry = process.argv.includes("--dry");
 const force = process.argv.includes("--force");
@@ -109,7 +109,7 @@ await executeHarvest(plan);
 console.log(`\nDone in ${((Date.now() - started) / 60000).toFixed(1)} min.`);
 
 // Report what actually landed, so the CI log is worth reading on its own.
-const { createServiceRoleClient } = await import("./lib/supabase/server.js");
+const { createServiceRoleClient } = await import("../lib/supabase/server.js");
 const sb = createServiceRoleClient();
 for (const s of plan.started) {
   const { data } = await sb

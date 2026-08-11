@@ -20,7 +20,7 @@
  * Run: npx tsx --env-file=.env.local ./eval-labeled.mts [A|B|AB]
  */
 import { readFileSync, writeFileSync } from "node:fs";
-import { classifySignal, disprovePass } from "./lib/pipeline/openrouter";
+import { classifySignal, disprovePass } from "../lib/pipeline/openrouter";
 
 // Model under test. Set CLASSIFY_MODEL in the env to score a candidate
 // model against the labeled set before promoting it in production:
@@ -29,7 +29,7 @@ import { classifySignal, disprovePass } from "./lib/pipeline/openrouter";
 // QUALIFIED recall — those two numbers decide whether the cheaper model is
 // actually safe, rather than assuming it is.
 const MODEL_UNDER_TEST = process.env.CLASSIFY_MODEL ?? "anthropic/claude-sonnet-5 (default)";
-import { fetchCompanyPages, pickBestPage } from "./lib/pipeline/apify";
+import { fetchCompanyPages, pickBestPage } from "../lib/pipeline/apify";
 
 type Row = {
   company: string;

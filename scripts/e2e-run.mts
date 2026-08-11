@@ -29,8 +29,8 @@ for (const line of fs.readFileSync(".env.local", "utf8").split("\n")) {
   }
 }
 
-const { createServiceRoleClient } = await import("./lib/supabase/server.js");
-const { runSearchPipeline } = await import("./lib/pipeline/orchestrator.js");
+const { createServiceRoleClient } = await import("../lib/supabase/server.js");
+const { runSearchPipeline } = await import("../lib/pipeline/orchestrator.js");
 
 const sb = createServiceRoleClient();
 const argv = process.argv.slice(2);

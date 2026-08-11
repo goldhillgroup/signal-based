@@ -6,7 +6,7 @@
  * parse. Observed live on elitetreeinc.com — a real landscaping company with a
  * named owner — which was recorded as "classification failed" and thrown away.
  */
-const { extractJson } = await import("./lib/pipeline/openrouter.js");
+const { extractJson } = await import("../lib/pipeline/openrouter.js");
 
 let pass = 0;
 const fail: string[] = [];

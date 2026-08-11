@@ -4,8 +4,8 @@
  * measured again. A ranking that starves its own evidence is a ratchet, not a
  * learner.
  */
-import { orderByYield } from "./lib/pipeline/channel-priors.js";
-import type { Candidate } from "./lib/pipeline/apify.js";
+import { orderByYield } from "../lib/pipeline/channel-priors.js";
+import type { Candidate } from "../lib/pipeline/apify.js";
 
 const mk = (channel: Candidate["channel"], n: number): Candidate[] =>
   Array.from({ length: n }, (_, i) => ({ domain: `${channel}${i}.com`, url: "", title: "", channel }));

@@ -6,9 +6,9 @@
  * dialog polls a dead row and Enrich refuses the folder. The reaper cleans that
  * up after the fact; this is about not needing it.
  */
-const { RUN_CEILING_MS, REAP_GRACE_MS } = await import("./lib/pipeline/reap.js");
+const { RUN_CEILING_MS, REAP_GRACE_MS } = await import("../lib/pipeline/reap.js");
 const { scansFor, SECONDS_PER_COMPANY, passesNeeded, companiesPerPass } =
-  await import("./lib/pipeline/scan-limits.js");
+  await import("../lib/pipeline/scan-limits.js");
 
 let pass = 0;
 const fail: string[] = [];

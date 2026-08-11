@@ -42,8 +42,8 @@ for (const line of fs.readFileSync(".env.local", "utf8").split("\n")) {
   }
 }
 
-const { createServiceRoleClient } = await import("./lib/supabase/server.js");
-const { recheckAfterFor } = await import("./lib/pipeline/recheck-policy.js");
+const { createServiceRoleClient } = await import("../lib/supabase/server.js");
+const { recheckAfterFor } = await import("../lib/pipeline/recheck-policy.js");
 
 interface Row {
   company: string;
@@ -65,7 +65,7 @@ interface Row {
   notes: string;
 }
 
-const rows: Row[] = JSON.parse(fs.readFileSync("labeled72.json", "utf8"));
+const rows: Row[] = JSON.parse(fs.readFileSync(new URL("labeled72.json", import.meta.url), "utf8"));
 const write = process.argv.includes("--write");
 const sb = createServiceRoleClient();
 

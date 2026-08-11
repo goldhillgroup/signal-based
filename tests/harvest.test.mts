@@ -6,7 +6,7 @@
  * silently, forever. These assert the decision the route makes on each daily
  * ping, so "every Monday" is a tested claim rather than an intention.
  */
-import { shouldRunNow, isoDay, DAY_NAMES } from "./lib/pipeline/schedule-types.js";
+import { shouldRunNow, isoDay, DAY_NAMES } from "../lib/pipeline/schedule-types.js";
 
 const base = {
   enabled: true,

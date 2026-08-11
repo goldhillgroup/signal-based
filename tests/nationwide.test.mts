@@ -11,7 +11,7 @@
  * location has no rotation axis, so round 2 re-buys round 1 and the run
  * declares the pool dry after one call.
  */
-import { NATIONWIDE, stateNameFor } from "./lib/pipeline/us-states.js";
+import { NATIONWIDE, stateNameFor } from "../lib/pipeline/us-states.js";
 
 let pass = 0;
 const fails: string[] = [];

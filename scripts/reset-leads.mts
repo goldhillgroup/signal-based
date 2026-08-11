@@ -41,7 +41,7 @@ for (const line of fs.readFileSync(".env.local", "utf8").split("\n")) {
   }
 }
 
-const { createServiceRoleClient } = await import("./lib/supabase/server.js");
+const { createServiceRoleClient } = await import("../lib/supabase/server.js");
 const sb = createServiceRoleClient();
 const write = process.argv.includes("--write");
 

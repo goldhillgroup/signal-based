@@ -6,7 +6,7 @@
  * founder. A wrong contact gets a real email sent to the wrong person under
  * his name; a missing one just costs nothing.
  */
-import { extractEmails, bestEmailFor } from "./lib/pipeline/page-email.js";
+import { extractEmails, bestEmailFor } from "../lib/pipeline/page-email.js";
 
 let pass = 0;
 const fails: string[] = [];

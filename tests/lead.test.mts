@@ -7,10 +7,10 @@
  * succession signal "was confirmed" on one of those puts him on a call
  * asserting something about a family that may not be true.
  */
-import { toLead, signalTypeOf, scoreFactors, SIGNAL_TYPE_META } from "./lib/lead-signal.js";
-import type { Company, Evidence, Contact } from "./lib/company.js";
-import type { Confidence } from "./lib/supabase/types.js";
-import { explainFit } from "./lib/fit-explanation.js";
+import { toLead, signalTypeOf, scoreFactors, SIGNAL_TYPE_META } from "../lib/lead-signal.js";
+import type { Company, Evidence, Contact } from "../lib/company.js";
+import type { Confidence } from "../lib/supabase/types.js";
+import { explainFit } from "../lib/fit-explanation.js";
 
 const base = {
   id: "1", domain: "acme.com", name: "Acme Landscaping", industry: "landscaping" as const,
@@ -90,8 +90,8 @@ ok("every signal type has a label", Object.values(SIGNAL_TYPE_META).every((m) =>
 // candidate, not a contact. It must not appear, score, or export until the
 // lookup step has actually run.
 // ═══════════════════════════════════════════════════════════════════════════
-const { settledContact } = await import("./lib/company.js");
-const { companiesToCsv } = await import("./lib/csv-export.js");
+const { settledContact } = await import("../lib/company.js");
+const { companiesToCsv } = await import("../lib/csv-export.js");
 
 const parkedRow = make({
   contact: { name: null, nameInferred: false, title: null, email: "info@acme.com",
@@ -121,7 +121,7 @@ ok("the CSV does export a real contact", foundCsv.includes("sean@acme.com"));
 // ═══════════════════════════════════════════════════════════════════════════
 // SHARED INBOXES — kept, but never mistaken for the person.
 // ═══════════════════════════════════════════════════════════════════════════
-const { isSharedInbox } = await import("./lib/pipeline/page-email.js");
+const { isSharedInbox } = await import("../lib/pipeline/page-email.js");
 
 ok("info@ is a shared inbox", isSharedInbox("info@acme.com"));
 ok("sales@ is a shared inbox", isSharedInbox("sales@acme.com"));
