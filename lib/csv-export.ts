@@ -54,6 +54,15 @@ const COLUMNS: { header: string; get: (c: Company) => string }[] = [
   { header: "address", get: (c) => c.address ?? "" },
   { header: "contact_name", get: (c) => settledContact(c)?.name ?? "" },
   { header: "contact_email", get: (c) => settledContact(c)?.email ?? "" },
+  // BOTH addresses, not one. A named person and the office inbox are different
+  // leads for a conversation this personal — will@ reaches Will, info@ reaches
+  // whoever screens the inbox — and the sheet used to show whichever row the
+  // database returned first. The primary is now always the named person where
+  // one exists; this is the shared inbox kept alongside it.
+  {
+    header: "backup_email",
+    get: (c) => (c.backupContact?.findStatus === "found" ? (c.backupContact.email ?? "") : ""),
+  },
   {
     header: "email_status",
     get: (c) => {

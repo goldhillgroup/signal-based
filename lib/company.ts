@@ -76,6 +76,17 @@ export interface Company {
   lastCrawledAt: string;
   evidence: Evidence | null;
   contact: Contact | null;
+  /**
+   * The shared inbox, when a NAMED person's address is the primary contact.
+   *
+   * Both are worth having and they are not the same lead. Jonathan opens
+   * conversations about handing a family business to a child — the most
+   * personal subject a business owner has. info@ reaches whoever screens the
+   * inbox; will@ reaches Will. Keeping only one meant the office address
+   * sometimes displaced the founder's, because the primary contact was
+   * whichever row the database happened to return first.
+   */
+  backupContact: Contact | null;
 }
 
 /**

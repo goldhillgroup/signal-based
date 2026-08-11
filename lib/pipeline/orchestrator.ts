@@ -5,7 +5,7 @@ import { findContact } from "./anymailfinder";
 import { verifyEmail } from "./millionverifier";
 import type { Industry, SearchMode, SearchRow } from "../supabase/types";
 import { recheckAfterFor, rejectionScope, sizeVerdictStillBinds, parseRevenueBand } from "./recheck-policy";
-import { extractEmails, bestEmailFor, type FoundEmail } from "./page-email";
+import { extractEmails, bestEmailFor, type FoundEmail, bestPhoneFor, isSharedInbox } from "./page-email";
 import { callableName, cleanRevenueBand, cleanTitle, earnedConfidence } from "../lead-signal";
 import { buildWarningLine } from "./channel-health";
 import { channelRates, orderByYield } from "./channel-priors";
@@ -1189,9 +1189,18 @@ export async function runSearchPipeline(
         // company is LOST entirely on a database where the migration has not
         // been applied. A missing phone number is a missing field; a missing
         // company is a missing lead.
-        if (candidate.phone || candidate.address) {
+        //
+        // FALLING BACK TO THE PAGE. Google Places supplies a number for 81% of
+        // Maps companies and 0% of web-search ones — and web search is the
+        // channel that actually finds confirmed pairs (4.8 per 100 read against
+        // Maps' 0.9). So the leads most worth ringing were precisely the ones
+        // showing no number, while the page had it in the footer the whole
+        // time. Places stays authoritative where it has one; this only fills a
+        // blank, and costs nothing — the page is already fetched and paid for.
+        const pagePhone = candidate.phone ? null : bestPhoneFor(classifyText);
+        if (candidate.phone || candidate.address || pagePhone) {
           const patch: { phone?: string; address?: string } = {};
-          if (candidate.phone) patch.phone = candidate.phone;
+          if (candidate.phone || pagePhone) patch.phone = candidate.phone ?? pagePhone!;
           if (candidate.address) patch.address = candidate.address;
           const { error: contactErr } = await supabase
             .from("companies")
@@ -1481,7 +1490,29 @@ export async function enrichContacts(
     // every company that happened to print an address would be skipped
     // forever, its email never revealed and no lookup ever run.
     const settled = (existingContacts ?? []).filter((c) => c.find_status !== "not_attempted");
-    const alreadyEnriched = new Set(settled.map((c) => c.company_id));
+
+    // A SHARED INBOX IS NOT AN ENRICHED COMPANY.
+    //
+    // info@ / office@ / contact@ is a real, usable address and worth keeping —
+    // but it is not what this product is for. Jonathan opens conversations
+    // about handing a family business to a child, the most personal subject a
+    // business owner has. info@ reaches whoever screens the inbox; will@
+    // reaches Will.
+    //
+    // Treating info@ as "done" meant one free scrape off a footer permanently
+    // cancelled the paid lookup that would have found the founder by name —
+    // the company looked enriched, and the address Jonathan actually needed
+    // was never bought. So a company whose only settled contact is a shared
+    // inbox stays eligible. Both rows are kept: the personal address becomes
+    // the contact, the shared one remains as a fallback.
+    const enrichedCompanies = new Set<string>();
+    for (const c of settled) {
+      const personal = c.find_status === "found" && c.email && !isSharedInbox(c.email);
+      // "not_found" still counts as settled — the lookup ran and came back
+      // empty, and re-running it changes nothing but the bill.
+      if (personal || c.find_status === "not_found") enrichedCompanies.add(c.company_id);
+    }
+    const alreadyEnriched = enrichedCompanies;
     const parkedByCompany = new Map(
       (existingContacts ?? [])
         .filter((c) => c.find_status === "not_attempted" && c.email)

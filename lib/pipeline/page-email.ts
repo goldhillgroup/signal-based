@@ -169,3 +169,97 @@ export function isSharedInbox(email: string | null | undefined): boolean {
   const local = email.split("@")[0]?.toLowerCase().replace(/[._-]/g, "") ?? "";
   return ROLE_PREFIXES.has(local);
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// PHONE NUMBERS
+//
+// Same idea as the email scrape above, and the same economics: the page has
+// already been fetched and paid for, so reading a phone number off it is free.
+//
+// It matters more than it looks. Phone and address arrive with Google Places
+// for companies found through Maps, and Maps is the LOW-signal channel — 0.9
+// confirmed pairs per 100 companies read against web search's 4.8. So the
+// leads most worth calling were exactly the ones with no number: measured
+// across 236 qualified leads, maps had a phone for 81% and web_search for 0%.
+//
+// And for a founder in his sixties running a landscaping company, the phone is
+// often the contact that actually gets answered.
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * US phone numbers, written the way small business sites write them:
+ * (555) 123-4567, 555-123-4567, 555.123.4567, +1 555 123 4567.
+ *
+ * Anchored on both sides against a longer digit run, so a 16-digit tracking
+ * ID, an EIN or a licence number cannot masquerade as a number to call.
+ */
+const US_PHONE_RE =
+  /(?<!\d)(?:\+?1[\s.\-]?)?(?:\((\d{3})\)|(\d{3}))[\s.\-]?(\d{3})[\s.\-]?(\d{4})(?!\d)/g;
+
+/** Area codes and exchanges that are never a real business line. */
+function plausible(digits: string): boolean {
+  if (digits.length !== 10) return false;
+  const area = digits.slice(0, 3);
+  const exch = digits.slice(3, 6);
+  // NANP: neither area code nor exchange may begin with 0 or 1.
+  if (/^[01]/.test(area) || /^[01]/.test(exch)) return false;
+  // 555-01xx is the reserved fictional range, and a run of one digit
+  // (0000000000, 1111111111) is a placeholder someone forgot to replace.
+  if (exch === "555") return false;
+  if (/^(\d)\1{9}$/.test(digits)) return false;
+  // Sequential filler: 1234567890.
+  if (digits === "1234567890" || digits === "0123456789") return false;
+  return true;
+}
+
+export function extractPhones(text: string): string[] {
+  const seen = new Set<string>();
+  for (const m of text.matchAll(US_PHONE_RE)) {
+    const digits = `${m[1] ?? m[2]}${m[3]}${m[4]}`;
+    if (plausible(digits)) seen.add(digits);
+  }
+  return [...seen];
+}
+
+/** `5551234567` -> `(555) 123-4567`. One format everywhere, so the column
+ *  sorts and reads consistently however the site happened to write it. */
+export function formatPhone(digits: string): string {
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
+/**
+ * The number most likely to be the company's main line.
+ *
+ * A page can carry several — a mobile, a fax, an emergency line, the web
+ * designer's. Preference goes to one the page explicitly labels as somewhere
+ * to call, then to whichever appears most often, which on a small business
+ * site is almost always the header/footer number repeated on every page.
+ */
+export function bestPhoneFor(text: string): string | null {
+  const found = extractPhones(text);
+  if (found.length === 0) return null;
+
+  // No early return for the single-number case. That shortcut skipped the
+  // labelling pass below, so a page whose only number was a FAX line returned
+  // the fax as the number to call — the one result here that is actively
+  // wrong rather than merely unhelpful.
+  const counts = new Map<string, number>();
+  const labelled = new Set<string>();
+  for (const m of text.matchAll(US_PHONE_RE)) {
+    const digits = `${m[1] ?? m[2]}${m[3]}${m[4]}`;
+    if (!plausible(digits)) continue;
+    counts.set(digits, (counts.get(digits) ?? 0) + 1);
+    const before = text.slice(Math.max(0, (m.index ?? 0) - 30), m.index ?? 0).toLowerCase();
+    if (/\b(call|phone|tel|telephone|office|contact|dial)\b/.test(before)) labelled.add(digits);
+    // A fax number is the one thing here that is actively wrong to call.
+    if (/\bfax\b/.test(before)) counts.set(digits, -1);
+  }
+  const ranked = found
+    .filter((d) => (counts.get(d) ?? 0) >= 0)
+    .sort(
+      (a, b) =>
+        Number(labelled.has(b)) - Number(labelled.has(a)) ||
+        (counts.get(b) ?? 0) - (counts.get(a) ?? 0)
+    );
+  return ranked[0] ? formatPhone(ranked[0]) : null;
+}

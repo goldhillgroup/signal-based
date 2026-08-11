@@ -28,6 +28,7 @@ import type {
   VerificationStatus,
 } from "./supabase/types";
 import type { Company } from "./company";
+import { isSharedInbox } from "./pipeline/page-email";
 
 export interface SearchFolder {
   id: string;
@@ -131,7 +132,19 @@ interface CompanyJoinRow {
 
 function mapCompanyRow(row: CompanyJoinRow): Company {
   const evidence = row.signal_evidence?.[0];
-  const contact = row.contacts?.[0];
+  // NOT contacts[0]. That was whichever row the database returned first, so a
+  // company with both info@ and the founder's own address showed whichever
+  // won the race — and a free footer scrape of info@ could displace the
+  // address that had actually been paid for. Rank instead: a settled lookup
+  // beats a parked one, and a named person beats a shared inbox.
+  const ranked = [...(row.contacts ?? [])].sort((a, b) => {
+    const settled = (c: typeof a) => (c.find_status === "found" ? 1 : 0);
+    const personal = (c: typeof a) => (c.email && !isSharedInbox(c.email) ? 1 : 0);
+    return settled(b) - settled(a) || personal(b) - personal(a);
+  });
+  const contact = ranked[0];
+  // The best SHARED inbox, kept alongside rather than instead of the above.
+  const backup = ranked.find((c) => c.email && isSharedInbox(c.email) && c !== contact);
   return {
     id: row.id,
     searchId: row.search_id ?? null,
@@ -140,8 +153,9 @@ function mapCompanyRow(row: CompanyJoinRow): Company {
     industry: row.industry,
     state: row.state ?? "-",
     city: row.city ?? "-",
-    // Free from Maps discovery; null on rows found by other channels, and on
-    // any row written before the column existed.
+    // Google Places supplies it for Maps companies; for every other channel it
+    // is read off the page footer at classify time (see bestPhoneFor). Null
+    // only when the page genuinely prints no number.
     phone: (row as { phone?: string | null }).phone ?? null,
     address: (row as { address?: string | null }).address ?? null,
     // "Size not stated" rather than "Unknown". 75% of rows have no revenue
@@ -181,6 +195,16 @@ function mapCompanyRow(row: CompanyJoinRow): Company {
           email: contact.email,
           findStatus: contact.find_status,
           verificationStatus: contact.verification_status,
+        }
+      : null,
+    backupContact: backup
+      ? {
+          name: backup.name,
+          nameInferred: backup.name_inferred,
+          title: backup.title,
+          email: backup.email,
+          findStatus: backup.find_status,
+          verificationStatus: backup.verification_status,
         }
       : null,
   };
