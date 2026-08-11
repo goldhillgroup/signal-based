@@ -2,6 +2,8 @@ import { getSetting, SETTINGS_KEYS } from "@/lib/settings";
 import { SettingsForm } from "@/components/SettingsForm";
 import { WeeklySchedule } from "@/components/WeeklySchedule";
 import { getSchedule } from "@/lib/pipeline/schedule";
+import { getIcp } from "@/lib/pipeline/icp";
+import { IdealClient } from "@/components/IdealClient";
 
 // Server component on purpose — it's the only place allowed to see a real
 // key value (via getSetting, service-role only). Everything handed to the
@@ -21,6 +23,7 @@ function mask(value: string): string {
 
 export default async function SettingsPage() {
   const schedule = await getSchedule();
+  const icp = await getIcp();
 
   /**
    * Which Apify balance to show against the one Apify key row.
@@ -74,6 +77,10 @@ export default async function SettingsPage() {
           Everything the pipeline needs to keep running, in one place.
         </p>
       </div>
+
+      {/* FIRST, above both the schedule and the keys. The keys keep the
+          product running; this decides what it goes looking for. */}
+      <IdealClient initial={icp} />
 
       {/* Above the keys: switching the schedule on is the decision that
           changes what this system spends, and it is the only control here

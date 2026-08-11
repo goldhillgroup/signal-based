@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { runSearchPipeline } from "@/lib/pipeline/orchestrator";
+import { getIcp } from "@/lib/pipeline/icp";
 import { industryLabel } from "@/lib/pipeline/intake-types";
 import { stateNameFor, US_STATES, NATIONWIDE } from "@/lib/pipeline/us-states";
 import { creditBlockerFor } from "@/lib/pipeline/preflight";
@@ -103,7 +104,13 @@ export async function POST(req: Request) {
       { status: 400 }
     );
   }
-  const refinement = (body.refinement ?? "").trim();
+  // Fall back to the saved ideal-client profile when this search doesn't state
+  // its own focus. Applied HERE rather than only as a form default so that
+  // every path into a search — the form, a parsed intake, a re-run — starts
+  // from the same definition of a good lead. An explicit focus always wins;
+  // this only fills a blank.
+  const icp = await getIcp();
+  const refinement = ((body.refinement ?? "").trim() || icp.signalFocus).trim();
 
   const mode = VALID_MODES.includes(body.mode as SearchMode) ? (body.mode as SearchMode) : "hybrid";
 
@@ -121,9 +128,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: creditBlocker }, { status: 402 });
   }
 
-  // Human-readable label built server-side from the structured fields — the
-  // free-text refinement is along for the ride in the label/query only, it
-  // never drives the actual discovery filters (see lib/pipeline/apify.ts).
+  // Human-readable label built server-side from the structured fields. The
+  // refinement is part of the query text AND, since refinementQueries, part of
+  // what discovery actually searches for — it is no longer along for the ride.
   // A nationwide search has no states to list, and the old template produced
   // "Landscaping companies in " with nothing after it — a folder named after a
   // missing value, in a UI where the label is the only thing distinguishing
@@ -131,6 +138,11 @@ export async function POST(req: Request) {
   const where = states.length > 0 ? states.map(stateNameFor).join(", ") : "the United States";
   const label = `${industryLabel(industry)} companies in ${where}`;
   const query = refinement ? `${label}, ${refinement}` : label;
+
+  const band = {
+    min: "revenueMinMusd" in body ? (body.revenueMinMusd ?? null) : icp.revenueMinMusd,
+    max: "revenueMaxMusd" in body ? (body.revenueMaxMusd ?? null) : icp.revenueMaxMusd,
+  };
 
   const { data: search, error } = await supabase
     .from("searches")
@@ -140,10 +152,13 @@ export async function POST(req: Request) {
       status: "running",
       mode,
       target_signals: target,
-      // Step 01's band. Both null = "no limit" (an explicit choice in the UI),
-      // so `?? null` rather than a default here — the UI owns the baseline.
-      revenue_min_musd: body.revenueMinMusd ?? null,
-      revenue_max_musd: body.revenueMaxMusd ?? null,
+      // Step 01's band. Both null = "no limit", which is a real choice in the
+      // UI — so an ABSENT key falls back to the saved ideal-client band while
+      // an explicit null stays null. `?? null` alone could not tell those two
+      // apart and would have overridden a deliberate "no limit". Same `in`
+      // test the schedule route uses, for the same reason.
+      revenue_min_musd: band.min,
+      revenue_max_musd: band.max,
       created_by: user.id,
     })
     .select("id, label")
@@ -159,10 +174,7 @@ export async function POST(req: Request) {
   // Runs after this response is sent, within the extended function lifetime
   // (see maxDuration above) — the client polls the `searches` row for progress.
   after(() =>
-    runSearchPipeline(search.id, industry, states, target, mode, refinement || null, {
-      min: body.revenueMinMusd ?? null,
-      max: body.revenueMaxMusd ?? null,
-    })
+    runSearchPipeline(search.id, industry, states, target, mode, refinement || null, band)
   );
 
   return NextResponse.json({ id: search.id, label: search.label });

@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 import { useSearches } from "@/lib/searches-store";
 import { AGREED_STATES, NATIONWIDE, stateNameFor } from "@/lib/pipeline/us-states";
 import { WhatCountsAsSignal } from "./WhatCountsAsSignal";
-import { MODE_META, MODE_ORDER, BAND_OPTIONS, REFINEMENT_EXAMPLES } from "@/lib/search-options";
+import { MODE_META, MODE_ORDER, BAND_OPTIONS, REFINEMENT_EXAMPLES, bandIndexFor } from "@/lib/search-options";
 import type { Suggestion } from "@/lib/pipeline/suggestions";
+import { DEFAULT_ICP, type Icp } from "@/lib/pipeline/icp-types";
 import { INDUSTRY_META } from "@/lib/signal-meta";
 import { applyAnswer, bandLabel, labelFor, type IntakeResult } from "@/lib/pipeline/intake-types";
 import type { Industry, SearchMode } from "@/lib/supabase/types";
@@ -35,7 +36,13 @@ const ASK_EXAMPLES = [
 ];
 
 
-export function SearchHome({ suggestions = [] }: { suggestions?: Suggestion[] }) {
+export function SearchHome({
+  suggestions = [],
+  icp = DEFAULT_ICP,
+}: {
+  suggestions?: Suggestion[];
+  icp?: Icp;
+}) {
   const router = useRouter();
   const { folders, loading, createSearch } = useSearches();
 
@@ -70,7 +77,12 @@ export function SearchHome({ suggestions = [] }: { suggestions?: Suggestion[] })
   const [target, setTarget] = useState(8);
   const passes = passesNeeded(target, RUN_CEILING_MS);
   const perPass = companiesPerPass(RUN_CEILING_MS);
-  const [bandIdx, setBandIdx] = useState(0); // defaults to the $3-15M baseline
+  // Opens on the band saved as the ideal client, not a hardcoded 0. The
+  // baseline still IS $3-15M — that is DEFAULT_ICP — but it is now one place
+  // Jonathan can change rather than three that have to be kept in step.
+  const [bandIdx, setBandIdx] = useState(() =>
+    bandIndexFor(icp.revenueMinMusd, icp.revenueMaxMusd)
+  );
 
   const [running, setRunning] = useState<{ id: string; label: string } | null>(null);
   const [starting, setStarting] = useState(false);
@@ -388,13 +400,16 @@ export function SearchHome({ suggestions = [] }: { suggestions?: Suggestion[] })
             <label htmlFor="refinement" className="mb-1.5 block text-xs font-semibold text-gh-ink-secondary">
               Signal focus <span className="font-normal text-gh-ink-muted">(optional)</span>
             </label>
-            {/* Deliberately does NOT steer discovery, only nudges what
-                classification pays attention to within the vertical + state
-                above. Letting free text pick which companies get found is how a
-                search drifts off the agreed vertical; the two required
-                structured inputs exist to make that impossible. */}
+            {/* This copy used to promise the opposite — "it never changes
+                which companies get searched" — which was true when the
+                refinement only reached the classifier, and became false when
+                it started generating discovery queries. It stayed on screen
+                describing behaviour the product no longer had. The vertical
+                and states are still hard filters, so the original worry (free
+                text dragging a search off the agreed vertical) does not
+                return: the focus decides what is ASKED within them. */}
             <p className="mb-1.5 text-[11px] leading-relaxed text-gh-ink-muted">
-              A hint for what to look for within{" "}
+              What to look for within{" "}
               {INDUSTRY_META[industry ?? "landscaping"].label.toLowerCase()} in{" "}
               {states.includes(NATIONWIDE)
                 ? "the United States"
@@ -402,8 +417,9 @@ export function SearchHome({ suggestions = [] }: { suggestions?: Suggestion[] })
                   ? "your chosen states"
                   : states.length <= 2
                     ? states.map(stateNameFor).join(" and ")
-                    : `the ${states.length} states above`}{" "}
-             , it never changes which companies get searched.
+                    : `the ${states.length} states above`}
+              . It shapes the questions the search asks, so it changes which
+              companies get found — the vertical and states above stay fixed.
             </p>
             <input
               id="refinement"
@@ -411,7 +427,11 @@ export function SearchHome({ suggestions = [] }: { suggestions?: Suggestion[] })
               value={refinement}
               onChange={(e) => setRefinement(e.target.value)}
               type="text"
-              placeholder="e.g. succession signals, founder retiring…"
+              placeholder={
+                icp.signalFocus
+                  ? `${icp.signalFocus} (your ideal client)`
+                  : "e.g. succession signals, founder retiring…"
+              }
               className="w-full rounded-lg border border-gh-border bg-gh-surface-sunken px-3 py-2.5 text-sm text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none focus:ring-2 focus:ring-gh-sky/20"
             />
             <div className="mt-2 flex flex-wrap gap-1.5">
