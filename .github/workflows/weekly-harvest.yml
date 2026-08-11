@@ -1,0 +1,96 @@
+# The weekly harvest, run here rather than in a serverless function.
+#
+# WHY. On Vercel the crawl runs inside `after()` and is bounded by the
+# function's maxDuration — 300s by default on every plan, raisable to 800s only
+# on Pro with Fluid compute. Two verticals at 20 companies each needs about 21
+# minutes, so the second vertical was cut off part-way through every week.
+#
+# A GitHub Actions job may run for six hours. A private repo gets 2,000 free
+# minutes a month and this uses roughly 85, so the ceiling problem disappears
+# without buying anything.
+#
+# SAFE ALONGSIDE THE VERCEL CRON, and ordered on purpose. planHarvest stamps
+# lastRunOn before any crawling begins, so whichever driver arrives first claims
+# the day and the other is a no-op. This job is scheduled an hour EARLIER than
+# vercel.json's cron so the driver that can actually finish wins, with Vercel
+# left as the fallback for the case where these secrets were never set.
+
+name: Weekly harvest
+
+on:
+  schedule:
+    # 12:00 UTC — deliberately ONE HOUR BEFORE the Vercel cron in vercel.json.
+    #
+    # That ordering is the whole point. Both drivers claim the day by stamping
+    # lastRunOn before crawling, so whichever fires first does the work and the
+    # other becomes a no-op. This one has no ceiling and can finish; the Vercel
+    # one may be cut off mid-harvest on a plan capped below the run's length. So
+    # this must win the race, and the Vercel cron stays on as the fallback that
+    # catches the week if GitHub's secrets were never configured or the runner
+    # is down.
+    #
+    # Daily rather than weekly: the job itself decides whether today is a run
+    # day (shouldRunNow), and a daily ping with a 7-day cooldown self-heals a
+    # missed window. GitHub's scheduler is explicitly best-effort and can skip
+    # or delay a run under load, which a once-a-week trigger would turn into a
+    # lost week.
+    - cron: "0 12 * * *"
+  # Lets you run it by hand from the Actions tab, with a dry run as the default
+  # so the button is safe to press to find out whether it is wired up.
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry = decide and report only; run = harvest if today is a run day; force = ignore the day gate"
+        required: true
+        default: dry
+        type: choice
+        options: [dry, run, force]
+
+# One harvest at a time. Without this, a manual run during the scheduled one
+# would have two jobs racing for the same week — planHarvest would stop the
+# second from spending, but the log would be confusing and the second job would
+# report a skip that looks like a fault.
+concurrency:
+  group: weekly-harvest
+  cancel-in-progress: false
+
+jobs:
+  harvest:
+    runs-on: ubuntu-latest
+    # Generous, but not unbounded: a hung vendor call should fail the build
+    # rather than burn the monthly minutes. A 20-minute harvest fits with room.
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Run the harvest
+        env:
+          # Every one of these is a repository secret. None is ever echoed —
+          # harvest.mts checks only for PRESENCE and prints names, not values.
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          # Jonathan's own Apify account. APIFY_TOKEN_4 is deliberately NOT
+          # listed: it is the developer account with a $14 self-imposed cap and
+          # getApifyToken() tries it first, so setting it here would bill the
+          # wrong account and stop the harvest dead at $14.
+          APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
+          ANYMAILFINDER_API_KEY: ${{ secrets.ANYMAILFINDER_API_KEY }}
+          MILLIONVERIFIER_API_KEY: ${{ secrets.MILLIONVERIFIER_API_KEY }}
+        run: |
+          case "${{ github.event.inputs.mode }}" in
+            dry)   npx tsx harvest.mts --dry ;;
+            force) npx tsx harvest.mts --force ;;
+            *)     npx tsx harvest.mts ;;
+          esac
