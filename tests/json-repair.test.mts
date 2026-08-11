@@ -59,7 +59,9 @@ check("a comma inside a string is not a cut point", () => {
 });
 
 check("nested object does not confuse the depth walk", () => {
-  const r = extractJson<Record<string, any>>('{"a":1,"inner":{"x":9,"y":8},"tail');
+  const r = extractJson<{ a: number; inner: { x: number; y: number } }>(
+    '{"a":1,"inner":{"x":9,"y":8},"tail'
+  );
   eq(r.a, 1, "a"); eq(r.inner.x, 9, "inner.x"); eq(r.inner.y, 8, "inner.y");
 });
 
