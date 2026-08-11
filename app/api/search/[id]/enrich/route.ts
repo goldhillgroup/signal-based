@@ -3,6 +3,7 @@ import { after } from "next/server";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { enrichContacts, type EnrichScope } from "@/lib/pipeline/orchestrator";
 import { enrichmentBlockerFor } from "@/lib/pipeline/preflight";
+import { reapStaleRuns, reapStaleEnrichment } from "@/lib/pipeline/reap";
 
 // See app/api/search/route.ts for why 300 and how to raise it.
 export const maxDuration = 300;
@@ -36,6 +37,25 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 
   const service = createServiceRoleClient();
+
+  // Settle any run the platform killed BEFORE reading the row.
+  //
+  // The pipeline now stops itself before the ceiling, so this is rare — but a
+  // cold start or a slow vendor can still get a run terminated mid-loop, and
+  // such a row stays status='running' forever. The check below then refuses to
+  // enrich ("Discovery hasn't finished yet"), so a folder full of real,
+  // paid-for leads becomes permanently un-enrichable. The reaper otherwise runs
+  // only on a dashboard render, which is not a page you have to visit between
+  // finishing a search and pressing Enrich.
+  //
+  // Never allowed to break the request: a reaper that 500s the endpoint it
+  // exists to unblock is worse than the stuck row.
+  try {
+    await Promise.all([reapStaleRuns(service), reapStaleEnrichment(service)]);
+  } catch (e) {
+    console.warn(`Reap before enrich failed for ${id}:`, (e as Error).message);
+  }
+
   const { data: search, error } = await service
     .from("searches")
     .select("id, status, enrichment_status")

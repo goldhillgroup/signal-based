@@ -33,6 +33,7 @@ const ROUND_SIZE = 15;
 // always part re-check, part fresh ground.
 const RECHECK_PER_RUN = 20;
 import { MAX_SCAN_MULTIPLIER, ABSOLUTE_SCAN_CEILING } from "./scan-limits";
+import { RUN_CEILING_MS } from "./reap";
 
 // How many companies are classified at once. Each one is 1-2 OpenRouter calls
 // (classify, plus disprove when there's a signal to check), so this is bounded
@@ -46,11 +47,19 @@ const CLASSIFY_CONCURRENCY = 5;
 async function runWithConcurrency<T>(
   items: T[],
   limit: number,
-  run: (item: T) => Promise<void>
+  run: (item: T) => Promise<void>,
+  /**
+   * Checked before EACH item, so a run that is out of time stops mid-round
+   * instead of finishing all fifteen. A round is ~15 companies at ~5s each,
+   * so a round-boundary-only check could overshoot by more than a minute —
+   * which is precisely the margin that decides whether the platform kills us.
+   */
+  shouldStop?: () => boolean
 ) {
   let cursor = 0;
   async function worker() {
     while (cursor < items.length) {
+      if (shouldStop?.()) return;
       const item = items[cursor++];
       await run(item);
     }
@@ -229,6 +238,23 @@ function cleanCity(v: string | null | undefined): string | null {
   return t;
 }
 
+/**
+ * Plain English, because this lands in front of the client.
+ *
+ * Deliberately NOT the reaper's "hit the server limit" wording: this run did
+ * not hit anything, it stopped itself with time to spare and wrote a complete,
+ * honest record. The action is identical either way — run it again, and
+ * cross-search memory means the second pass picks up new companies rather than
+ * re-reading the ones already settled.
+ */
+function timeUpMessage(scanned: number, kept: number): string {
+  return (
+    `Stopped at the time limit after checking ${scanned} companies. ` +
+    `The ${kept} found are saved and complete. Run the same search again to ` +
+    `carry on — it will pick up where this one left off, not start over.`
+  );
+}
+
 export async function runSearchPipeline(
   searchId: string,
   industry: Industry,
@@ -257,6 +283,30 @@ export async function runSearchPipeline(
   await runWithCounters(costCounters, async () => {
   try {
     const scanCeiling = Math.min(targetSignals * MAX_SCAN_MULTIPLIER, ABSOLUTE_SCAN_CEILING);
+
+    // ── THE RUN'S OWN DEADLINE ───────────────────────────────────────────
+    //
+    // The loop used to have two exits — target reached, or scan ceiling hit —
+    // and no idea what time it was. Past the platform's maxDuration the process
+    // is simply terminated mid-loop, which is a different and much worse
+    // ending: every completion path lives AFTER the loop, so nothing marks the
+    // row. It stays status='running' forever, the progress dialog polls a dead
+    // record, and Enrich refuses to touch the folder because it is not
+    // 'complete'. reapStaleRuns exists to clean that up, but a reaper is a
+    // mortuary, not a seatbelt.
+    //
+    // So: stop ourselves first. Finishing cleanly at 4 minutes with 30 leads is
+    // strictly better than being killed at 5 with the same 30 leads and a
+    // stranded row, because the clean ending writes the counts, the cost, the
+    // warning and a finished_at that every downstream view already understands.
+    //
+    // The margin covers the tail: an in-flight classify can take ~15s, and the
+    // final writes (counts, cost, evidence) need a few seconds more. Leaving 45
+    // is deliberately generous — the cost of stopping slightly early is a
+    // company or two, and the cost of being wrong is the stranded row above.
+    const DEADLINE_MARGIN_MS = 45_000;
+    const deadlineAt = Date.now() + Math.max(30_000, RUN_CEILING_MS - DEADLINE_MARGIN_MS);
+    const outOfTime = () => Date.now() >= deadlineAt;
 
     // CROSS-SEARCH MEMORY — the thing that makes next month's scan different
     // from today's. Previously this started empty every run, so re-running a
@@ -464,6 +514,10 @@ export async function runSearchPipeline(
     let consecutiveEmpty = 0;
 
     roundLoop: while (countsTowardTarget() < targetSignals && totalScanned < scanCeiling) {
+      if (outOfTime()) {
+        stoppedEarlyReason = timeUpMessage(totalScanned, countsTowardTarget());
+        break roundLoop;
+      }
       round++;
       const roundLimit = Math.min(ROUND_SIZE, scanCeiling - totalScanned);
 
@@ -988,7 +1042,7 @@ export async function runSearchPipeline(
         // Target hit mid-round — the rest of this batch was already
         // discovered/fetched (sunk cost), but skip further classify spend.
         if (countsTowardTarget() >= targetSignals) targetHit = true;
-      });
+      }, outOfTime);
 
       if (targetHit) break roundLoop;
       // No trailing exhaustion check here — the buffer refill at the top of
