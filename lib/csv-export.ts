@@ -106,3 +106,60 @@ export function downloadCompaniesCsv(companies: Company[], filename: string) {
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
+
+/**
+ * The same table as TSV, for pasting straight into Google Sheets.
+ *
+ * A CSV download works — Sheets will import it — but importing is four steps
+ * (download, Drive, File > Import, choose how to replace the sheet) and it
+ * lands as a new file rather than in the sheet someone already has open with
+ * their own notes and columns beside it.
+ *
+ * Tab-separated text on the clipboard skips all of that: click the cell, paste,
+ * and Sheets splits it into columns natively. Same for Excel and Numbers. No
+ * OAuth, no Google API, no new vendor, and nothing that needs access to
+ * Jonathan's Google account — which matters, because the alternative is asking
+ * a client to authorise a third-party app against his own Drive.
+ *
+ * TABS, so cells must not contain them. Newlines are the other separator, so
+ * both are collapsed to spaces — a signal quote spanning two lines would
+ * otherwise silently become two rows and shift every column after it.
+ */
+function tsvCell(value: string): string {
+  return value.replace(/[\t\r\n]+/g, " ").trim();
+}
+
+export function companiesToTsv(companies: Company[]): string {
+  const header = COLUMNS.map((c) => tsvCell(c.header)).join("\t");
+  const rows = companies.map((c) => COLUMNS.map((col) => tsvCell(col.get(c))).join("\t"));
+  return [header, ...rows].join("\n");
+}
+
+/**
+ * Returns false when the browser refuses the clipboard — Safari and Firefox
+ * both do without a user gesture or outside a secure context. The caller shows
+ * the CSV download instead rather than a button that silently does nothing.
+ */
+export async function copyCompaniesForSheets(companies: Company[]): Promise<boolean> {
+  const tsv = companiesToTsv(companies);
+  try {
+    await navigator.clipboard.writeText(tsv);
+    return true;
+  } catch {
+    // Fallback for browsers that block the async clipboard API: a hidden
+    // textarea plus execCommand still works in every one of them.
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = tsv;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+}

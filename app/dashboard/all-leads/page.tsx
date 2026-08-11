@@ -20,6 +20,7 @@ import {
   TrashIcon,
 } from "@/components/icons";
 import { ENRICH_CEILING_PER_COMPANY_USD } from "@/lib/pipeline/pricing";
+import { SheetsButton } from "@/components/SheetsButton";
 
 /**
  * Every lead ever found, ONE FOLDER AT A TIME, and folders first.
@@ -348,6 +349,7 @@ export default function AllLeadsPage() {
                   </span>
                 )}
               </button>
+              <SheetsButton companies={visible} />
             </div>
           </div>
         </div>

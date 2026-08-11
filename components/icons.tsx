@@ -261,3 +261,18 @@ export function RowsIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+/**
+ * A spreadsheet: a page with a grid ruled across it. Deliberately not a Google
+ * logo — this copies rows for ANY spreadsheet (Sheets, Excel, Numbers), and
+ * borrowing a vendor's mark for a generic clipboard action is both misleading
+ * and someone else's trademark.
+ */
+export function SheetIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className={className}>
+      <rect x="3.5" y="3.5" width="17" height="17" rx="2.5" />
+      <path d="M3.5 9.5h17M3.5 15h17M9.5 9.5V20.5M15 9.5V20.5" strokeLinecap="round" />
+    </svg>
+  );
+}

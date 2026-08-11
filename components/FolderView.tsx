@@ -21,6 +21,7 @@ import { CompaniesTable } from "./CompaniesTable";
 import { CompanyDrawer } from "./CompanyDrawer";
 import { ArrowLeftIcon, RadarIcon, ZapIcon, InboxIcon, UsersIcon, DownloadIcon } from "./icons";
 import { ENRICH_CEILING_PER_COMPANY_USD } from "@/lib/pipeline/pricing";
+import { SheetsButton } from "./SheetsButton";
 
 export function FolderView({ folder: folderProp, companies: companiesProp }: { folder: SearchFolder; companies: Company[] }) {
   const { fetchFolder, fetchCompanies, startEnrichment } = useSearches();
@@ -207,6 +208,9 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
                 </span>
               )}
             </button>
+            {/* Beside the CSV, not instead of it. The download is the archive;
+                this is the one you use when a sheet is already open. */}
+            <SheetsButton companies={companies} className="mt-2 ml-2" />
           </div>
           <div className="text-right">
             <p className="text-xs text-gh-ink-muted">
