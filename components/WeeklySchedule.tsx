@@ -14,7 +14,7 @@ import { RUN_CEILING_MS } from "@/lib/pipeline/reap";
 const TARGETS = [10, 20, 50];
 
 /**
- * On/off switch and configuration for the weekly harvest.
+ * On/off switch and configuration for the monthly harvest.
  *
  * The whole point is that it is HIS to control. A scheduled job that spends
  * money without a visible switch is not a feature, it is a surprise on a
@@ -76,9 +76,9 @@ export function WeeklySchedule({
 
   return (
     <section>
-      <h2 className="font-display text-lg font-semibold text-gh-ink">Weekly harvest</h2>
+      <h2 className="font-display text-lg font-semibold text-gh-ink">Monthly harvest</h2>
       <p className="mt-0.5 text-sm text-gh-ink-secondary">
-        Scan automatically once a week and drop the results in a new folder -
+        Scan automatically once a month and drop the results in a new folder -
         so there are fresh leads waiting without running a search yourself.
       </p>
 
@@ -106,7 +106,7 @@ export function WeeklySchedule({
             type="button"
             role="switch"
             aria-checked={schedule.enabled}
-            aria-label="Weekly harvest"
+            aria-label="Monthly harvest"
             disabled={!schedule.enabled && !canEnable}
             onClick={() => save({ ...schedule, enabled: !schedule.enabled })}
             className={`relative h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 disabled:cursor-not-allowed disabled:opacity-40 ${
@@ -171,7 +171,7 @@ export function WeeklySchedule({
           })}
         </div>
         <p className="mt-1.5 text-[11px] text-gh-ink-muted">
-          Each vertical becomes its own folder every week.
+          Each vertical becomes its own folder every month.
         </p>
 
         <div className="mt-4">
@@ -228,9 +228,16 @@ export function WeeklySchedule({
             A hint for what to look for inside the verticals and states above. It
             never changes which companies get searched.
           </p>
+          {/* autoComplete off. Chrome and Safari offer a saved EMAIL into any
+              unlabelled text box on an origin where a login form exists — so
+              this field, whose whole job is a phrase like "founder retiring",
+              was being filled with jonathan@thegoldhillgroup.com. The value is
+              sent to the crawler, so an autofilled address is not cosmetic: it
+              becomes the search refinement. */}
           <input
             id="harvest-refinement"
             type="text"
+            autoComplete="off"
             value={schedule.refinement ?? ""}
             onChange={(e) => patch({ refinement: e.target.value || null })}
             maxLength={200}
@@ -315,7 +322,7 @@ export function WeeklySchedule({
             function invocation, and nothing anywhere checked that total against
             the server's ceiling. The shipped default — both verticals, 20 each —
             needs about 21 minutes against a 13.3-minute limit, so the second
-            vertical was killed roughly halfway through every week. It looked
+            vertical was killed roughly halfway through every month. It looked
             like a quiet week rather than a bug, because reapStaleRuns closes the
             row out honestly.
 
@@ -352,7 +359,7 @@ export function WeeklySchedule({
         {estimate.fits && schedule.enabled && (
           <p className="mt-3 text-[11px] text-gh-ink-muted">
             About {estimate.minutes < 1 ? "under a minute" : `${estimate.minutes.toFixed(0)} minutes`} of
-            scanning per week, inside the {Math.round(RUN_CEILING_MS / 60000)} minute server limit.
+            scanning per month, inside the {Math.round(RUN_CEILING_MS / 60000)} minute server limit.
           </p>
         )}
 

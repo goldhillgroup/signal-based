@@ -7,14 +7,14 @@ import { stateNameFor } from "./us-states";
 import type { Industry } from "@/lib/supabase/types";
 
 /**
- * The weekly harvest, split in two so it can be driven by either a serverless
+ * The monthly harvest, split in two so it can be driven by either a serverless
  * function or a plain CI job.
  *
  * WHY THE SPLIT. Deciding whether to run, checking credit and creating the
  * folders takes under a second. Actually crawling takes ten to twenty minutes.
  * On Vercel the second half has to be handed to `after()` and is then bounded
  * by the function's maxDuration — 300s on every plan by default, and the reason
- * a two-vertical harvest was being killed halfway through every week. In GitHub
+ * a two-vertical harvest was being killed halfway through every month. In GitHub
  * Actions there is no such ceiling (a job may run for six hours), so the same
  * work can simply be awaited.
  *
@@ -119,7 +119,7 @@ export async function planHarvest(
   }
 
   if (started.length === 0) {
-    const why = `Could not create this week's folders: ${failed.join(" | ")}`;
+    const why = `Could not create this month's folders: ${failed.join(" | ")}`;
     await recordHarvestHealth({ at: now.toISOString(), ok: false, reason: why });
     return { ran: false, reason: why, started: [], failed };
   }
@@ -160,7 +160,7 @@ export async function executeHarvest(plan: HarvestPlan): Promise<void> {
     } catch (e) {
       // runSearchPipeline already records failure on the row itself; this is
       // only so one vertical's blow-up cannot take the other down with it.
-      console.error(`Weekly harvest failed for ${run.industry}:`, (e as Error).message);
+      console.error(`Monthly harvest failed for ${run.industry}:`, (e as Error).message);
     }
   }
 }

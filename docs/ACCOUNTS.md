@@ -16,7 +16,7 @@ The account email for the Gold Hill side is **thegoldhillgroup@gmail.com**.
 | Fixed monthly cost | **$29** (Apify) |
 | Everything else | pay-as-you-go or free tier |
 | Measured cost of a search | **~$0.02 per company read**, ~$0.09 per lead found |
-| A weekly harvest, if switched on | **$66–132/year** depending on target and verticals |
+| The monthly harvest, if switched on | **~$61/year** (240 companies a month) |
 
 Nothing here bills automatically except Apify. The rest is prepaid credit that
 simply runs out — which is worth knowing, because a vendor running dry looks
@@ -28,7 +28,7 @@ like "the search found nothing", not like an error.
 
 | Service | Plan | What it does |
 |---|---|---|
-| **GitHub** | Free | Hosts the code at `goldhillgroup/signal-based`. Also runs the weekly harvest if it is ever switched on — 2,000 free minutes a month against the ~85 that would use. |
+| **GitHub** | Free | Hosts the code at `goldhillgroup/signal-based`. Also runs the monthly harvest if it is ever switched on — 2,000 free minutes a month against the ~20 that would use. |
 | **Vercel** | Hobby | Hosts the app at `signal-based.vercel.app`. The 300-second function limit is a Hobby constraint and the code is written to live inside it; see `docs/DEPLOY.md`. |
 | **Supabase** | Free | The database and the login. Free tier covers this comfortably — the whole dataset is ~530 rows. |
 
@@ -70,7 +70,7 @@ developer, not to Gold Hill. Two things follow:
 2. Until it is replaced, someone else is paying for Jonathan's searches.
 
 **Action: create an OpenRouter account under thegoldhillgroup@gmail.com, add
-$50, and paste the key into Settings.** $50 is roughly a year of weekly
+$50, and paste the key into Settings.** $50 is roughly three years of monthly
 harvests — the entire build, including every test run, cost $17.
 
 ### Firecrawl — 1,025 credits left, renews 11 Sep
@@ -140,5 +140,10 @@ Passwords are managed in Supabase → Authentication → Users. There is also a
    present, the wrong account is being billed and searches stop at $14.
 3. **Rotate the keys** that were shared during handover — the Supabase keys and
    the login password.
-4. **Leave the weekly harvest off** until the product is in regular use. It
-   costs $66–132/year and produces folders whether or not anyone opens them.
+4. **Leave the monthly harvest off** until the product is in regular use. It
+   costs ~$61/year and produces folders whether or not anyone opens them.
+
+   It is MONTHLY rather than weekly for a measured reason: at the default of two
+   verticals x 20 companies, weekly reads 1,032 companies a month, which exceeds
+   Firecrawl's 1,025-page quota every month and empties the AnymailFinder
+   balance in about two. Monthly reads 240 and fits every vendor with room.

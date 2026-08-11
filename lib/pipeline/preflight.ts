@@ -5,7 +5,7 @@ import { OPENROUTER_2_CAP_USD, BASELINE_SETTING } from "./openrouter";
  * Can a run actually succeed right now — and if not, say so where a human
  * will see it.
  *
- * WHY THIS EXISTS: once the weekly harvest is on a cron there is nobody
+ * WHY THIS EXISTS: once the monthly harvest is on a cron there is nobody
  * watching it. The failure that matters is not a crash; a crash is loud. It is
  * the QUIET one: OpenRouter runs out of credit, every classify call 402s, the
  * harvest finishes with zero results, and Monday's folder is empty. That is

@@ -4,7 +4,7 @@ import type { WeeklySchedule } from "./schedule-types";
 import type { Industry, SearchMode } from "../supabase/types";
 
 /**
- * SERVER-ONLY half of the weekly harvest. Reads and writes the stored config.
+ * SERVER-ONLY half of the monthly harvest. Reads and writes the stored config.
  *
  * Anything a Client Component needs at runtime lives in ./schedule-types —
  * this file reaches lib/supabase/server and therefore `next/headers`, and
@@ -13,7 +13,7 @@ import type { Industry, SearchMode } from "../supabase/types";
  *
  * WEEKLY, not daily, and that is a cost decision as much as a product one.
  * Three of the four vendors renew monthly, so a daily job gets ~30 chances a
- * month to overspend and a weekly job gets 4-5. Four predictable runs can be
+ * month to overspend and a monthly job gets 4-5. Four predictable runs can be
  * budgeted precisely; thirty ad-hoc ones cannot. It also matches the signal:
  * a founder's son joining the business is not a daily event, and re-asking the
  * same slice every 24 hours mostly re-buys yesterday's answer.

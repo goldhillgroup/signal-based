@@ -81,38 +81,59 @@ export function daysBetween(fromIso: string, toIso: string): number {
  * The cron pings DAILY and this decides. That is deliberate: a weekly cron
  * expression that misses its window — a deploy, an outage, a cold platform —
  * silently skips a whole week and nobody notices until the folder is missing.
- * A daily ping with a "have I already run in the last 7 days?" test self-heals:
- * Monday fails, Tuesday's ping sees the gap and runs.
+ * A daily ping with a "have I already run recently enough?" test self-heals:
+ * the anchor day fails, the next ping sees the gap and runs.
  *
  * `dayOfWeek` is therefore the EARLIEST preferred day, not a hard gate.
  */
 /**
+ * MONTHLY, not weekly, and the reason is the vendors rather than the leads.
+ *
+ * Measured against the real quotas at the shipped default (2 verticals, 20
+ * companies each = 240 companies per harvest):
+ *
+ *              weekly (4.3/mo)     monthly (1/mo)
+ *   companies  1,032               240
+ *   cost       $21.88/mo, $262/yr  $5.09/mo, $61/yr
+ *   Firecrawl  1,032 of 1,025      240 of 1,025
+ *   AnymailFdr 365 credits: 2.1mo  9.1 months
+ *
+ * Weekly EXCEEDS the Firecrawl page quota every month and burns the
+ * AnymailFinder balance in two. Monthly fits every vendor with room, at a
+ * quarter of the cost — and for a signal that changes on the timescale of a
+ * son or daughter joining the business, a month is the honest cadence anyway.
+ */
+const CADENCE_DAYS = 28;
+
+/**
  * Off-day catch-up. Past this many days the harvest stops holding out for its
  * preferred weekday and runs on the next ping, whatever day that is.
  *
- * 10, not 14: a fortnight means a whole extra Monday passes before anything
- * happens, which is a full week of leads lost to one bad deploy.
+ * CADENCE + 3: long enough that the anchor day gets a fair chance to come
+ * round, short enough that one bad deploy does not cost a whole extra month.
  */
-const CATCH_UP_DAYS = 10;
+const CATCH_UP_DAYS = CADENCE_DAYS + 3;
 
 /**
  * Minimum gap when it IS the preferred day.
  *
- * Deliberately small, and it is what makes the schedule self-correcting. The
- * preferred day only comes round every 7 days, so this can never cause two
- * runs in a week by itself — its whole job is the case AFTER an off-day
- * catch-up. A catch-up on Thursday sets lastRunOn to Thursday; the next Monday
- * is then only 4 days later, and a 7-day cooldown would skip it and push the
- * schedule out to the Monday after. With this, that Monday runs and the
- * cadence is back on its anchor immediately.
+ * What makes the schedule self-correcting. Its whole job is the case AFTER an
+ * off-day catch-up: a catch-up on the 30th sets lastRunOn to the 30th, and a
+ * full 28-day cooldown would then skip the next anchor day and push the
+ * schedule out by another month. At 21 days the next anchor runs and the
+ * cadence is back where it belongs.
+ *
+ * Three weeks, not two: it must never be small enough to allow two harvests
+ * inside one month, which is exactly the overspend this cadence exists to
+ * prevent.
  */
-const PREFERRED_DAY_MIN_DAYS = 2;
+const PREFERRED_DAY_MIN_DAYS = 21;
 
 export function shouldRunNow(
   s: WeeklySchedule,
   now: Date
 ): { run: boolean; reason: string } {
-  if (!s.enabled) return { run: false, reason: "Weekly harvest is switched off." };
+  if (!s.enabled) return { run: false, reason: "Monthly harvest is switched off." };
   if (s.states.length === 0 || s.industries.length === 0) {
     return { run: false, reason: "Nothing configured to scan." };
   }
@@ -122,17 +143,20 @@ export function shouldRunNow(
 
   if (s.lastRunOn) {
     const days = daysBetween(s.lastRunOn, today);
-    // The cooldown IS the weekly limit. Seven days of nothing changing is the
-    // whole reason not to re-ask sooner — see recheck-policy.ts, which applies
-    // the same idea per company.
+    // The cooldown IS the spend limit. A month of nothing changing is the whole
+    // reason not to re-ask sooner — see recheck-policy.ts, which applies the
+    // same idea per company.
     const isPreferredDay = now.getDay() === s.dayOfWeek;
 
     // On the anchor day, a short gap is enough — see PREFERRED_DAY_MIN_DAYS.
     if (isPreferredDay && days >= PREFERRED_DAY_MIN_DAYS) {
       return { run: true, reason: `${days} days since the last run.` };
     }
-    if (days < 7) {
-      return { run: false, reason: `Ran ${days} day${days === 1 ? "" : "s"} ago, waits 7.` };
+    if (days < CADENCE_DAYS) {
+      return {
+        run: false,
+        reason: `Ran ${days} day${days === 1 ? "" : "s"} ago, waits ${CADENCE_DAYS}.`,
+      };
     }
     // MONDAY IS AN ANCHOR, NOT A STARTING GUN.
     //
@@ -171,7 +195,7 @@ export function shouldRunNow(
 export function weeklyLabel(industry: Industry, now: Date): string {
   const when = now.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const what = industry === "home_builder" ? "Home builders" : "Landscaping";
-  return `Weekly harvest: ${what}, ${when}`;
+  return `Monthly harvest: ${what}, ${when}`;
 }
 
 

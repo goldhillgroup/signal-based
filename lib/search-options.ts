@@ -3,7 +3,7 @@ import type { SearchMode } from "./supabase/types";
 /**
  * The choices a search is made of, defined ONCE.
  *
- * A one-off search and the weekly harvest are the same decision made at two
+ * A one-off search and the monthly harvest are the same decision made at two
  * different times: which trade, which states, what to collect, how big, what
  * size of company. They were built as two separate screens that each declared
  * their own options, and they had already drifted:
@@ -66,7 +66,7 @@ export function bandIndexFor(min: number | null, max: number | null): number {
 
 /**
  * Suggested signal-focus phrasings, shared by the one-off search and the
- * weekly harvest. Same decision, same suggestions — they were only on the
+ * monthly harvest. Same decision, same suggestions — they were only on the
  * search form, which is how the harvest ended up with no way to express it
  * at all.
  */

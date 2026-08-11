@@ -65,11 +65,17 @@ check("ran 1 day ago -> no", shouldRunNow({ ...base, lastRunOn: "2026-08-09" }, 
 // It runs, and that is the self-correction: an off-day catch-up would
 // otherwise re-anchor the cooldown to the wrong weekday and the schedule would
 // never find its way back to Monday. See PREFERRED_DAY_MIN_DAYS.
-check("ran 6 days ago on an OFF day, now Monday -> YES, re-anchors", shouldRunNow({ ...base, lastRunOn: "2026-08-04" }, MON).run, true);
+// 22 days is past PREFERRED_DAY_MIN_DAYS (21) but short of the 28-day cadence.
+// On the anchor day that is enough, and it is exactly the re-anchoring case:
+// without it, an off-day catch-up would push the schedule out by a whole month.
+check("ran 22 days ago on an OFF day, now Monday -> YES, re-anchors", shouldRunNow({ ...base, lastRunOn: "2026-07-19" }, MON).run, true);
 // The cooldown still holds when it is not the anchor day.
-check("ran 6 days ago, and today is not Monday -> no", shouldRunNow({ ...base, lastRunOn: "2026-08-05" }, TUE).run, false);
-check("ran exactly 7 days ago -> YES", shouldRunNow({ ...base, lastRunOn: "2026-08-03" }, MON).run, true);
-check("ran 30 days ago -> YES", shouldRunNow({ ...base, lastRunOn: "2026-07-11" }, MON).run, true);
+check("ran 22 days ago, and today is not Monday -> no", shouldRunNow({ ...base, lastRunOn: "2026-07-20" }, TUE).run, false);
+check("ran exactly 28 days ago -> YES", shouldRunNow({ ...base, lastRunOn: "2026-07-13" }, MON).run, true);
+check("ran 60 days ago -> YES", shouldRunNow({ ...base, lastRunOn: "2026-06-11" }, MON).run, true);
+// THE POINT OF MONTHLY: a week is no longer enough, on any day.
+check("ran 7 days ago, even on a Monday -> no", shouldRunNow({ ...base, lastRunOn: "2026-08-03" }, MON).run, false);
+check("ran 14 days ago -> still no", shouldRunNow({ ...base, lastRunOn: "2026-07-27" }, MON).run, false);
 
 // ── MONDAY IS AN ANCHOR, and self-healing must not break it ────────────────
 // This assertion used to expect true: past the cooldown, run on the next ping
@@ -87,13 +93,13 @@ check(
   false
 );
 check(
-  "but a 10-day gap gives up on the anchor and runs",
-  shouldRunNow({ ...base, lastRunOn: "2026-08-01" }, TUE).run,
+  "but a 31-day gap gives up on the anchor and runs",
+  shouldRunNow({ ...base, lastRunOn: "2026-07-10" }, TUE).run,
   true
 );
 check(
   "overdue on a Friday still runs",
-  shouldRunNow({ ...base, lastRunOn: "2026-07-20" }, FRI).run,
+  shouldRunNow({ ...base, lastRunOn: "2026-06-20" }, FRI).run,
   true
 );
 
@@ -123,8 +129,8 @@ eq("isoDay pads single digits", isoDay(new Date(2026, 0, 5, 12)), "2026-01-05");
 eq("isoDay is local not UTC", isoDay(new Date(2026, 7, 10, 23, 30)), "2026-08-10");
 
 // ── Folder labels: topic first, date as a specification ────────────────────
-eq("label names the vertical", weeklyLabel("landscaping", MON), "Weekly harvest: Landscaping, Aug 10");
-eq("label for builders", weeklyLabel("home_builder", MON), "Weekly harvest: Home builders, Aug 10");
+eq("label names the vertical", weeklyLabel("landscaping", MON), "Monthly harvest: Landscaping, Aug 10");
+eq("label for builders", weeklyLabel("home_builder", MON), "Monthly harvest: Home builders, Aug 10");
 {
   const a = weeklyLabel("landscaping", MON);
   const b = weeklyLabel("home_builder", MON);

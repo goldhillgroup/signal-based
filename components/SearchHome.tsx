@@ -407,6 +407,7 @@ export function SearchHome({ suggestions = [] }: { suggestions?: Suggestion[] })
             </p>
             <input
               id="refinement"
+              autoComplete="off"
               value={refinement}
               onChange={(e) => setRefinement(e.target.value)}
               type="text"

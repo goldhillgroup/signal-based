@@ -9,11 +9,11 @@ import { planHarvest, executeHarvest } from "@/lib/pipeline/harvest";
 export const maxDuration = 300;
 
 /**
- * The weekly harvest, driven by a cron ping.
+ * The monthly harvest, driven by a cron ping.
  *
  * Ping this DAILY (Vercel Cron, GitHub Actions, or any uptime pinger). The
  * endpoint decides whether today is a run day — see shouldRunNow(). A daily
- * ping with a 7-day cooldown self-heals a missed window, where a weekly cron
+ * ping with a 7-day cooldown self-heals a missed window, where a monthly cron
  * expression silently loses a whole week to one bad deploy.
  *
  * Auth: a shared secret, not a user session. Cron has no cookies. Without
@@ -29,7 +29,7 @@ export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
   if (!secret) {
     return NextResponse.json(
-      { error: "CRON_SECRET is not configured, the weekly harvest is disabled." },
+      { error: "CRON_SECRET is not configured, the monthly harvest is disabled." },
       { status: 503 }
     );
   }

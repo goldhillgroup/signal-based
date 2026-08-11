@@ -7,7 +7,7 @@ import { ZapIcon, UsersIcon, BuildingIcon } from "./icons";
  * for?" and offered verticals, states and a revenue band — all of which
  * describe the COMPANY — while the one thing that makes this Signal Radar
  * rather than a business directory, the succession signal itself, was never
- * defined anywhere he could see it. The weekly harvest was worse: a panel that
+ * defined anywhere he could see it. The monthly harvest was worse: a panel that
  * schedules an automatic scan without saying what it scans for.
  *
  * Two conditions, both required, shown as conditions rather than explained as

@@ -258,6 +258,7 @@ export function CompaniesTable({
             onChange={(e) => setQ(e.target.value)}
             type="text"
             placeholder="Filter by company, name, city…"
+            autoComplete="off"
             className="w-full rounded-lg border border-gh-border bg-gh-surface-sunken py-1.5 pl-8 pr-2.5 text-sm text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none focus:ring-2 focus:ring-gh-sky/20"
           />
         </div>

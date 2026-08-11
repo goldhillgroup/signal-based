@@ -213,7 +213,7 @@ export default async function OverviewPage() {
           </span>
           <span className="min-w-0 flex-1">
             <span className="block text-xs font-semibold text-gh-ink">
-              Weekly harvest is {schedule.enabled ? "on" : "off"}
+              Monthly harvest is {schedule.enabled ? "on" : "off"}
             </span>
             <span className="mt-0.5 block text-[11px] text-gh-ink-muted">
               {schedule.enabled

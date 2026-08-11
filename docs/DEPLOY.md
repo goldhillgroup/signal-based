@@ -19,7 +19,7 @@ designed for that and row-level security is what protects the data. The
 service-role key must **never** be given a `NEXT_PUBLIC_` prefix; it bypasses
 RLS entirely.
 
-`CRON_SECRET` can be any long random string. Without it the weekly harvest
+`CRON_SECRET` can be any long random string. Without it the monthly harvest
 endpoint returns 503 and refuses to run, rather than defaulting open — an
 unauthenticated endpoint that spends money on every GET is the one failure mode
 that must not be reachable by accident.
@@ -66,18 +66,18 @@ closing out runs that are still writing.
 
 ---
 
-## The weekly harvest
+## The monthly harvest
 
 Currently **off**, and it should stay off until the product is in regular use —
-it costs $66–132/year and produces folders whether or not anyone opens them.
+it costs ~$61/year and produces folders whether or not anyone opens them.
 
 When it is wanted, it runs from **GitHub Actions**, not from Vercel: a job there
 may run for six hours, so a full harvest actually finishes. `vercel.json` has no
 cron block on purpose — at 300s it could only ever half-finish a harvest, and
-because the run claims the week before crawling, a half-run would still consume
+because the run claims the month before crawling, a half-run would still consume
 it.
 
-To switch on: add the vendor keys as repository secrets, then Settings → Weekly
+To switch on: add the vendor keys as repository secrets, then Settings → Monthly
 harvest → on. The Actions tab has a **Run workflow** button that defaults to a
 dry run, so it is safe to press just to confirm it is wired up.
 

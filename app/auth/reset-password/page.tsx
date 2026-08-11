@@ -72,6 +72,7 @@ export default function ResetPasswordPage() {
               </label>
               <input
                 id="password"
+                autoComplete="new-password"
                 type="password"
                 placeholder="••••••••"
                 value={password}
@@ -86,6 +87,7 @@ export default function ResetPasswordPage() {
               </label>
               <input
                 id="confirm"
+                autoComplete="new-password"
                 type="password"
                 placeholder="••••••••"
                 value={confirm}
