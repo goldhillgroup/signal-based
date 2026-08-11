@@ -31,9 +31,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * This is a hard coupling and it fails in the worst direction if broken: a
  * reaper ceiling BELOW the platform's would mark runs dead while they are
  * still fetching and writing, closing out a live search and stranding the
- * companies it had not saved yet. Raised 300 -> 800 alongside the routes.
+ * companies it had not saved yet.
+ *
+ * Back to 300_000 with the routes. 800 is only honoured on Vercel Pro with
+ * Fluid compute and a lower-capped plan FAILS THE BUILD rather than clamping,
+ * so the safe value is the one that works on every plan.
  */
-export const RUN_CEILING_MS = 800_000;
+export const RUN_CEILING_MS = 300_000;
 
 /**
  * Grace on top of the ceiling. Covers cold start, queueing before the function

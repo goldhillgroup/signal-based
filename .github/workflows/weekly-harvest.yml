@@ -9,27 +9,20 @@
 # minutes a month and this uses roughly 85, so the ceiling problem disappears
 # without buying anything.
 #
-# SAFE ALONGSIDE THE VERCEL CRON, and ordered on purpose. planHarvest stamps
-# lastRunOn before any crawling begins, so whichever driver arrives first claims
-# the day and the other is a no-op. This job is scheduled an hour EARLIER than
-# vercel.json's cron so the driver that can actually finish wins, with Vercel
-# left as the fallback for the case where these secrets were never set.
+# THIS IS NOW THE ONLY DRIVER. vercel.json's cron was removed: at the platform's
+# default 300s ceiling it could only ever HALF-run a harvest, and because
+# planHarvest stamps lastRunOn before crawling, a half-run still claimed the week
+# and left this job correctly skipping. A driver that can finish, or none.
+#
+# The harvest is also switched OFF in Settings by default. Nothing here spends a
+# penny until someone turns it on — this file just means that when they do, it
+# will actually complete.
 
 name: Weekly harvest
 
 on:
   schedule:
-    # 12:00 UTC — deliberately ONE HOUR BEFORE the Vercel cron in vercel.json.
-    #
-    # That ordering is the whole point. Both drivers claim the day by stamping
-    # lastRunOn before crawling, so whichever fires first does the work and the
-    # other becomes a no-op. This one has no ceiling and can finish; the Vercel
-    # one may be cut off mid-harvest on a plan capped below the run's length. So
-    # this must win the race, and the Vercel cron stays on as the fallback that
-    # catches the week if GitHub's secrets were never configured or the runner
-    # is down.
-    #
-    # Daily rather than weekly: the job itself decides whether today is a run
+    # Daily at 12:00 UTC, rather than weekly: the job itself decides whether today is a run
     # day (shouldRunNow), and a daily ping with a 7-day cooldown self-heals a
     # missed window. GitHub's scheduler is explicitly best-effort and can skip
     # or delay a run under load, which a once-a-week trigger would turn into a

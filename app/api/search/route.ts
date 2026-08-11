@@ -7,21 +7,24 @@ import { stateNameFor, US_STATES, NATIONWIDE } from "@/lib/pipeline/us-states";
 import { creditBlockerFor } from "@/lib/pipeline/preflight";
 import type { Industry, SearchMode } from "@/lib/supabase/types";
 
-// 800s, raised from 300 on 2026-08-09. Measured at ~5.2s per company end to
-// end (fetch + classify + disprove), a target-10 run scans up to 60 companies
-// and needs ~5 minutes — so 300s was killing ordinary searches, not just
-// oversized ones. 800s covers a target-20 run's ~10 minutes with headroom.
+// 300s, the default ceiling on EVERY Vercel plan.
 //
-// REQUIRES VERCEL PRO WITH FLUID COMPUTE. 300s is the default ceiling on all
-// plans; only Pro+ honours a higher value. On a plan that caps lower this
-// number is simply ignored and runs are killed at the plan's limit — which is
-// survivable, because reapStaleRuns closes an orphaned run out honestly
-// instead of leaving it spinning forever.
+// This was 800 for a while. 800 is only honoured on Pro with Fluid compute, and
+// on a plan that caps lower Vercel does not quietly clamp it — the BUILD FAILS.
+// Shipping a number that depends on an unverified plan setting turns a billing
+// question into a broken deploy, so the safe value is the one that works
+// everywhere.
 //
-// lib/pipeline/reap.ts RUN_CEILING_MS MUST MATCH. The reaper marks any run
-// older than that ceiling as dead; if it stayed at 300s while this moved to
-// 800s it would start closing out runs that are still alive and writing.
-export const maxDuration = 800;
+// TO RAISE IT: confirm the project is on Pro with Fluid compute, then set this
+// to 800 in all three routes (this one, the enrich route, the weekly cron) and
+// RUN_CEILING_MS in lib/pipeline/reap.ts to match. All four move together or
+// the reaper starts closing out runs that are still writing.
+//
+// At 300s a run reads about 48 companies before the platform stops it — see
+// SECONDS_PER_COMPANY in lib/pipeline/scan-limits.ts. Nothing is lost when that
+// happens: reapStaleRuns closes the row out honestly and everything already
+// found is saved.
+export const maxDuration = 300;
 
 const MIN_TARGET = 1;
 const MAX_TARGET = 200; // UI-level sanity cap, see MAX_SCAN_MULTIPLIER/ABSOLUTE_SCAN_CEILING in the orchestrator for the real cost ceiling

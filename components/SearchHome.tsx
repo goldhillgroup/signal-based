@@ -15,8 +15,15 @@ import { ReturnOverview } from "./ReturnOverview";
 import { SearchProgress } from "./SearchProgress";
 import { StatePicker } from "./StatePicker";
 import { BuildingIcon, CheckIcon, SearchIcon, UsersIcon, ZapIcon } from "./icons";
+import { passesNeeded, companiesPerPass } from "@/lib/pipeline/scan-limits";
+import { RUN_CEILING_MS } from "@/lib/pipeline/reap";
 
-const TARGET_OPTIONS = [10, 20, 50, 100];
+// 5 and 8 added at the bottom. At the platform's default 300s ceiling a single
+// pass reads about 57 companies, so 8 is the largest target that finishes in
+// one press — and before this the smallest option on offer was 10, which could
+// not. The bigger targets stay: they work, they just take more than one press,
+// and the note under the picker says so.
+const TARGET_OPTIONS = [5, 8, 10, 20, 50];
 
 // Shown under the ask box. Deliberately span the shapes the old regex parser
 // silently mishandled — a multi-state request, a region, a metro — so the
@@ -58,7 +65,11 @@ export function SearchHome({ suggestions = [] }: { suggestions?: Suggestion[] })
   const [states, setStates] = useState<string[]>([...AGREED_STATES]);
   const [mode, setMode] = useState<SearchMode>("hybrid");
   const [refinement, setRefinement] = useState("");
-  const [target, setTarget] = useState(20);
+  // 8, the largest that completes in a single pass at the default ceiling.
+  // Was 20, which needs three.
+  const [target, setTarget] = useState(8);
+  const passes = passesNeeded(target, RUN_CEILING_MS);
+  const perPass = companiesPerPass(RUN_CEILING_MS);
   const [bandIdx, setBandIdx] = useState(0); // defaults to the $3-15M baseline
 
   const [running, setRunning] = useState<{ id: string; label: string } | null>(null);
@@ -451,10 +462,24 @@ export function SearchHome({ suggestions = [] }: { suggestions?: Suggestion[] })
               </button>
             ))}
           </div>
-          {target >= 50 && (
+          {/* What this target will ACTUALLY do, rather than a vague warning
+              that larger is slower. A run cut off at the server's limit is not
+              lost — everything found is saved and pressing Search again carries
+              on from where it stopped, because cross-search memory skips every
+              domain already settled. Saying "two passes" is honest and
+              actionable; capping the options would take away results the
+              product can genuinely deliver. */}
+          {passes > 1 ? (
+            <p className="mt-1.5 text-[11px] leading-relaxed text-gh-ink-secondary">
+              About {passes} passes. The server stops a run at{" "}
+              {Math.round(RUN_CEILING_MS / 60000)} minutes, around {perPass} companies —
+              everything found is saved, and pressing Search again carries on from
+              there. Pick {TARGET_OPTIONS.filter((n) => passesNeeded(n, RUN_CEILING_MS) === 1).slice(-1)[0]}{" "}
+              to finish in one.
+            </p>
+          ) : (
             <p className="mt-1.5 text-[11px] text-gh-ink-muted">
-              Larger targets take longer, the pipeline keeps discovering and
-              classifying new companies in rounds until it gets close.
+              Finishes in one pass.
             </p>
           )}
 

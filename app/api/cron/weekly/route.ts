@@ -4,15 +4,9 @@ import { getSchedule } from "@/lib/pipeline/schedule";
 import { shouldRunNow, isoDay, weeklyLabel } from "@/lib/pipeline/schedule-types";
 import { planHarvest, executeHarvest } from "@/lib/pipeline/harvest";
 
-// See app/api/search/route.ts for why 800 and what it requires.
-//
-// THIS ROUTE IS NO LONGER THE ONLY WAY TO RUN THE HARVEST, and on a plan that
-// caps below 800s it is not the best one. The identical work runs in
-// .github/workflows/weekly-harvest.yml with no ceiling at all — see
-// lib/pipeline/harvest.ts. Keeping both is deliberate: planHarvest claims the
-// day before any crawling starts, so whichever driver arrives first wins and
-// the other is a no-op. Two chances to catch the week, one harvest.
-export const maxDuration = 800;
+// See app/api/search/route.ts for why 300 and how to raise it.
+// The GitHub Actions driver has no ceiling at all — see lib/pipeline/harvest.ts.
+export const maxDuration = 300;
 
 /**
  * The weekly harvest, driven by a cron ping.
