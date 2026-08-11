@@ -1,12 +1,12 @@
 import { createServiceRoleClient } from "../supabase/server";
-import { discoverCandidates, fetchCompanyPages, pickBestPage, fetchSingleUrl, type Candidate, type FetchedPage } from "./apify";
+import { discoverCandidates, fetchCompanyPages, pickBestPage, fetchSingleUrl, isOffTradeName, type Candidate, type FetchedPage } from "./apify";
 import { classifySignal, disprovePass } from "./openrouter";
 import { findContact } from "./anymailfinder";
 import { verifyEmail } from "./millionverifier";
 import type { Industry, SearchMode, SearchRow } from "../supabase/types";
 import { recheckAfterFor, rejectionScope, sizeVerdictStillBinds, parseRevenueBand } from "./recheck-policy";
 import { extractEmails, bestEmailFor, type FoundEmail } from "./page-email";
-import { cleanRevenueBand, cleanTitle } from "../lead-signal";
+import { callableName, cleanRevenueBand, cleanTitle } from "../lead-signal";
 import { buildWarningLine } from "./channel-health";
 import { channelRates, orderByYield } from "./channel-priors";
 import { runWithCounters, estimateUsd, describeCost, type CostCounters } from "./cost-tracker";
@@ -689,6 +689,7 @@ export async function runSearchPipeline(
             limit: roundLimit,
             round: discoveryCalls,
             excludeDomains: seenDomains,
+            refinement,
           });
           if (channelErrors.length > 0) {
             roundChannelErrors = channelErrors;
@@ -698,7 +699,23 @@ export async function runSearchPipeline(
           // Claimed for this search the moment they enter the buffer, so the
           // next discovery call can't re-return (or re-bill) them.
           fresh.forEach((c) => seenDomains.add(c.domain));
-          pending.push(...fresh);
+
+          // Drop the organisations whose own name says they are not a trade
+          // business — associations, law firms, magazines, city departments.
+          // Every channel produces them and each one previously cost a fetch
+          // plus two model calls to be told what its title already said. The
+          // rule is backtested lead-safe on the whole corpus (see
+          // isOffTradeName); they are still counted as discovered, because
+          // pretending discovery never returned them would misreport channel
+          // yield.
+          const offTrade = fresh.filter((c) => isOffTradeName(c.title) || isOffTradeName(c.domain));
+          if (offTrade.length > 0) {
+            console.log(
+              `Search ${searchId}: skipped ${offTrade.length} non-trade organisation(s) before any spend — ` +
+                offTrade.map((c) => c.title || c.domain).slice(0, 6).join(", ")
+            );
+          }
+          pending.push(...fresh.filter((c) => !offTrade.includes(c)));
           // Best-yielding channels to the front, with an exploration slice so a
           // channel having a bad run still earns observations. Nothing is
           // dropped — the scan ceiling is simply spent on the most promising
@@ -1090,7 +1107,13 @@ export async function runSearchPipeline(
           }
         }
 
-        const finalHasSignal = hasSignal && signalStands;
+        // A succession claim requires two people Jonathan can look up. If the
+        // page never gave a full name for both, the pair is not confirmed —
+        // the company stays a fit lead, but it stops claiming a signal it
+        // cannot support. See callableName.
+        const bothCallable =
+          callableName(classification.founderName) && callableName(classification.nextGenName);
+        const finalHasSignal = hasSignal && signalStands && bothCallable;
 
         const { data: inserted, error: insertErr } = await supabase
           .from("companies")

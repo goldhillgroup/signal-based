@@ -121,6 +121,34 @@ function realName(v: string | null): boolean {
   return !/^(-+|n\/?a|none|null|unknown|not stated|not listed|tbd|\?+)$/i.test(t);
 }
 
+/**
+ * Is this a name Jonathan can actually act on?
+ *
+ * The product's promise is a person he can look up and call. "Francisco Sr."
+ * and "Eliseo" are not that — they are how a customer review refers to someone,
+ * not an identification. Both reached the sheet as confirmed succession pairs
+ * (one at HIGH confidence) off pages where nobody's surname ever appeared.
+ *
+ * Callable means at least two tokens once a generational suffix is removed, so
+ * "Francisco Sr." fails while "Francisco Ruiz Sr." passes. Measured against the
+ * 46 signal leads on file this demotes exactly 2, and both are cases where the
+ * page genuinely never gave a full name.
+ *
+ * Demotion, not deletion: such a company stays a family-owned fit lead. The
+ * business is real and may be worth a call — what is not supported is the
+ * stronger claim that a named founder-and-successor pair was confirmed.
+ */
+const GENERATIONAL_SUFFIX = /^(jr|sr|ii|iii|iv|v)\.?$/i;
+export function callableName(v: string | null | undefined): boolean {
+  if (!realName(v ?? null)) return false;
+  const tokens = String(v)
+    .replace(/[.,]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((t) => !GENERATIONAL_SUFFIX.test(t));
+  return tokens.length >= 2;
+}
+
 /** The people whose presence IS the signal. */
 export function leadPeople(c: Company): { founder: string | null; nextGen: string | null } {
   const fmt = (n: string | null, t: string | null) =>

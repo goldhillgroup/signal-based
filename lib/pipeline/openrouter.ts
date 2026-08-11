@@ -190,7 +190,24 @@ export async function chat(
     throw new Error(`OpenRouter request failed: ${res.status} ${errBody.slice(0, 300)}`);
   }
   const data = await res.json();
-  return data.choices?.[0]?.message?.content ?? "";
+
+  // A 200 is not a success. OpenRouter reports upstream provider failures
+  // INSIDE a 200 body, and a filtered or zero-token completion arrives as a
+  // 200 with content: "". Both used to fall through the `?? ""` below and
+  // surface three layers up as "Could not parse JSON from model output:"
+  // with nothing after the colon — which cost a company that had already been
+  // discovered, fetched and paid for.
+  if (data?.error) {
+    throw new Error(`OpenRouter returned an error: ${String(data.error.message ?? data.error).slice(0, 200)}`);
+  }
+  const content = data.choices?.[0]?.message?.content ?? "";
+  if (!content.trim()) {
+    const why = data.choices?.[0]?.finish_reason ?? "no choices returned";
+    // finish_reason "length" with empty content means max_tokens was consumed
+    // by reasoning before any answer — a bigger budget is the fix, not a retry.
+    throw new Error(`OpenRouter returned an empty completion (finish_reason: ${why})`);
+  }
+  return content;
 }
 
 // Claude via OpenRouter still wraps JSON in ```json fences fairly often even
@@ -377,7 +394,7 @@ Then identify "industry": "landscaping", "home_builder", or "other" (anything th
 
 THE SIGNAL (only relevant if industry is landscaping or home_builder): the company's OWN page shows a founder/senior leader AND a next-generation family member BOTH CURRENTLY IN THE BUSINESS, mid-handoff.
 
-The client's buyer is a business where the founder is STILL AROUND while a son or daughter steps up. That word "still" is the whole product. Three specific traps below caused 19 false positives when this was scored against the client's own hand-audited list — the rubric agreed with only 5 of his 24 cuts. Each is a case where a real family story exists but is NOT a coaching opportunity.
+The client's buyer is a business where the founder is STILL AROUND while a son or daughter steps up. That word "still" is the whole product. The traps below caused 19 false positives when this was scored against the client's own hand-audited list — the rubric agreed with only 5 of his 24 cuts. Each is a case where a real family story exists but is NOT a coaching opportunity.
 
 THE TEST IS "TWO PEOPLE, BOTH IN CHARGE NOW" — NOT "TWO GENERATIONS EXIST IN THE STORY". This is the single most common way to get it wrong. The client's auditor cut 26 companies with one recurring note: "only one generation is on the leadership page — no founder-and-next-gen pair shown TOGETHER." A company history that mentions people from different eras is not a pair. Scored blind, the earliest version of this rubric agreed with only 5 of his 24 cuts; the four traps below took it to 20 of 24 with zero real leads lost.
 
@@ -394,7 +411,11 @@ TRAP 3 — SLOGAN WITHOUT PEOPLE. "Three generations of excellence", "a second-g
 TRAP 4 — SAME GENERATION, AND UNSTATED RELATIONSHIPS. Siblings ("brothers Scott and Ian"), spouses ("husband and wife founders Kirk and Cassy"), cousins, or several partners of the same era are ONE generation however many family members appear. You need an older and a younger generation with the relationship STATED or unmistakable (father/son, mother/daughter, "his son", "joined her father", Sr./Jr., II/III). A SHARED SURNAME ALONE IS NOT A GENERATIONAL LINK — a staff member with the same last name and no stated relationship does not count as the next generation.
 Do NOT over-apply this one. A tested-and-rejected stricter variant additionally demanded that the successor's relationship be stated relative to the senior operator specifically; it dropped a real HIGH-confidence lead (Grasshopper Gardens, where the founder's children are named on the page but their roles are described loosely) while catching nothing extra. When a family relationship IS stated somewhere on the page and both people appear to be involved in the business, that is enough — a named child of the named owner counts.
 
-When the pairing IS genuinely live, you do NOT need an airtight narrative — a real, credible hint is enough for "verify". Reserve outright rejection for: only one generation named, a professionally-run team with zero family framing, or any of the three traps above.
+TRAP 5 — A CUSTOMER REVIEW IS NOT THE COMPANY'S ACCOUNT OF ITSELF. Evidence must come from the business describing its own leadership — an About/Team/Leadership page, an owner's letter, a company history. A testimonial, review or quote written by a CUSTOMER is not that, however family-flavoured it sounds. A real case: "Francisco Sr and Jr are very, very nice, courteous, honest, responsible and knowledgeable!" was accepted as a succession pair. It is a happy customer's compliment. It gives no roles, no relationship beyond the suffixes, no indication that either man leads the business, and no surname — and a reviewer's shorthand for two people they met is not evidence that a founder is handing over to a next generation. If the ONLY generational evidence sits inside a testimonial, quotes MUST be false.
+
+NAMES MUST BE LOOKUPABLE. founderName and nextGenName must be names the client could search for and phone — a full name as the page gives it. "Francisco Sr.", "Eliseo", "Mr. Ruiz" or a first name alone are not identifications, and a page that never states a surname for both people has not confirmed a pair, whatever else it says. Do not invent, complete or guess a surname that is not on the page; return what is written and let the pair fail.
+
+When the pairing IS genuinely live, you do NOT need an airtight narrative — a real, credible hint is enough for "verify". Reserve outright rejection for: only one generation named, a professionally-run team with zero family framing, or any of the traps above.
 
 Score confidence:
 - "high": both generations clearly named with titles, AND explicit succession/transition language.
@@ -480,19 +501,32 @@ export async function classifySignal(
   // byte-identical prefix that the caching support was built for in the first
   // place. Any model comparison run through this path was really just
   // re-testing the default.
-  const raw = await chat(
-    [
-      { role: "system", content: CLASSIFY_SYSTEM },
-      {
-        role: "user",
-        content: `Search result title (untrusted, likely SEO text — do NOT use as companyName): ${titleHint}\nPage URL: ${pageUrl}${focusNote}\n\nPage text:\n"""\n${truncated}\n"""`,
-      },
-    ],
-    1200,
-    await getClassifyModel(),
-    true
-  );
-  return extractJson<ClassificationResult>(raw);
+  const messages = [
+    { role: "system" as const, content: CLASSIFY_SYSTEM },
+    {
+      role: "user" as const,
+      content: `Search result title (untrusted, likely SEO text — do NOT use as companyName): ${titleHint}\nPage URL: ${pageUrl}${focusNote}\n\nPage text:\n"""\n${truncated}\n"""`,
+    },
+  ];
+  const model = await getClassifyModel();
+
+  // ONE RETRY ON AN UNUSABLE ANSWER.
+  //
+  // chat() retries transport failures — 429, 5xx, network — but a 200 carrying
+  // an empty or unparseable body is not one of those, and it was ending the
+  // company's life: seen live on whitmoresinc.com, "Could not parse JSON from
+  // model output:" with nothing after the colon. A real landscaping company,
+  // already discovered, fetched and paid for, thrown away because one sampling
+  // came back blank.
+  //
+  // Sampling is not deterministic, so asking again is the whole fix. Once, not
+  // in a loop: if the second answer is also unusable the input is the problem,
+  // and the rejection path records that honestly with a recheck date.
+  try {
+    return extractJson<ClassificationResult>(await chat(messages, 1200, model, true));
+  } catch {
+    return extractJson<ClassificationResult>(await chat(messages, 1200, model, true));
+  }
 }
 
 export interface DisproveResult {

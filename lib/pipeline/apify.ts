@@ -274,6 +274,45 @@ const MEDIA_SUFFIX_RE =
 const MEDIA_HOST_RE =
   /^(southernliving|forbes|entrepreneur|bizjournals|patch|axios|avvo|justia|findlaw|crunchbase|dnb|zoominfo|apollo|rocketreach|signalhire|leadiq)\./i;
 
+// Kinds of organisation that are structurally never a family-owned landscaping
+// or home-building business, recognisable from the discovery TITLE alone —
+// before any page is fetched or classified.
+//
+// The domain rules above cannot see these: "Texas Association of Builders"
+// lives on a perfectly ordinary .com, and every one of these cost a full fetch
+// plus two model calls to be told it is a trade body.
+//
+// Backtested against all 583 companies judged so far: it catches 15 rejections
+// and throws away ZERO of the 219 leads. Every pattern is therefore anchored on
+// word boundaries and to the noun itself — `\bassociation\b` never fires on
+// "Landscape Associates", and `\bsociety\b` on a company name is a historical
+// society, not a landscaper. If a rule here cannot be shown to be lead-safe on
+// the corpus, it does not belong here: an unnecessary classification call costs
+// two cents, and a wrongly discarded lead is gone with no trace.
+// ONLY patterns that demonstrably catch something. A first draft had twenty;
+// twelve of them caught nothing across all 583 judged companies while carrying
+// real false-positive risk, and were cut. Two worth naming, because they are
+// the argument for measuring rather than brainstorming:
+//   - `\bcouncil\b` would kill "Council Bluffs Landscaping" — Council Bluffs
+//     is a city in Iowa.
+//   - `\binstitute\b` would kill a nursery on Institute Road.
+// Neither had ever caught a single rejection. A speculative pattern buys
+// nothing and costs a lead the day it finally fires.
+const OFF_TRADE_NAME_RE = [
+  /\bassociations?\b/i, // 5 — "Texas Association of Builders"
+  /\bsociety\b/i, // 3 — "International Society of Arboriculture"
+  /\bmagazine\b/i, // 2 — "Home & Design Magazine"
+  /\b(city|town|county) of\b/i, // 2 — "City of Jersey City"
+  /\blaw (firm|offices?|group)\b/i, // 1 — "The Biondi Law Firm"
+  /\blaw review\b/i, // 1 — "The National Law Review"
+  /\bnewspapers?\b/i, // 1 — "Community Impact Newspaper"
+];
+
+export function isOffTradeName(name: string | null | undefined): boolean {
+  if (!name) return false;
+  return OFF_TRADE_NAME_RE.some((re) => re.test(name));
+}
+
 export function isBlocked(host: string): boolean {
   if (BLOCKED_TLDS.some((t) => host.endsWith(t))) return true;
   if (isForeignTld(host)) return true;
@@ -723,12 +762,63 @@ function successionSetForRound(sets: string[][], round: number): string[] {
   return sets[(round - 1) % sets.length];
 }
 
-export function successionTermsFor(industry: Industry | null, round: number): string[] {
-  if (industry) return successionSetForRound(SUCCESSION_QUERY_SETS[industry], round);
+// The trade family each vertical's queries are anchored to. Used to turn a
+// free-text Signal focus into a query of the same proven shape rather than
+// pasting the client's sentence into Google on its own — "founder retiring,
+// son taking over" as a bare query returns succession-planning blog posts, not
+// landscapers.
+const TRADE_TERMS: Record<Industry, string> = {
+  landscaping: 'landscaping OR "tree service" OR irrigation OR "lawn care" company',
+  home_builder: '"home builder" OR "custom homes" OR construction OR remodeling company',
+};
+
+/**
+ * Discovery queries built from Jonathan's Signal focus.
+ *
+ * The focus field used to reach the CLASSIFIER only: it changed how a page was
+ * judged but not which pages were fetched. So typing "founder retiring, son or
+ * daughter taking over" sent the crawler after generic landscapers and hoped
+ * some of them happened to match — a live run read 13 companies and returned 0
+ * signals for exactly that reason. QUERY THE SIGNAL, NOT THE CATEGORY is the
+ * lesson the whole web_search channel is built on, and the one field where the
+ * client states the signal in his own words was the one place ignoring it.
+ *
+ * Each distinct phrase becomes one quoted query anchored to the trade family.
+ * Quoting is what makes it precise; a 2-word minimum keeps "and"/"a" from
+ * becoming a query. Capped at three so a long paragraph can't multiply the
+ * SERP bill.
+ */
+export function refinementQueries(
+  refinement: string | null | undefined,
+  industry: Industry | null
+): string[] {
+  if (!refinement) return [];
+  const trades = industry
+    ? [TRADE_TERMS[industry]]
+    : [TRADE_TERMS.landscaping, TRADE_TERMS.home_builder];
+  const phrases = String(refinement)
+    .split(/[,;.\n]|\bor\b|\band\b/i)
+    .map((p) => p.replace(/["“”]/g, "").trim())
+    .filter((p) => p.split(/\s+/).length >= 2 && p.length <= 60)
+    .slice(0, 3);
+  if (phrases.length === 0) return [];
+  return trades.flatMap((t) => phrases.map((p) => `"${p}" ${t}`));
+}
+
+export function successionTermsFor(
+  industry: Industry | null,
+  round: number,
+  refinement?: string | null
+): string[] {
+  // Jonathan's own words go FIRST, so a budget that cannot afford every
+  // phrasing this round spends what it has on what he actually asked for.
+  const focused = refinementQueries(refinement, industry);
+  if (industry) return [...focused, ...successionSetForRound(SUCCESSION_QUERY_SETS[industry], round)];
   // No vertical picked — same pattern as before rotation: both verticals'
   // set for this round, merged. Query count is unchanged (6), so the SERP
   // page bill for an industry-less search is exactly what it always was.
   return [
+    ...focused,
     ...successionSetForRound(SUCCESSION_QUERY_SETS.landscaping, round),
     ...successionSetForRound(SUCCESSION_QUERY_SETS.home_builder, round),
   ];
@@ -751,7 +841,8 @@ async function discoverViaWebSearch(
   states: string[],
   limit: number,
   round = 1,
-  share = 1
+  share = 1,
+  refinement?: string | null
 ): Promise<Candidate[]> {
   // Rotate which state this call covers — states[0] alone meant a
   // "Texas + Oklahoma" search never web-searched Oklahoma at all.
@@ -771,7 +862,7 @@ async function discoverViaWebSearch(
   // Rotating the starting offset means the phrasings the budget cannot afford
   // this round are the ones it reaches for next round, rather than being
   // permanently unreachable.
-  const allQueries = successionTermsFor(industry, round);
+  const allQueries = successionTermsFor(industry, round, refinement);
   const queryCount = Math.max(1, Math.min(allQueries.length, Math.floor(allQueries.length / share)));
   const qStart = ((round - 1) * queryCount) % allQueries.length;
   const queries = Array.from(
@@ -831,8 +922,11 @@ export async function discoverCandidates(params: {
   // term so a repeat call surfaces businesses beyond what earlier rounds
   // already returned, rather than re-fetching the same top-ranked set.
   excludeDomains?: Set<string>;
+  /** Jonathan's free-text Signal focus, steering WHAT is searched for — not
+   *  only how the result is judged. See refinementQueries. */
+  refinement?: string | null;
 }): Promise<{ candidates: Candidate[]; channelErrors: string[] }> {
-  const { industry, states, limit, round = 1, excludeDomains } = params;
+  const { industry, states, limit, round = 1, excludeDomains, refinement } = params;
 
   // EVERY REQUESTED STATE, EVERY CALL — in parallel, sharing one budget.
   //
@@ -860,7 +954,7 @@ export async function discoverCandidates(params: {
     groups.flatMap((group, g) => [
       discoverViaDirectories(industry, group, perGroupLimit, round),
       discoverViaLicensing(industry, group, perGroupLimit, round),
-      discoverViaWebSearch(industry, group, perGroupLimit, round, share),
+      discoverViaWebSearch(industry, group, perGroupLimit, round, share, refinement),
       // MAPS RUNS FOR ONE STATE PER ROUND, rotating — the other channels run
       // for all of them. Splitting the maps budget four ways instead would
       // put every call under PER_TERM_MIN, and the floor there would quietly
