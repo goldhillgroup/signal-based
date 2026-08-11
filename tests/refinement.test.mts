@@ -10,7 +10,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { refinementQueries, successionTermsFor, isOffTradeName } from "../lib/pipeline/apify.js";
-import { callableName } from "../lib/lead-signal.js";
+import { callableName, earnedConfidence, relationshipStated } from "../lib/lead-signal.js";
 
 test("no refinement leaves the proven rotation exactly as it was", () => {
   const base = successionTermsFor("landscaping", 1);
@@ -102,4 +102,70 @@ test("a succession claim needs two names Jonathan can actually look up", () => {
   for (const junk of ["", "  ", "-", "N/A", "unknown", "not stated", null, undefined]) {
     assert.equal(callableName(junk), false, `placeholder must fail: ${JSON.stringify(junk)}`);
   }
+});
+
+test("'high' must be earned: no receipt, or no stated relationship, means verify", () => {
+  // The two real leads that carried HIGH without supporting it.
+  assert.equal(
+    earnedConfidence("high", null, "Bill and Beth Hewitt", "John Hewitt and Jesse Hewitt"),
+    "verify",
+    "no evidence quote at all"
+  );
+  assert.equal(
+    earnedConfidence(
+      "high",
+      "As the current supervisor of all stages of the home construction process, Derek is involved in every detail",
+      "Tommy Waters",
+      "Derek Waters"
+    ),
+    "verify",
+    "quote describes only the job; nothing states he is the owner's son"
+  );
+});
+
+test("a stated relationship keeps the label it claimed", () => {
+  // Each of these is a real quote from a real lead.
+  const keep: [string, string, string][] = [
+    ["Colt Ritzel joined his father, Ross, in 2021", "Ross Ritzel", "Colt Ritzel"],
+    ["owned and operated by James Dinizo, son of founder Ralph Dinizo", "Ralph Dinizo", "James Dinizo"],
+    ["Erin Jenkins Banas is the 3rd generation in Jenkins Landscape Company.", "Harold Jenkins", "Erin Jenkins Banas"],
+    ["he works alongside his father in all aspects of the business", "Rich Cording, Sr.", "Rich Cording, Jr."],
+    ["Led by Donnie and Debi Marchant, supported by their Son Seth", "Donnie Marchant", "Seth Marchant"],
+  ];
+  for (const [q, f, n] of keep) {
+    assert.equal(earnedConfidence("high", q, f, n), "high", `should stay high: "${q.slice(0, 40)}…"`);
+  }
+});
+
+test("Sr. paired with Jr. is itself a statement about generation", () => {
+  // Elbers Landscape: the quote is two title lines with no relationship word,
+  // but the names carry the claim.
+  assert.equal(
+    earnedConfidence(
+      "medium",
+      "James E. Hornung Sr., Owner. James E. Hornung Jr., Owner/President",
+      "James E. Hornung Sr.",
+      "James E. Hornung Jr."
+    ),
+    "medium"
+  );
+  // One suffix alone is not a pair.
+  assert.equal(relationshipStated("two people work here", "James Hornung Sr.", "Peter Hornung"), false);
+});
+
+test("a shared surname alone never establishes a pair", () => {
+  assert.equal(relationshipStated("Derek manages the sites", "Tommy Waters", "Derek Waters"), false);
+  assert.equal(relationshipStated("Lee Greathouse Founding Advisor Will Greathouse Regional VP", "Lee Greathouse", "Will Greathouse"), false);
+});
+
+test("Jonathan's own hand-audited leads are exempt", () => {
+  // They carry no quote because he verified them himself, not because the
+  // evidence is missing. Demoting them tells him to re-check his own work.
+  assert.equal(earnedConfidence("high", null, "A Person", "B Person", true), "high");
+  assert.equal(earnedConfidence("high", null, "A Person", "B Person", false), "verify");
+});
+
+test("the gate only ever lowers, and never invents a label", () => {
+  assert.equal(earnedConfidence(null, "son of the founder", "A Person", "B Person"), null);
+  assert.equal(earnedConfidence("verify", null, "A Person", "B Person"), "verify");
 });

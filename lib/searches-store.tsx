@@ -209,6 +209,9 @@ interface SearchesContextValue {
     revenueMinMusd?: number | null;
     revenueMaxMusd?: number | null;
     mode?: SearchMode;
+    /** Re-read companies already judged instead of skipping them. Off by
+     *  default — see runSearchPipeline's includeAlreadyChecked. */
+    includeAlreadyChecked?: boolean;
   }) => Promise<{ id: string; label: string }>;
   /**
    * `companyIds` is an explicit pick and overrides `scope` server-side. It is
@@ -329,6 +332,7 @@ export function SearchesProvider({ children }: { children: ReactNode }) {
       revenueMinMusd?: number | null;
       revenueMaxMusd?: number | null;
       mode?: SearchMode;
+      includeAlreadyChecked?: boolean;
     }) => {
       const res = await fetch("/api/search", {
         method: "POST",

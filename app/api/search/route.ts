@@ -52,6 +52,7 @@ export async function POST(req: Request) {
     state?: string;
     states?: string[];
     refinement?: string;
+    includeAlreadyChecked?: boolean;
     targetSignals?: number;
     mode?: string;
     revenueMinMusd?: number | null;
@@ -174,7 +175,16 @@ export async function POST(req: Request) {
   // Runs after this response is sent, within the extended function lifetime
   // (see maxDuration above) — the client polls the `searches` row for progress.
   after(() =>
-    runSearchPipeline(search.id, industry, states, target, mode, refinement || null, band)
+    runSearchPipeline(
+      search.id,
+      industry,
+      states,
+      target,
+      mode,
+      refinement || null,
+      band,
+      body.includeAlreadyChecked === true
+    )
   );
 
   return NextResponse.json({ id: search.id, label: search.label });

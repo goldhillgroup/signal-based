@@ -6,7 +6,7 @@ import { verifyEmail } from "./millionverifier";
 import type { Industry, SearchMode, SearchRow } from "../supabase/types";
 import { recheckAfterFor, rejectionScope, sizeVerdictStillBinds, parseRevenueBand } from "./recheck-policy";
 import { extractEmails, bestEmailFor, type FoundEmail } from "./page-email";
-import { callableName, cleanRevenueBand, cleanTitle } from "../lead-signal";
+import { callableName, cleanRevenueBand, cleanTitle, earnedConfidence } from "../lead-signal";
 import { buildWarningLine } from "./channel-health";
 import { channelRates, orderByYield } from "./channel-priors";
 import { runWithCounters, estimateUsd, describeCost, type CostCounters } from "./cost-tracker";
@@ -363,18 +363,34 @@ export async function runSearchPipeline(
   states: string[],
   targetSignals: number,
   mode: SearchMode = "signal",
-  // Optional free-text focus from the search form. Passed to classification
-  // as a non-overriding hint only — see classifySignal in openrouter.ts. It
-  // deliberately does NOT touch discovery: letting free text steer which
-  // companies get found is exactly how a search drifts off the agreed
-  // vertical, which the structured vertical+state inputs exist to prevent.
+  // Optional free-text focus, defaulting to the saved ideal client. It reaches
+  // BOTH ends of the pipeline: classification treats it as a non-overriding
+  // hint (classifySignal), and discovery turns it into quoted queries anchored
+  // to the trade (refinementQueries). The old worry — free text dragging a
+  // search off the agreed vertical — is handled by the vertical and states
+  // remaining hard filters, so the focus decides what is ASKED within them.
   refinement?: string | null,
   // Step 01's revenue band, per-search. Both null = no limit. Applied as a
   // SOFT gate: a company only gets cut when the classifier's own size read
   // actively contradicts the chosen band — never on "unknown", since that
   // estimate comes from soft textual proxies (crew size, years in business),
   // not real financials, and cutting on a guess discards real companies.
-  band?: { min: number | null; max: number | null }
+  band?: { min: number | null; max: number | null },
+  /**
+   * Re-read companies this system has ALREADY judged, instead of skipping them.
+   *
+   * Off by default, which is what makes a repeat search useful rather than
+   * wasteful: cross-search memory means running the same thing twice goes
+   * FURTHER into the same ground instead of re-buying the answers it already
+   * has. Measured — a repeat of an identical search read 4 companies instead of
+   * 11 and still returned 3 new leads.
+   *
+   * Turning it on is the "I don't trust the last pass, look again" switch. It
+   * costs a full read for every company it revisits, which is why it is a
+   * deliberate choice and not the default. Rejections already come back on
+   * their own schedule (recheck-policy.ts) without needing this.
+   */
+  includeAlreadyChecked = false
 ) {
   const supabase = createServiceRoleClient();
 
@@ -453,8 +469,18 @@ export async function runSearchPipeline(
         }
         if (data.length < PAGE) break;
       }
-      skippedRecent = seenDomains.size;
-      console.log(
+      if (includeAlreadyChecked) {
+        // Everything stays in play. Cleared AFTER the scan rather than skipping
+        // it so `reopened` is still counted honestly for the log line.
+        skippedRecent = seenDomains.size;
+        seenDomains.clear();
+        console.log(
+          `Search ${searchId}: re-checking everything — ${skippedRecent} previously-settled companies deliberately NOT skipped.`
+        );
+      } else {
+        skippedRecent = seenDomains.size;
+      }
+      if (!includeAlreadyChecked) console.log(
         `Search ${searchId}: cross-search memory holds ${skippedRecent} settled domains, these are skipped, everything due for re-check is fair game.` +
           (reopened > 0
             ? ` ${reopened} more were judged by a search with different criteria and are back in play here.`
@@ -1120,7 +1146,19 @@ export async function runSearchPipeline(
           .insert({
             ...withName,
             status: finalQualifies ? "qualified" : "rejected",
-            confidence: finalQualifies && finalHasSignal ? finalConfidence : null,
+            // The label the lead has EARNED, which may be lower than the one
+            // the model claimed. "High" promises Jonathan can act without
+            // checking; two leads carried it on a shared surname and an absent
+            // quote. See earnedConfidence.
+            confidence:
+              finalQualifies && finalHasSignal
+                ? earnedConfidence(
+                    finalConfidence,
+                    classification.quote,
+                    classification.founderName,
+                    classification.nextGenName
+                  )
+                : null,
             has_signal: finalQualifies ? finalHasSignal : null,
             operating_model: classification.operatingModel ?? null,
             rejection_reason: finalQualifies ? null : rejectionReason,

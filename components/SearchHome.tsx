@@ -72,6 +72,11 @@ export function SearchHome({
   const [states, setStates] = useState<string[]>([...AGREED_STATES]);
   const [mode, setMode] = useState<SearchMode>("hybrid");
   const [refinement, setRefinement] = useState("");
+  // Off by default. Cross-search memory is what makes a repeat search useful
+  // rather than wasteful, so the interesting question is not whether to skip
+  // but whether the person searching KNOWS it is happening — which is why this
+  // exists as a labelled switch instead of silent behaviour.
+  const [includeAlreadyChecked, setIncludeAlreadyChecked] = useState(false);
   // 8, the largest that completes in a single pass at the default ceiling.
   // Was 20, which needs three.
   const [target, setTarget] = useState(8);
@@ -151,6 +156,7 @@ export function SearchHome({
         industry,
         states,
         refinement,
+        includeAlreadyChecked,
         targetSignals: target,
         mode,
         revenueMinMusd: band.min,
@@ -394,6 +400,34 @@ export function SearchHome({
 
           <div className="mt-4">
             <StatePicker value={states} onChange={setStates} />
+          </div>
+
+          {/* The answer to "if I search the same thing twice, does it just give
+              me the same list?" — which is a fair thing to wonder and was
+              previously only answered in a server log. It does not: already
+              judged companies are skipped, so a repeat search goes FURTHER
+              rather than re-buying answers it has. This switch makes that
+              visible, and lets it be overridden when the last pass is not
+              trusted. */}
+          <div className="mt-4 rounded-lg border border-gh-border bg-gh-surface-sunken px-3 py-2.5">
+            <label className="flex cursor-pointer items-start gap-2.5">
+              <input
+                type="checkbox"
+                checked={includeAlreadyChecked}
+                onChange={(e) => setIncludeAlreadyChecked(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-gh-sky"
+              />
+              <span className="text-xs leading-relaxed">
+                <span className="font-semibold text-gh-ink-secondary">
+                  Re-check companies I&rsquo;ve already seen
+                </span>
+                <span className="mt-0.5 block text-gh-ink-muted">
+                  {includeAlreadyChecked
+                    ? "Every company will be read again, including ones already judged. Slower and it costs a full read each — use it when you want a previous pass re-done."
+                    : "Off: companies already judged are skipped, so searching the same thing again finds NEW ones instead of repeating the last list. Your existing leads stay where they are."}
+                </span>
+              </span>
+            </label>
           </div>
 
           <div className="mt-4">

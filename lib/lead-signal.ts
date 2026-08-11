@@ -149,6 +149,76 @@ export function callableName(v: string | null | undefined): boolean {
   return tokens.length >= 2;
 }
 
+/**
+ * Is the family link actually STATED, or merely implied by a shared surname?
+ *
+ * 39 of 44 signal leads share a surname between the two named people — which is
+ * exactly what you expect of a family business, and exactly why the surname
+ * proves nothing on its own. A staff member who happens to be a Wade is not
+ * evidence that Bret Wade is handing the company to them.
+ *
+ * Two things count as stated:
+ *   - the evidence quote uses a relationship or handover word, or
+ *   - the two names carry a matching generational suffix (Sr./Jr., II/III),
+ *     which is an explicit claim about generation, not a coincidence of names.
+ *
+ * "3rd generation", "joined his father", "took over" and "son of founder" all
+ * qualify. A quote that is two job titles pasted together does not.
+ */
+const RELATIONSHIP_RE =
+  /\b(son|daughter|sons|daughters|father|mother|dad|mom|parents?|family|families|generation|grand(son|daughter|father)|joined (his|her|the)|took over|passed (down|along|the)|succeed(ed|s|ing)?|hand(ed|ing)? (over|down)|heir|children|kids|nephew|niece)\b/i;
+const SUFFIX_RE = /\b(jr|sr|ii|iii|iv)\b\.?/i;
+
+export function relationshipStated(
+  quote: string | null | undefined,
+  founderName: string | null | undefined,
+  nextGenName: string | null | undefined
+): boolean {
+  if (quote && RELATIONSHIP_RE.test(quote)) return true;
+  // Sr. paired with Jr. is a statement about generation. Two people who merely
+  // both lack a suffix are not.
+  const f = SUFFIX_RE.test(founderName ?? "");
+  const n = SUFFIX_RE.test(nextGenName ?? "");
+  return f && n;
+}
+
+/**
+ * The confidence a lead has actually EARNED, which may be lower than the one
+ * the model claimed.
+ *
+ * "High" is a promise that Jonathan can act without checking. Two leads carried
+ * it without supporting it: Hewitt Garden & Design had no evidence quote at all,
+ * and Tommy Waters Custom Homes had a quote describing only the successor's job,
+ * with nothing anywhere stating he was the owner's son — a shared surname doing
+ * all the work.
+ *
+ * So "high" now requires BOTH a receipt and a stated relationship. Anything
+ * missing either drops to "verify", which is not a demotion of the lead — it is
+ * an accurate label meaning "real, worth a look, check it yourself first". The
+ * lead, the names and the quote are untouched.
+ *
+ * HAND-AUDITED LEADS ARE EXEMPT, and that is the whole point of the rule rather
+ * than an exception to it. This gate exists because a MODEL's claim needs
+ * evidence on the page. Jonathan's own list carries no quote because it was
+ * imported rather than crawled — the receipt is that he checked it himself.
+ * Applying the gate blindly demoted 6 of his own vetted companies and told him
+ * to re-verify his own work, which is a different way of being wrong.
+ */
+export function earnedConfidence(
+  claimed: "high" | "medium" | "verify" | null,
+  quote: string | null | undefined,
+  founderName: string | null | undefined,
+  nextGenName: string | null | undefined,
+  handVerified = false
+): "high" | "medium" | "verify" | null {
+  if (!claimed) return claimed;
+  if (handVerified) return claimed;
+  const hasReceipt = Boolean(quote && quote.trim());
+  const stated = relationshipStated(quote, founderName, nextGenName);
+  if (hasReceipt && stated) return claimed;
+  return "verify";
+}
+
 /** The people whose presence IS the signal. */
 export function leadPeople(c: Company): { founder: string | null; nextGen: string | null } {
   const fmt = (n: string | null, t: string | null) =>
