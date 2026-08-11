@@ -223,18 +223,70 @@ export function quoteAppears(quote: string, pageText: string): boolean {
  * entirely rather than show one that cannot be found. Never invents or edits
  * words. Deterministic, free, and it cannot affect what gets qualified.
  */
-export function longestVerifiableQuote(quote: string, pageText: string): string | null {
+/**
+ * Strip what the model wrapped around the quote, and nothing else.
+ *
+ * Models return an excerpt already inside quotation marks about a sixth of the
+ * time. The card renders it inside a blockquote with its own quote styling, so
+ * it shows as ""Bill instilled his values…"" — and more importantly the stored
+ * text no longer matches the page, because the page does not contain those
+ * marks. A receipt that fails its own verification for punctuation is a bad
+ * receipt.
+ *
+ * Only balanced wrapping marks are removed. A quote that legitimately contains
+ * a quotation inside it is untouched.
+ */
+export function tidyQuote(q: string | null | undefined): string | null {
+  if (!q) return null;
+  let t = String(q).replace(/\s+/g, " ").trim();
+  while (t.length > 2 && /^["“”']/.test(t) && /["“”']$/.test(t)) {
+    t = t.slice(1, -1).trim();
+  }
+  return t || null;
+}
+
+export function longestVerifiableQuote(
+  quote: string,
+  pageText: string,
+  /** Names to prefer — the founder and the successor, if known. */
+  prefer: (string | null | undefined)[] = []
+): string | null {
   const pieces = quote
     .split(/\s*(?:\.\.\.|…)\s*/)
     .flatMap((p) => p.split(/"\s*"/))
     .map((p) => p.replace(/^["“”\s]+|["“”\s]+$/g, "").trim())
     .filter((p) => p.split(/\s+/).length >= 4);
 
-  const verified = pieces
-    .filter((p) => quoteAppears(p, pageText))
-    .sort((a, b) => b.length - a.length);
+  const verified = pieces.filter((p) => quoteAppears(p, pageText));
+  if (verified.length === 0) return null;
 
-  return verified[0] ?? null;
+  // RELEVANCE FIRST, LENGTH ONLY AS A TIE-BREAK.
+  //
+  // Picking the longest surviving fragment is the obvious rule and it is wrong.
+  // On RR Landscape it discarded "Colt Ritzel joined his father, Ross, in 2021"
+  // — the sentence that IS the finding — in favour of a longer one about
+  // commitment to innovation. A receipt that proves nothing is no better than a
+  // receipt that cannot be found.
+  //
+  // So score for what the quote is supposed to evidence: the two people by
+  // name, and the language of a handover. Length breaks ties only.
+  const firstNames = prefer
+    .filter((n): n is string => !!n)
+    .map((n) => n.trim().split(/[\s,]+/)[0].toLowerCase())
+    .filter((n) => n.length > 2);
+
+  const SUCCESSION =
+    /\b(son|daughter|sons|daughters|joined|took over|taking over|second|third|fourth|next generation|generation|father|mother|family business|succeed)\b/i;
+
+  const score = (p: string) => {
+    const low = p.toLowerCase();
+    let n = 0;
+    for (const f of firstNames) if (low.includes(f)) n += 3;
+    if (SUCCESSION.test(p)) n += 2;
+    return n;
+  };
+
+  return verified.sort((a, b) => score(b) - score(a) || b.length - a.length)[0] ?? null;
 }
 
 /**
@@ -879,13 +931,21 @@ export async function runSearchPipeline(
         // zero API calls; a quote that can't be found on the page the model
         // was shown drops the company to "verify" and says why.
         let quoteWarning: string | null = null;
+        // Normalise before anything looks at it, so the verification below and
+        // the text stored are the same string the client will read.
+        if (classification.quote) {
+          classification = { ...classification, quote: tidyQuote(classification.quote) };
+        }
         if (classification.qualifies && classification.quote) {
           const stitched = /\.\.\.|…/.test(classification.quote) || (classification.quote.match(/"/g) ?? []).length >= 4;
           if (stitched) {
             // Keep the longest piece that actually verifies. The finding stands
             // — the fragments are real — but the receipt shown to the client
             // has to be something he can find on the page.
-            const repaired = longestVerifiableQuote(classification.quote, classifyText);
+            const repaired = longestVerifiableQuote(classification.quote, classifyText, [
+              classification.nextGenName,
+              classification.founderName,
+            ]);
             classification = { ...classification, quote: repaired };
             if (!repaired) {
               quoteWarning =

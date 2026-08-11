@@ -162,7 +162,7 @@ for (let i = 0; i < Math.min(runs, CONFIGS.length); i++) {
   // PostgREST's generated types collapse an unknown select to `never`; this is
   // a scratch harness, not app code, so a single widening cast at the boundary
   // beats threading a row interface through it.
-  const all = (comps ?? []) as unknown as Record<string, any>[];
+  const all = (comps ?? []) as unknown as Record<string, unknown>[];
   const leads = all.filter((c) => c.status === "qualified");
   const cut = all.filter((c) => c.status === "rejected");
   const cost = f?.cost_estimate_usd ?? 0;

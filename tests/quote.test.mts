@@ -61,5 +61,43 @@ check("surrounding quote marks are stripped, inner punctuation kept", () => {
   eq(out, "Bill and Beth started the company in 1982.", "trimmed but intact");
 });
 
+// ── RELEVANCE BEATS LENGTH ────────────────────────────────────────────────
+// The first version of this repair kept the LONGEST surviving fragment, which
+// is the obvious rule and the wrong one. On a real lead it discarded
+// "Colt Ritzel joined his father, Ross, in 2021" — the sentence that IS the
+// finding — for a longer one about commitment to innovation. A receipt that
+// proves nothing is no better than one that cannot be found.
+const RR = `Our Team. Colt Ritzel joined his father, Ross, in 2021 and now runs day to day
+  operations. His commitment to innovation drives him to continually seek improvements in the
+  business and in the wider industry, which he has pursued for many years.`;
+
+check("keeps the succession sentence over a longer irrelevant one", () => {
+  const q = `"Colt Ritzel joined his father, Ross, in 2021." "His commitment to innovation drives him to continually seek improvements in the business and in the wider industry"`;
+  const out = longestVerifiableQuote(q, RR, ["Colt Ritzel", "Ross Ritzel"]);
+  if (!out || !out.toLowerCase().includes("joined his father")) {
+    throw new Error(`picked the wrong fragment: ${out}`);
+  }
+});
+
+check("without names it still prefers succession language", () => {
+  const q = `"Colt Ritzel joined his father, Ross, in 2021." "His commitment to innovation drives him to continually seek improvements in the business and in the wider industry"`;
+  const out = longestVerifiableQuote(q, RR);
+  if (!out || !out.toLowerCase().includes("joined")) throw new Error(`got: ${out}`);
+});
+
+check("a named person beats succession wording alone", () => {
+  const page = `Bob took over the shop in 1990. Maria Reyes is our second generation and runs it today.`;
+  const q = `"Bob took over the shop in 1990." "Maria Reyes is our second generation and runs it today."`;
+  const out = longestVerifiableQuote(q, page, ["Maria Reyes"]);
+  if (!out || !out.includes("Maria")) throw new Error(`got: ${out}`);
+});
+
+check("relevance never overrides being on the page", () => {
+  const page = `Our team has served the area since 1962.`;
+  const q = `"his son Tony joined in 2001." "Our team has served the area since 1962."`;
+  const out = longestVerifiableQuote(q, page, ["Tony"]);
+  eq(out, "Our team has served the area since 1962.", "must pick the verifiable one");
+});
+
 if (fail.length) { console.error(`${fail.length} FAILED:`); for (const f of fail) console.error("  " + f); process.exit(1); }
 console.log(`${pass}/${pass} quote-receipt assertions passed`);

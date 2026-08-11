@@ -74,6 +74,30 @@ const sb = createServiceRoleClient();
  * matches on. This is the load-bearing translation: get it wrong and the 26
  * most valuable rejections either never come back or come back permanently.
  */
+/**
+ * Take only the URL from a hand-written evidence field.
+ *
+ * The audit was filled in by a person, and one row reads
+ *
+ *   https://www.treehealth.com/ (the site has no separate /about or /team page
+ *   this content lives in the "About" section on the homepage itself...)
+ *
+ * — a real URL with an explanatory note appended. Stored verbatim it becomes a
+ * dead "Source page" link on the lead card, which is the one link whose whole
+ * job is letting the client verify the claim himself. Everything after the
+ * first whitespace is a note, not an address.
+ */
+function cleanUrl(v: string | null | undefined): string | null {
+  if (!v) return null;
+  const first = String(v).trim().split(/\s+/)[0].replace(/[),.;]+$/, "");
+  try {
+    const u = new URL(first);
+    return /^https?:$/.test(u.protocol) ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 const REJECTION_TEXT: Record<string, string> = {
   no_founder_and_nextgen:
     "Only one generation is on the leadership page, no founder-and-next-gen pair shown together.",
@@ -254,7 +278,7 @@ for (const r of fresh) {
       founder_name: r.founder || null,
       next_gen_name: r.next_gen_contact || null,
       next_gen_title: r.contact_title || null,
-      source_url: r.evidence_url || null,
+      source_url: cleanUrl(r.evidence_url),
       // Not a paid channel — a person found these.
       discovery_channel: "hand_audit",
     })
@@ -272,7 +296,7 @@ for (const r of fresh) {
     const { error: evErr } = await sb.from("signal_evidence").insert({
       company_id: row.id,
       quote: quote.slice(0, 2000),
-      source_url: r.evidence_url,
+      source_url: cleanUrl(r.evidence_url) ?? "",
       page_type: "about",
       disprove_notes: "Confirmed by hand audit, not by the model.",
     });
