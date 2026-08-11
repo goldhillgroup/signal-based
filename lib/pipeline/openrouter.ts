@@ -216,10 +216,63 @@ export function extractJson<T>(raw: string): T {
     try {
       return JSON.parse(repairJson(candidate)) as T;
     } catch {
-      // next candidate
+      // fall through to the fragment drop
+    }
+    // Last resort before losing the company entirely: shed the truncated tail
+    // and keep the complete pairs. Loops because one cut can leave another
+    // partial pair behind it.
+    let trimmed: string | null = candidate;
+    for (let attempt = 0; attempt < 4 && trimmed; attempt++) {
+      trimmed = dropTrailingFragment(trimmed);
+      if (!trimmed) break;
+      try {
+        return JSON.parse(repairJson(trimmed)) as T;
+      } catch {
+        // keep shedding
+      }
     }
   }
   throw new Error(`Could not parse JSON from model output: ${raw.slice(0, 200)}`);
+}
+
+/**
+ * Drop the trailing INCOMPLETE property from a truncated object.
+ *
+ * repairJson closes dangling strings and containers, which handles a cut in
+ * the middle of a value. It cannot handle a cut in the middle of a KEY: the
+ * model returned
+ *
+ *   { "companyName": "Elite Tree Service", … "confidence": null, "
+ *
+ * and closing that lone quote produces `, ""}` — an empty key with no value,
+ * which is not parseable by any amount of bracket balancing. The whole company
+ * was then thrown away as a classification failure. Seen live on
+ * elitetreeinc.com, a real landscaping company with a named owner.
+ *
+ * So: walk back to the last comma that sits at the object's top level and
+ * outside any string, and cut there. Everything before it is a run of complete
+ * key/value pairs — genuinely parsed data, not a guess — and the fields that
+ * did not arrive stay absent rather than being invented. Applied only after a
+ * straight parse and the balancing repair have both already failed.
+ */
+function dropTrailingFragment(s: string): string | null {
+  let depth = 0;
+  let inStr = false;
+  let lastComma = -1;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (inStr) {
+      if (ch === "\\") i++;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === "{" || ch === "[") depth++;
+    else if (ch === "}" || ch === "]") depth--;
+    else if (ch === "," && depth === 1) lastComma = i;
+  }
+  if (lastComma === -1) return null;
+  return s.slice(0, lastComma);
 }
 
 // Two mechanical fixes only — trailing commas, and unclosed braces/brackets
@@ -261,6 +314,17 @@ export interface ClassificationResult {
   nextGenName: string | null;
   nextGenTitle: string | null;
   quote: string | null;
+  /**
+   * The town or city the business operates from, read off the page.
+   *
+   * Only Google Maps candidates arrive with a location; web search — the
+   * HIGHEST-yield discovery channel, at roughly five times Maps' signal rate —
+   * carries none. So the best leads in the folder were the ones showing "-" for
+   * location, on a list whose job is to tell someone who to call and where.
+   * Every About or Contact page states this somewhere, and the classifier is
+   * already reading the whole page.
+   */
+  city: string | null;
   revenueEstimate: string | null; // e.g. "$5-10M (est.)" — best-effort, from textual proxies
   sizeFit: "too_small" | "in_band" | "too_big" | "unknown";
   // Step 04 of the stated method ("operating model, then reach") — his
@@ -363,6 +427,7 @@ Respond with ONLY a JSON object (no markdown fences, no prose) matching this sha
   "nextGenName": string | null,
   "nextGenTitle": string | null,
   "quote": string | null,
+  "city": string | null,
   "revenueEstimate": string | null,
   "sizeFit": "too_small" | "in_band" | "too_big" | "unknown",
   "operatingCountry": "us" | "foreign" | "unknown",
@@ -370,6 +435,7 @@ Respond with ONLY a JSON object (no markdown fences, no prose) matching this sha
   "stillFamilyOwned": boolean,
   "rejectionReason": string | null
 }
+"city" is the town or city the business is based in, exactly as the page writes it, with no state and no street address — "Bakersfield", not "Bakersfield, CA" and not "1400 Oak St, Bakersfield". Read it from a Contact/About section, a footer address, or a "serving X since" line. Null if the page genuinely never says. Do NOT infer it from the service-area list: "we serve the Bay Area" is not a city.
 "quote" must be a short direct excerpt (<= 40 words) copied verbatim from the page text that best supports the decision — required when qualifies is true, null when false unless a quote explains the rejection well.
 "rejectionReason" when qualifies is false should read like one of: "Cut — only one generation is on the leadership page, no founder-and-next-gen pair shown together." / "No mention of any leadership team or family members." / a specific, concrete reason in that same plain style. (Size and ownership gates are applied separately after this call, not inside rejectionReason.)
 Before answering, double-check: if founderName is null, are you certain no individual is named anywhere on the page — not just that there's no succession story?`;

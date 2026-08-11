@@ -215,6 +215,20 @@ export function bindsThisSearch(
   }
 }
 
+/**
+ * Keep a city only if it is one. The model is asked for a bare town name, but a
+ * page that says "serving the tri-state area" invites a phrase rather than a
+ * place, and a blank cell is more honest on a call list than a wrong one.
+ */
+function cleanCity(v: string | null | undefined): string | null {
+  if (!v) return null;
+  const t = v.trim().replace(/[.,;]+$/, "");
+  if (t.length < 2 || t.length > 40) return null;
+  if (/\d/.test(t)) return null; // a street address, not a city
+  if (/^(n\/?a|none|unknown|not stated|various|nationwide|usa|united states)$/i.test(t)) return null;
+  return t;
+}
+
 export async function runSearchPipeline(
   searchId: string,
   industry: Industry,
@@ -672,7 +686,17 @@ export async function runSearchPipeline(
         // regardless (the classifier's industry read is only used above to
         // catch actual mismatches, e.g. a landscape-*architecture* firm
         // with no install crews turning up in a landscaping search).
-        const withName = { ...base, name: companyName, industry };
+        // City resolved HERE rather than in `base`, because base is built
+        // before the page is classified. Maps is authoritative when it has one;
+        // otherwise take what the classifier read off the page. Web search —
+        // the highest-yield channel — supplies no location at all, so without
+        // this fallback the best leads in the folder showed a blank city.
+        const withName = {
+          ...base,
+          name: companyName,
+          industry,
+          city: base.city ?? cleanCity(classification.city),
+        };
 
         if (classification.industry === "other") {
           // recheck_after, like every other rejection path in this file (:599,
