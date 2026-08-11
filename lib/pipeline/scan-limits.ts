@@ -8,8 +8,28 @@
  * bundle. A three-constant module is the whole fix.
  */
 
-/** Never scan more than target * this. */
+/**
+ * Never scan more than target * this — and how many reads a result costs
+ * depends entirely on WHAT you are counting.
+ *
+ * There was one multiplier, 6, for every mode. That is about right for a
+ * plain ICP fit: roughly one company in six passes the trade/size gates. It is
+ * badly wrong for a succession signal, which is measured at about ONE IN
+ * TWENTY on the best channel (web search: 4.8 confirmed pairs per 100 read;
+ * Maps: 0.9).
+ *
+ * The consequence was arithmetic, not bad luck. Asking for 8 signals capped
+ * the run at 8 x 6 = 48 companies, inside which about 2 pairs exist. The run
+ * could not have delivered what was asked for however well it worked, and it
+ * stopped looking convinced it was done.
+ *
+ * 20 is deliberately the measured rate rather than a safety factor on top of
+ * it: half the runs will still fall short, and that is honest — a signal is
+ * a real event in the world, not something more spending conjures. What this
+ * fixes is a ceiling that made the request impossible to satisfy.
+ */
 export const MAX_SCAN_MULTIPLIER = 6;
+export const SIGNAL_SCAN_MULTIPLIER = 20;
 
 /** Hard stop regardless of target — cost and time sanity. */
 export const ABSOLUTE_SCAN_CEILING = 240;
@@ -21,9 +41,22 @@ export const ABSOLUTE_SCAN_CEILING = 240;
  */
 export const SECONDS_PER_COMPANY = 5.2;
 
-/** Companies a run with this target will read at most. */
-export function scansFor(targetSignals: number): number {
-  return Math.min(targetSignals * MAX_SCAN_MULTIPLIER, ABSOLUTE_SCAN_CEILING);
+/**
+ * Companies a run with this target will read at most.
+ *
+ * `seekingSignals` covers 'signal' and 'hybrid' — both are asking for pairs,
+ * and both were being cut off long before enough pages had been read for one
+ * to appear. 'filter' keeps the old multiplier: it counts companies that fit,
+ * and those genuinely do arrive one in six.
+ */
+export function scansFor(targetSignals: number, seekingSignals = false): number {
+  const multiplier = seekingSignals ? SIGNAL_SCAN_MULTIPLIER : MAX_SCAN_MULTIPLIER;
+  return Math.min(targetSignals * multiplier, ABSOLUTE_SCAN_CEILING);
+}
+
+/** Roughly how many confirmed pairs a target is likely to yield, measured. */
+export function expectedSignals(targetSignals: number, seekingSignals = false): number {
+  return Math.floor(scansFor(targetSignals, seekingSignals) / SIGNAL_SCAN_MULTIPLIER);
 }
 
 /**
@@ -39,8 +72,12 @@ export function scansFor(targetSignals: number): number {
  * would take away results the product can genuinely deliver; saying nothing
  * leaves someone watching a progress dialog stop at 57 and assuming it failed.
  */
-export function passesNeeded(targetSignals: number, ceilingMs: number): number {
-  const seconds = scansFor(targetSignals) * SECONDS_PER_COMPANY;
+export function passesNeeded(
+  targetSignals: number,
+  ceilingMs: number,
+  seekingSignals = false
+): number {
+  const seconds = scansFor(targetSignals, seekingSignals) * SECONDS_PER_COMPANY;
   return Math.max(1, Math.ceil((seconds * 1000) / ceilingMs));
 }
 

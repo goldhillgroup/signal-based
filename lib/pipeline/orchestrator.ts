@@ -33,7 +33,7 @@ const ROUND_SIZE = 15;
 // ceiling re-reading known companies and find nothing new. Bounded so a run is
 // always part re-check, part fresh ground.
 const RECHECK_PER_RUN = 20;
-import { MAX_SCAN_MULTIPLIER, ABSOLUTE_SCAN_CEILING } from "./scan-limits";
+import { scansFor } from "./scan-limits";
 import { RUN_CEILING_MS } from "./reap";
 
 // How many companies are classified at once. Each one is 1-2 OpenRouter calls
@@ -400,7 +400,13 @@ export async function runSearchPipeline(
   const costCounters: CostCounters = { counts: {} };
   await runWithCounters(costCounters, async () => {
   try {
-    const scanCeiling = Math.min(targetSignals * MAX_SCAN_MULTIPLIER, ABSOLUTE_SCAN_CEILING);
+    // A run looking for succession pairs has to read about twenty companies
+    // per pair; a run looking for ICP fits finds one in six. Using the fit
+    // multiplier for both capped a "find 8 signals" search at 48 companies —
+    // inside which roughly 2 pairs exist — so the request was arithmetically
+    // impossible and the run stopped believing it was finished. See scansFor.
+    const seekingSignals = mode !== "filter";
+    const scanCeiling = scansFor(targetSignals, seekingSignals);
 
     // ── THE RUN'S OWN DEADLINE ───────────────────────────────────────────
     //
@@ -552,7 +558,14 @@ export async function runSearchPipeline(
     //    the target means "how many companies," full stop — accepted counts
     //    every non-rejected company regardless of whether it happened to
     //    show a signal.
-    const countsTowardTarget = () => (mode === "signal" ? qualified + verify : accepted);
+    //  - 'hybrid' counted `accepted` too, and that is what made a search feel
+    //    empty. A run would fill its target with eight perfectly good fit-only
+    //    companies, stop, and hand back zero founder-and-successor pairs —
+    //    the one thing the product exists to find. Hybrid asks for pairs and
+    //    keeps the fits it passes on the way, so pairs are what the target
+    //    counts. 'filter' is unchanged: it never claimed to look for a signal.
+    const countsTowardTarget = () =>
+      mode === "filter" ? accepted : qualified + verify;
     let round = 0;
     let stoppedEarlyReason: string | null = null;
     // Accumulates across EVERY round, unlike roundChannelErrors which resets

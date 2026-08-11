@@ -21,7 +21,7 @@ const ok = (n: string, c: boolean, d = "") => { if (c) pass++; else fail.push(`$
 // ── the bug this exists to prevent ────────────────────────────────────────
 {
   const over = monthlyPageUse(20, 2);
-  ok("2 verticals x 20 weekly is OVER the page quota", !over.fits,
+  ok("2 verticals x 20 weekly is far OVER the page quota", !over.fits,
      `${Math.round(over.pages)} pages vs ${over.quota}`);
 }
 
@@ -30,21 +30,32 @@ const ok = (n: string, c: boolean, d = "") => { if (c) pass++; else fail.push(`$
   const d = monthlyPageUse(DEFAULT_SCHEDULE.targetPerRun, DEFAULT_SCHEDULE.industries.length);
   ok("the DEFAULT schedule fits the page quota", d.fits,
      `${Math.round(d.pages)} pages vs ${d.quota}`);
-  ok("the default also leaves room for manual searches", d.pages < d.quota * 0.7,
+  // Manual searching is the actual product; the harvest is a background
+  // nicety. It must not eat the allowance the person pressing Search needs.
+  ok("the default leaves at least half the quota for manual searches",
+     d.pages <= d.quota * 0.55,
      `uses ${Math.round((d.pages / d.quota) * 100)}% of the allowance`);
 }
 
 // ── every target the UI offers must be runnable ───────────────────────────
 // Offering a number that cannot survive a month is offering a broken setting.
-for (const t of [5, 10, 15]) {
+// Every target the schedule UI offers must be runnable at ONE vertical, and
+// the two-vertical case is where the estimate line has to warn instead.
+for (const t of [3, 5, 8]) {
+  const one = monthlyPageUse(t, 1);
+  ok(`target ${t} on one vertical fits`, one.fits, `${Math.round(one.pages)} pages`);
+}
+for (const t of [3, 5]) {
   const u = monthlyPageUse(t, 2);
   ok(`target ${t} across 2 verticals fits`, u.fits, `${Math.round(u.pages)} pages`);
 }
+ok("8 across 2 verticals does NOT fit, and the UI must say so",
+   !monthlyPageUse(8, 2).fits, `${Math.round(monthlyPageUse(8, 2).pages)} pages`);
 
 // ── and each one must finish inside the HARVEST's driver ──────────────────
 // GitHub Actions, 90-minute job — not the 300s Vercel ceiling. Measuring
 // against the wrong one told the user a runnable harvest would be cut off.
-for (const t of [5, 10, 15]) {
+for (const t of [3, 5, 8]) {
   const e = harvestEstimate(t, 2, HARVEST_CEILING_MS);
   ok(`target ${t} finishes in one harvest job`, e.fits, `${e.minutes.toFixed(1)} min`);
 }
@@ -62,9 +73,9 @@ ok("the harvest ceiling matches the workflow's job timeout", HARVEST_CEILING_MS 
 
 // ── one vertical buys headroom, and the maths must reflect that ───────────
 {
-  const one = monthlyPageUse(20, 1), two = monthlyPageUse(20, 2);
+  const one = monthlyPageUse(8, 1), two = monthlyPageUse(8, 2);
   ok("one vertical uses half of two", Math.abs(one.pages * 2 - two.pages) < 1);
-  ok("20 across one vertical is affordable", one.fits, `${Math.round(one.pages)} pages`);
+  ok("8 across one vertical is affordable", one.fits, `${Math.round(one.pages)} pages`);
 }
 
 // ── the quota constant is the real one ────────────────────────────────────

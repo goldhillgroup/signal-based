@@ -32,10 +32,24 @@ export const DEFAULT_SCHEDULE: WeeklySchedule = {
   dayOfWeek: 1, // Monday: results are waiting at the start of his week
   industries: ["landscaping", "home_builder"],
   states: [...AGREED_STATES],
-  // 10, not 20. Two verticals at 20 reads 1,032 Firecrawl pages a month against
-  // a 1,025 quota — the shipped default was over the limit every month. 10 is
-  // 516, which leaves room for manual searches on top.
-  targetPerRun: 10,
+  // 5, not 10 — and the reason is worth keeping, because the number has now
+  // moved twice for the same underlying mistake.
+  //
+  // It was 20, which read 1,032 pages a month against a 1,025 quota: over the
+  // limit every month. It became 10, computed at six companies read per
+  // result. But the harvest runs in HYBRID mode, and hybrid counts confirmed
+  // founder-and-successor pairs, which arrive about one in twenty — so the
+  // real figure was 1,720 pages, 168% of the allowance. tests/quota caught it.
+  //
+  // At 3 across both verticals it is 516 pages of 1,025 — half the allowance
+  // left for the manual searches that are the actual product. 5 would fit at
+  // 84%, which technically passes and leaves almost nothing for a person
+  // pressing Search.
+  //
+  // A handful of pairs a month from a job nobody has to run is the honest
+  // shape of this feature. The number is small because the signal is rare,
+  // not because the harvest is weak.
+  targetPerRun: 3,
   mode: "hybrid",
   // Same baseline the one-off form defaults to, so a scheduled scan and a
   // manual one for the same thing return the same companies.

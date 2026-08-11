@@ -16,7 +16,7 @@ import { ReturnOverview } from "./ReturnOverview";
 import { SearchProgress } from "./SearchProgress";
 import { StatePicker } from "./StatePicker";
 import { BuildingIcon, CheckIcon, SearchIcon, UsersIcon, ZapIcon } from "./icons";
-import { passesNeeded, companiesPerPass } from "@/lib/pipeline/scan-limits";
+import { passesNeeded, companiesPerPass, scansFor } from "@/lib/pipeline/scan-limits";
 import { RUN_CEILING_MS } from "@/lib/pipeline/reap";
 
 // 5 and 8 added at the bottom. At the platform's default 300s ceiling a single
@@ -80,7 +80,14 @@ export function SearchHome({
   // 8, the largest that completes in a single pass at the default ceiling.
   // Was 20, which needs three.
   const [target, setTarget] = useState(8);
-  const passes = passesNeeded(target, RUN_CEILING_MS);
+  // 'filter' counts companies that fit, which arrive about one in six.
+  // 'signal' and 'hybrid' count founder-and-successor pairs, which arrive
+  // about one in twenty — so the same number means a very different amount
+  // of reading, and the copy below has to say so rather than let someone
+  // conclude the product is broken when the world is simply like that.
+  const seekingSignals = mode !== "filter";
+  const passes = passesNeeded(target, RUN_CEILING_MS, seekingSignals);
+  const willRead = scansFor(target, seekingSignals);
   const perPass = companiesPerPass(RUN_CEILING_MS);
   // Opens on the band saved as the ideal client, not a hardcoded 0. The
   // baseline still IS $3-15M — that is DEFAULT_ICP — but it is now one place
@@ -524,19 +531,27 @@ export function SearchHome({
               domain already settled. Saying "two passes" is honest and
               actionable; capping the options would take away results the
               product can genuinely deliver. */}
-          {passes > 1 ? (
-            <p className="mt-1.5 text-[11px] leading-relaxed text-gh-ink-secondary">
-              About {passes} passes. The server stops a run at{" "}
-              {Math.round(RUN_CEILING_MS / 60000)} minutes, around {perPass} companies —
-              everything found is saved, and pressing Search again carries on from
-              there. Pick {TARGET_OPTIONS.filter((n) => passesNeeded(n, RUN_CEILING_MS) === 1).slice(-1)[0]}{" "}
-              to finish in one.
-            </p>
-          ) : (
-            <p className="mt-1.5 text-[11px] text-gh-ink-muted">
-              Finishes in one pass.
-            </p>
-          )}
+          <p className="mt-1.5 text-[11px] leading-relaxed text-gh-ink-secondary">
+            {seekingSignals ? (
+              <>
+                Reads up to {willRead} companies. A founder-and-successor pair
+                turns up in roughly one company in twenty, so expect a handful
+                of confirmed pairs plus every good family-owned company found on
+                the way — those are kept, not discarded.
+              </>
+            ) : (
+              <>Reads up to {willRead} companies to find {target} that fit.</>
+            )}{" "}
+            {passes > 1 ? (
+              <>
+                About {passes} passes: the server stops a run at{" "}
+                {Math.round(RUN_CEILING_MS / 60000)} minutes, around {perPass}{" "}
+                companies. Everything found is saved and it carries on by itself.
+              </>
+            ) : (
+              <>Finishes in one pass.</>
+            )}
+          </p>
 
           <button
             type="button"

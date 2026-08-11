@@ -10,12 +10,18 @@ import { StatePicker } from "./StatePicker";
 import { CheckIcon } from "./icons";
 import { harvestEstimate, monthlyPageUse, HARVEST_CEILING_MS } from "@/lib/pipeline/schedule-types";
 
-// 50 is gone, and 15 replaces 20. A weekly harvest reads target x 6 companies
-// per vertical, 4.3 times a month, and each company costs one Firecrawl page
-// against a 1,025/month quota. Two verticals at 20 is 1,032 — over, every
-// month. At 15 it is 774. Offering a number that cannot run for a full month
-// is offering a broken setting.
-const TARGETS = [5, 10, 15];
+// Down again, and for the third time the same lesson: offering a number that
+// cannot survive a month is offering a broken setting.
+//
+// 50 went first. Then 20 -> 15, computed at six companies read per result. But
+// the harvest runs in HYBRID mode, and hybrid counts founder-and-successor
+// pairs, which arrive about one in TWENTY — so 15 across two verticals is
+// 2,064 Firecrawl pages a month against a 1,025 allowance, not 774.
+//
+// At two verticals the arithmetic allows 5. Anything above that is offered
+// only because a single-vertical harvest can afford more, and the estimate
+// line below says so when it cannot.
+const TARGETS = [3, 5, 8];
 
 /**
  * On/off switch and configuration for the weekly harvest.

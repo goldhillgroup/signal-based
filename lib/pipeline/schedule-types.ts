@@ -244,13 +244,18 @@ const RUNS_PER_MONTH = 4.3;
  */
 export function monthlyPageUse(
   targetPerRun: number,
-  verticals: number
+  verticals: number,
+  // The harvest runs in hybrid mode, which now reads about twenty companies
+  // per confirmed pair rather than six per ICP fit. Estimating with the fit
+  // multiplier would understate the Firecrawl bill by more than 3x and quietly
+  // blow the monthly quota — the exact failure this function exists to prevent.
+  seekingSignals = true
 ): { pages: number; quota: number; fits: boolean; maxTargetThatFits: number } {
   const n = Math.max(verticals, 1);
-  const pages = scansFor(targetPerRun) * n * RUNS_PER_MONTH;
+  const pages = scansFor(targetPerRun, seekingSignals) * n * RUNS_PER_MONTH;
   let maxTargetThatFits = 0;
   for (let t = 1; t <= 100; t++) {
-    if (scansFor(t) * n * RUNS_PER_MONTH <= FIRECRAWL_PAGES_PER_MONTH) maxTargetThatFits = t;
+    if (scansFor(t, seekingSignals) * n * RUNS_PER_MONTH <= FIRECRAWL_PAGES_PER_MONTH) maxTargetThatFits = t;
   }
   return { pages, quota: FIRECRAWL_PAGES_PER_MONTH, fits: pages <= FIRECRAWL_PAGES_PER_MONTH, maxTargetThatFits };
 }
@@ -258,16 +263,17 @@ export function monthlyPageUse(
 export function harvestEstimate(
   targetPerRun: number,
   verticals: number,
-  ceilingMs: number
+  ceilingMs: number,
+  seekingSignals = true
 ): { minutes: number; fits: boolean; perVerticalMinutes: number; maxTargetThatFits: number } {
-  const perVerticalSeconds = scansFor(targetPerRun) * SECONDS_PER_COMPANY;
+  const perVerticalSeconds = scansFor(targetPerRun, seekingSignals) * SECONDS_PER_COMPANY;
   const n = Math.max(verticals, 1);
   const totalSeconds = perVerticalSeconds * n;
 
   // Largest target whose whole harvest still fits, for the message.
   let maxTargetThatFits = 0;
   for (let t = 1; t <= 100; t++) {
-    if (scansFor(t) * SECONDS_PER_COMPANY * n * 1000 <= ceilingMs) maxTargetThatFits = t;
+    if (scansFor(t, seekingSignals) * SECONDS_PER_COMPANY * n * 1000 <= ceilingMs) maxTargetThatFits = t;
   }
 
   return {
