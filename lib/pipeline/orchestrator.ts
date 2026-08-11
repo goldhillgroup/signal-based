@@ -6,6 +6,7 @@ import { verifyEmail } from "./millionverifier";
 import type { Industry, SearchMode, SearchRow } from "../supabase/types";
 import { recheckAfterFor, rejectionScope, sizeVerdictStillBinds, parseRevenueBand } from "./recheck-policy";
 import { extractEmails, bestEmailFor, type FoundEmail } from "./page-email";
+import { cleanRevenueBand, cleanTitle } from "../lead-signal";
 import { buildWarningLine } from "./channel-health";
 import { channelRates, orderByYield } from "./channel-priors";
 import { runWithCounters, estimateUsd, describeCost, type CostCounters } from "./cost-tracker";
@@ -1105,11 +1106,12 @@ export async function runSearchPipeline(
               finalQualifies ? "qualified" : "rejected",
               finalQualifies ? null : rejectionReason
             ),
-            revenue_band: classification.revenueEstimate,
+            // Only a real figure reaches the sheet — see cleanRevenueBand.
+            revenue_band: cleanRevenueBand(classification.revenueEstimate),
             founder_name: classification.founderName,
-            founder_title: classification.founderTitle,
+            founder_title: cleanTitle(classification.founderTitle),
             next_gen_name: classification.nextGenName,
-            next_gen_title: classification.nextGenTitle,
+            next_gen_title: cleanTitle(classification.nextGenTitle),
           })
           .select("id")
           .single();

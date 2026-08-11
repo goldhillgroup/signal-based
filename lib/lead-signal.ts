@@ -245,3 +245,80 @@ export function toLead(c: Company): Lead {
     sourceUrl: c.evidence?.sourceUrl ?? c.sourceUrl,
   };
 }
+
+/**
+ * Only let a revenue estimate through if it is actually a revenue estimate.
+ *
+ * The field is stored straight from the model and rendered in the sheet under
+ * "revenue_band", where the client reads it as a fact. In practice the model
+ * sometimes answers in prose, and the sheet ended up carrying:
+ *
+ *   "$3-8M plausible but UN (est.)"
+ *   "Unconfirmed; single-so (est.)"
+ *   "Genuinely unconfirmed (est.)"
+ *
+ * Every one of those is the model saying "I do not know" dressed as a number.
+ * "Size not stated" is the honest rendering of that, and it is already what an
+ * absent value shows — 58% of leads have no figure at all, so it is the common
+ * case rather than an embarrassment.
+ *
+ * Accepts what a range actually looks like: a currency figure, optionally a
+ * second one, optionally "+" or "M"/"K", optionally an "(est.)" suffix.
+ */
+export function cleanRevenueBand(v: string | null | undefined): string | null {
+  if (!v) return null;
+  const t = String(v).trim();
+  // A real answer is short. Anything longer is a sentence about uncertainty.
+  if (t.length > 28) return null;
+  // Must contain a currency amount somewhere.
+  if (!/\$\s?\d/.test(t)) return null;
+  // Reject the hedging words that turn a figure into a non-answer.
+  if (/\b(unconfirmed|plausible|unclear|unknown|not stated|uncertain|guess|maybe)\b/i.test(t)) return null;
+  return t;
+}
+
+/**
+ * A job title, or nothing.
+ *
+ * founderTitle/nextGenTitle sit beside a real name in the sheet, and the model
+ * sometimes answers with an explanation instead of a title:
+ *
+ *   "Owner (implied — leads crew, gives quotes, referenced by customers as th"
+ *   "No formal title on the company's own About"
+ *
+ * DELIBERATELY CONSERVATIVE, because a first, blunter version of this did real
+ * damage in a dry run:
+ *
+ *   "Founders (retired)"  ->  "Founders"
+ *
+ * That parenthetical is not commentary — a retired founder is precisely what
+ * disqualifies a lead under the "senior person must still be there" test, and
+ * stripping it would hide the disqualifying fact behind a tidier-looking title.
+ * The same pass also discarded "VP & Head of Landscape / Project Manager", a
+ * perfectly real title, for being one word over an arbitrary cap.
+ *
+ * So: only remove a parenthetical that is visibly the model hedging, only
+ * reject a value that is visibly an absence, and otherwise leave it alone.
+ * Losing a true title costs more than tidying an untidy one.
+ */
+const HEDGE =
+  /\b(implied|inferred|assumed|presumably|likely|referred to as|referenced (by|in)|from (the |client )?testimonial|testimonials?|not stated|no title|unclear|based on|apparent(ly)?)\b/i;
+
+export function cleanTitle(v: string | null | undefined): string | null {
+  if (!v) return null;
+  let t = String(v).replace(/\s+/g, " ").trim();
+
+  // An absence dressed as a value.
+  if (/^(no|not|none|unknown|unclear|n\/a)\b/i.test(t)) return null;
+
+  // Drop a trailing parenthetical ONLY when it is the model explaining itself.
+  // "(retired)", "(Sr.)", "(II)" and the like are facts and stay.
+  // A trailing parenthetical, closed or truncated. Removed only if it hedges.
+  t = t.replace(/\s*[(—][^)]*\)?\s*$/, (m) => (HEDGE.test(m) ? "" : m)).trim();
+  t = t.replace(/[,;]+$/, "").trim();
+  if (!t) return null;
+
+  // Still a sentence after that? Then it was never a title.
+  if (t.split(/\s+/).length > 12 || t.length > 90) return null;
+  return t;
+}
