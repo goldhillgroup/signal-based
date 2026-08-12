@@ -52,3 +52,18 @@ test("every status that means 'the vendor cannot answer' is covered", () => {
     assert.equal(e.status, status);
   }
 });
+
+test("a capped key is not a broken key", () => {
+  // OpenRouter caps spend PER KEY, separately from the account balance. That
+  // is the right way to bound a runaway search, and it fired here while the
+  // account still held $8.07. Reporting it as "rejected the API key" sends
+  // someone to rotate a key that is perfectly good.
+  const capped = new VendorUnavailableError(
+    "This OpenRouter key has reached the spend limit set on it, so no company could be judged. The account may still hold credit — the cap is on the key itself. Raise it in the OpenRouter dashboard, or paste a different key into Settings. Nothing was recorded against the companies this run fetched.",
+    403,
+    "Key limit exceeded (total limit)"
+  );
+  assert.match(capped.message, /spend limit set on it/i);
+  assert.match(capped.message, /account may still hold credit/i);
+  assert.doesNotMatch(capped.message, /rejected the api key/i);
+});

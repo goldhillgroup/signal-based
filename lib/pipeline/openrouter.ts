@@ -222,12 +222,21 @@ export async function chat(
     // answer.
     if (res.status === 402 || res.status === 401 || res.status === 403 || res.status === 429) {
       const body = await res.text().catch(() => "");
+      // A 403 has two very different causes and they need different actions.
+      // OpenRouter lets you cap SPEND PER KEY, separately from the account
+      // balance — which is the right way to stop a runaway search, and is
+      // exactly what stopped one here: the account still held $8.07 while the
+      // key had hit its own ceiling. Reporting that as "rejected the API key"
+      // sends someone to rotate a key that is perfectly good.
+      const keyCapped = /key limit exceeded|limit exceeded/i.test(body);
       throw new VendorUnavailableError(
         res.status === 402
           ? "OpenRouter is out of credit, so no company could be judged. Nothing was recorded against the companies this run fetched — add credit in Settings and run it again."
           : res.status === 429
             ? "OpenRouter is rate limiting this account, so judging had to stop. Nothing was recorded against the companies already fetched — try again shortly."
-            : "OpenRouter rejected the API key, so no company could be judged. Check the key in Settings.",
+            : keyCapped
+              ? "This OpenRouter key has reached the spend limit set on it, so no company could be judged. The account may still hold credit — the cap is on the key itself. Raise it in the OpenRouter dashboard, or paste a different key into Settings. Nothing was recorded against the companies this run fetched."
+              : "OpenRouter rejected the API key, so no company could be judged. Check the key in Settings.",
         res.status,
         body.slice(0, 200)
       );
