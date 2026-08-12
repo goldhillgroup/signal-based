@@ -68,9 +68,24 @@ export const BAND_OPTIONS: { label: string; min: number | null; max: number | nu
   { label: "No limit", min: null, max: null },
 ];
 
+/**
+ * Which chip matches a stored band — and what to do when none does.
+ *
+ * The fallback was the LAST option, which is "No limit". So a saved band the
+ * chips no longer offer did not merely display oddly: the form initialised to
+ * "No limit" and searched with it, silently turning a bounded search into the
+ * widest and most expensive one available. It happened for real — the ICP
+ * stored in the database still held the old $3-15M, no chip matched it, and
+ * the form defaulted to unbounded.
+ *
+ * Falls back to the FIRST option instead, which is the ICP's sweet spot. If
+ * this function has to guess, it should guess narrow: a band that is too tight
+ * shows fewer companies and is obvious, while one that is too loose spends
+ * more and looks like it worked.
+ */
 export function bandIndexFor(min: number | null, max: number | null): number {
   const i = BAND_OPTIONS.findIndex((b) => b.min === min && b.max === max);
-  return i === -1 ? BAND_OPTIONS.length - 1 : i;
+  return i === -1 ? 0 : i;
 }
 
 /**

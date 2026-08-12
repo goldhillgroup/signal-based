@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { SettingRow } from "./SettingRow";
 import { useRouter } from "next/navigation";
 import { useSearches } from "@/lib/searches-store";
 import { AGREED_STATES, NATIONWIDE, stateNameFor } from "@/lib/pipeline/us-states";
@@ -107,6 +108,28 @@ export function SearchHome({
   // A nationwide search carries the sentinel "US" rather than a list, so
   // "something is selected" is the real precondition, not "a named state is".
   // No vertical picked means every vertical, so only geography is required.
+
+  // SUMMARIES FOR THE COLLAPSED ROWS.
+  //
+  // Progressive disclosure is only honest when the summary is complete: if a
+  // person has to open a row to find out what it is set to, the row has hidden
+  // information rather than tidied it. Each of these states the setting the
+  // way someone would say it out loud.
+  const verticalSummary =
+    industries.length === 0
+      ? `All ${Object.keys(INDUSTRY_META).length} verticals`
+      : industries.length <= 2
+        ? industries.map((i) => INDUSTRY_META[i].label).join(" + ")
+        : `${industries.length} verticals`;
+
+  const stateSummary = states.includes(NATIONWIDE)
+    ? "Nationwide"
+    : states.length === 0
+      ? "None picked"
+      : states.length <= 3
+        ? states.map(stateNameFor).join(", ")
+        : `${states.length} states`;
+
   const canSearch = states.length > 0 && !starting;
   const pending = intake?.questions.filter((q) => !resolved.includes(q.field)) ?? [];
 
@@ -365,116 +388,178 @@ export function SearchHome({
       {/* ── Manual setup (the original structured form) ──────────────────── */}
       {showManual && (
         <div className="mx-auto mt-4 max-w-2xl rounded-2xl border border-gh-border bg-gh-surface p-5 shadow-sm">
-          <div className="mb-4">
-            <label className="mb-1.5 block text-xs font-semibold text-gh-ink-secondary">Mode</label>
-            <div className="grid grid-cols-3 gap-2">
-              {MODE_ORDER.map((key) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setMode(key)}
-                  className={`rounded-lg border px-3 py-2.5 text-left text-sm font-semibold transition-colors ${
-                    mode === key
-                      ? "border-gh-navy bg-gh-navy text-white"
-                      : "border-gh-border bg-gh-surface-sunken text-gh-ink-secondary hover:border-gh-sky/40"
-                  }`}
-                >
-                  {MODE_META[key].label}
-                </button>
-              ))}
-            </div>
-            <p className="mt-1.5 text-[11px] text-gh-ink-muted">{MODE_META[mode].description}</p>
-          </div>
+          {/* ── SETTINGS, AS READABLE LINES ────────────────────────────────
+              Every control used to be on screen at once: three modes, eight
+              verticals wrapping onto two ragged rows, twelve states as twelve
+              filled navy buttons, five revenue chips, five target chips, a
+              checkbox and a text field. Around forty controls, most already
+              correct, all competing equally — it read as a wall.
 
-          <div>
-            <label id="vertical-label" className="mb-1.5 block text-xs font-semibold text-gh-ink-secondary">
-              Vertical
-            </label>
-            <div role="group" aria-labelledby="vertical-label" className="flex flex-wrap gap-2">
-              {(Object.keys(INDUSTRY_META) as Industry[]).map((key) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() =>
-                    setIndustries((cur) =>
-                      cur.includes(key) ? cur.filter((i) => i !== key) : [...cur, key]
-                    )
-                  }
-                  aria-pressed={industries.includes(key)}
-                  className={`flex min-h-11 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 ${
-                    industries.includes(key)
-                      ? "border-gh-navy bg-gh-navy text-white"
-                      : "border-gh-border bg-gh-surface-sunken text-gh-ink-secondary hover:border-gh-sky/40 hover:text-gh-ink"
-                  }`}
-                >
-                  {industries.includes(key) && <CheckIcon className="h-3.5 w-3.5 shrink-0" />}
-                  {INDUSTRY_META[key].label}
-                </button>
-              ))}
-            </div>
-          </div>
+              Collapsing them is only safe because the DEFAULTS ARE RIGHT:
+              every vertical, the agreed states, hybrid, the ICP sweet spot.
+              Someone opening this screen usually wants to press Search. Each
+              row states its setting in words, so opening one is a choice
+              rather than the only way to find out what it says.
 
-          <div className="mt-4">
-            <StatePicker value={states} onChange={setStates} />
-          </div>
+              Signal focus stays OPEN — it is the one thing he actually types,
+              it is empty by default, and a collapsed empty field would be
+              invisible rather than merely tidy. */}
+          <div className="rounded-xl border border-gh-border bg-gh-surface-sunken px-3.5">
+            <SettingRow label="Mode" value={MODE_META[mode].label}>
+              <div className="grid grid-cols-3 gap-2">
+                {MODE_ORDER.map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setMode(key)}
+                    className={`min-h-11 rounded-lg border px-3 py-2.5 text-left text-sm font-semibold transition-colors duration-200 ${
+                      mode === key
+                        ? "border-gh-navy bg-gh-navy text-white"
+                        : "border-gh-border bg-gh-surface text-gh-ink-secondary hover:border-gh-sky/40"
+                    }`}
+                  >
+                    {MODE_META[key].label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1.5 text-[11px] leading-relaxed text-gh-ink-muted">
+                {MODE_META[mode].description}
+              </p>
+            </SettingRow>
 
-          {/* The answer to "if I search the same thing twice, does it just give
-              me the same list?" — which is a fair thing to wonder and was
-              previously only answered in a server log. It does not: already
-              judged companies are skipped, so a repeat search goes FURTHER
-              rather than re-buying answers it has. This switch makes that
-              visible, and lets it be overridden when the last pass is not
-              trusted. */}
-          <div className="mt-4 rounded-lg border border-gh-border bg-gh-surface-sunken px-3 py-2.5">
-            <label className="flex cursor-pointer items-start gap-2.5">
-              <input
-                type="checkbox"
-                checked={includeAlreadyChecked}
-                onChange={(e) => setIncludeAlreadyChecked(e.target.checked)}
-                className="mt-0.5 h-4 w-4 shrink-0 accent-gh-sky"
-              />
-              <span className="text-xs leading-relaxed">
-                <span className="font-semibold text-gh-ink-secondary">
-                  Re-check companies I&rsquo;ve already seen
-                </span>
-                <span className="mt-0.5 block text-gh-ink-muted">
+            <SettingRow label="Verticals" value={verticalSummary}>
+              <p className="mb-2 text-[11px] leading-relaxed text-gh-ink-muted">
+                Pick any combination — landscaping and HVAC together is one
+                search. Pick none to cover every vertical in the profile.
+              </p>
+              <div role="group" aria-label="Verticals" className="flex flex-wrap gap-2">
+                {(Object.keys(INDUSTRY_META) as Industry[]).map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() =>
+                      setIndustries((cur) =>
+                        cur.includes(key) ? cur.filter((i) => i !== key) : [...cur, key]
+                      )
+                    }
+                    aria-pressed={industries.includes(key)}
+                    className={`flex min-h-11 cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 ${
+                      industries.includes(key)
+                        ? "border-gh-navy bg-gh-navy text-white"
+                        : "border-gh-border bg-gh-surface text-gh-ink-secondary hover:border-gh-sky/40 hover:text-gh-ink"
+                    }`}
+                  >
+                    {industries.includes(key) && <CheckIcon className="h-3.5 w-3.5 shrink-0" />}
+                    {INDUSTRY_META[key].label}
+                  </button>
+                ))}
+              </div>
+            </SettingRow>
+
+            <SettingRow label="States" value={stateSummary}>
+              <StatePicker value={states} onChange={setStates} />
+            </SettingRow>
+
+            <SettingRow label="Revenue band" value={BAND_OPTIONS[bandIdx].label}>
+              <div className="flex flex-wrap gap-2">
+                {BAND_OPTIONS.map((b, i) => (
+                  <button
+                    key={b.label}
+                    type="button"
+                    onClick={() => setBandIdx(i)}
+                    className={`min-h-11 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors duration-200 ${
+                      bandIdx === i
+                        ? "bg-gh-navy text-white"
+                        : "border border-gh-border bg-gh-surface text-gh-ink-secondary hover:border-gh-sky/40"
+                    }`}
+                  >
+                    {b.label}
+                  </button>
+                ))}
+              </div>
+            </SettingRow>
+
+            <SettingRow
+              label={MODE_META[mode].targetLabel.replace(/:$/, "")}
+              value={`${target}${seekingSignals ? " pairs" : " companies"}`}
+            >
+              <div className="flex flex-wrap gap-2">
+                {TARGET_OPTIONS.map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setTarget(n)}
+                    className={`min-h-11 min-w-11 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors duration-200 ${
+                      target === n
+                        ? "bg-gh-navy text-white"
+                        : "border border-gh-border bg-gh-surface text-gh-ink-secondary hover:border-gh-sky/40"
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-[11px] leading-relaxed text-gh-ink-secondary">
+                {seekingSignals ? (
+                  <>
+                    Reads up to {willRead} companies. A founder-and-successor
+                    pair turns up in roughly one company in twenty, so expect a
+                    handful of confirmed pairs plus every good family-owned
+                    company found on the way — those are kept, not discarded.
+                  </>
+                ) : (
+                  <>Reads up to {willRead} companies to find {target} that fit.</>
+                )}{" "}
+                {passes > 1 ? (
+                  <>
+                    About {passes} passes: the server stops a run at{" "}
+                    {Math.round(RUN_CEILING_MS / 60000)} minutes, around{" "}
+                    {perPass} companies. Everything found is saved and it
+                    carries on by itself.
+                  </>
+                ) : (
+                  <>Finishes in one pass.</>
+                )}
+              </p>
+            </SettingRow>
+
+            <SettingRow
+              label="Repeat searches"
+              value={includeAlreadyChecked ? "Re-read everything" : "Skip what I've seen"}
+            >
+              {/* The answer to "if I search the same thing twice, does it just
+                  give me the same list?" — a fair thing to wonder, previously
+                  answered only in a server log. It does not: already-judged
+                  companies are skipped, so a repeat goes FURTHER rather than
+                  re-buying answers it has. */}
+              <label className="flex cursor-pointer items-start gap-2.5">
+                <input
+                  type="checkbox"
+                  checked={includeAlreadyChecked}
+                  onChange={(e) => setIncludeAlreadyChecked(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-gh-sky"
+                />
+                <span className="text-[11px] leading-relaxed text-gh-ink-muted">
                   {includeAlreadyChecked
-                    ? "Every company will be read again, including ones already judged. Slower and it costs a full read each — use it when you want a previous pass re-done."
-                    : "Off: companies already judged are skipped, so searching the same thing again finds NEW ones instead of repeating the last list. Your existing leads stay where they are."}
+                    ? "Every company will be read again, including ones already judged. Slower, and it costs a full read each — use it when you want a previous pass re-done."
+                    : "Companies already judged are skipped, so searching the same thing again finds NEW ones instead of repeating the last list. Your existing leads stay where they are."}
                 </span>
-              </span>
-            </label>
+              </label>
+            </SettingRow>
           </div>
 
+          {/* OPEN, not collapsed: the one field he actually types into, and
+              empty by default — a collapsed empty field is invisible rather
+              than tidy. */}
           <div className="mt-4">
             <label htmlFor="refinement" className="mb-1.5 block text-xs font-semibold text-gh-ink-secondary">
               Signal focus <span className="font-normal text-gh-ink-muted">(optional)</span>
             </label>
-            {/* This copy used to promise the opposite — "it never changes
-                which companies get searched" — which was true when the
-                refinement only reached the classifier, and became false when
-                it started generating discovery queries. It stayed on screen
-                describing behaviour the product no longer had. The vertical
-                and states are still hard filters, so the original worry (free
-                text dragging a search off the agreed vertical) does not
-                return: the focus decides what is ASKED within them. */}
             <p className="mb-1.5 text-[11px] leading-relaxed text-gh-ink-muted">
-              What to look for within{" "}
-              {industries.length === 0
-                ? "every vertical"
-                : industries.length <= 2
-                  ? industries.map((i) => INDUSTRY_META[i].label.toLowerCase()).join(" and ")
-                  : `${industries.length} verticals`}{" "}
-              in{" "}
-              {states.includes(NATIONWIDE)
-                ? "the United States"
-                : states.length === 0
-                  ? "your chosen states"
-                  : states.length <= 2
-                    ? states.map(stateNameFor).join(" and ")
-                    : `the ${states.length} states above`}
-              . It shapes the questions the search asks, so it changes which
-              companies get found — the vertical and states above stay fixed.
+              What to look for within {verticalSummary.toLowerCase()} in{" "}
+              {stateSummary.toLowerCase()}. It shapes the questions the search
+              asks, so it changes which companies get found — the verticals and
+              states stay fixed.
             </p>
             <input
               id="refinement"
@@ -503,79 +588,15 @@ export function SearchHome({
             </div>
           </div>
 
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-gh-ink-muted">Revenue band:</span>
-            {BAND_OPTIONS.map((b, i) => (
-              <button
-                key={b.label}
-                type="button"
-                onClick={() => setBandIdx(i)}
-                className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                  bandIdx === i
-                    ? "bg-gh-navy text-white"
-                    : "border border-gh-border bg-gh-surface text-gh-ink-secondary hover:border-gh-sky/40"
-                }`}
-              >
-                {b.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-gh-ink-muted">{MODE_META[mode].targetLabel}</span>
-            {TARGET_OPTIONS.map((n) => (
-              <button
-                key={n}
-                type="button"
-                onClick={() => setTarget(n)}
-                className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                  target === n
-                    ? "bg-gh-navy text-white"
-                    : "border border-gh-border bg-gh-surface text-gh-ink-secondary hover:border-gh-sky/40"
-                }`}
-              >
-                {n}
-              </button>
-            ))}
-          </div>
-          {/* What this target will ACTUALLY do, rather than a vague warning
-              that larger is slower. A run cut off at the server's limit is not
-              lost — everything found is saved and pressing Search again carries
-              on from where it stopped, because cross-search memory skips every
-              domain already settled. Saying "two passes" is honest and
-              actionable; capping the options would take away results the
-              product can genuinely deliver. */}
-          <p className="mt-1.5 text-[11px] leading-relaxed text-gh-ink-secondary">
-            {seekingSignals ? (
-              <>
-                Reads up to {willRead} companies. A founder-and-successor pair
-                turns up in roughly one company in twenty, so expect a handful
-                of confirmed pairs plus every good family-owned company found on
-                the way — those are kept, not discarded.
-              </>
-            ) : (
-              <>Reads up to {willRead} companies to find {target} that fit.</>
-            )}{" "}
-            {passes > 1 ? (
-              <>
-                About {passes} passes: the server stops a run at{" "}
-                {Math.round(RUN_CEILING_MS / 60000)} minutes, around {perPass}{" "}
-                companies. Everything found is saved and it carries on by itself.
-              </>
-            ) : (
-              <>Finishes in one pass.</>
-            )}
-          </p>
-
           <button
             type="button"
             onClick={startSearch}
             disabled={!canSearch}
             className="mt-5 w-full cursor-pointer rounded-xl bg-gh-navy py-3 text-sm font-semibold text-white transition-colors duration-200 hover:bg-gh-navy-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {starting ? "Starting…" : "Search"}
+            {starting ? "Starting\u2026" : "Search"}
           </button>
-          {/* A disabled button with no stated reason is a dead end, say which
+          {/* A disabled button with no stated reason is a dead end — say which
               input is still missing rather than leaving him to guess. */}
           {!canSearch && !starting && (
             <p className="mt-1.5 text-center text-[11px] font-medium text-gh-ink-muted" aria-live="polite">

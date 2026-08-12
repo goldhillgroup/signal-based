@@ -15,7 +15,7 @@ import { DEFAULT_ICP } from "../lib/pipeline/icp-types.js";
 import { VALID_INDUSTRIES } from "../lib/pipeline/intake-types.js";
 import { SUCCESSION_QUERY_SETS } from "../lib/pipeline/apify.js";
 import { recheckAfterFor, isWrongKindOfBusiness } from "../lib/pipeline/recheck-policy.js";
-import { BAND_OPTIONS } from "../lib/search-options.js";
+import { BAND_OPTIONS, bandIndexFor } from "../lib/search-options.js";
 import { DEFAULT_SCHEDULE } from "../lib/pipeline/schedule.js";
 import { monthlyPageUse } from "../lib/pipeline/schedule-types.js";
 import { readdirSync, readFileSync } from "node:fs";
@@ -152,4 +152,25 @@ test("no module keeps its own private list of verticals", () => {
   };
   for (const r of roots) walk(r);
   assert.deepEqual(offenders, [], `these redeclare the vertical list: ${offenders.join(", ")}`);
+});
+
+test("an unrecognised saved band never becomes 'No limit'", () => {
+  // The fallback was the LAST option, which is "No limit" — so a band the
+  // chips no longer offer did not merely display oddly, the form initialised
+  // to unbounded and SEARCHED with it. It happened: the ICP stored in the
+  // database still held the old $3-15M, nothing matched, and a bounded search
+  // silently became the widest and most expensive one available.
+  const unknown = bandIndexFor(3, 15);
+  assert.notEqual(
+    BAND_OPTIONS[unknown].label,
+    "No limit",
+    "an unmatched band must not default to unbounded"
+  );
+  // If it has to guess, it guesses narrow: too tight shows fewer companies and
+  // is obvious; too loose spends more and looks like it worked.
+  assert.equal(BAND_OPTIONS[unknown].min, 5);
+  assert.equal(BAND_OPTIONS[unknown].max, 15);
+  // A band that IS offered still resolves to itself.
+  assert.equal(BAND_OPTIONS[bandIndexFor(5, 30)].label, "$5-30M (full ICP)");
+  assert.equal(BAND_OPTIONS[bandIndexFor(null, null)].label, "No limit");
 });
