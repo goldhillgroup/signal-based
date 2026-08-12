@@ -11,7 +11,10 @@
 
 export const UNIT_USD = {
   classify_call: 0.012,
-  disprove_call: 0.012,
+  // A third of classify: the disprove pass runs on the cheaper model, since
+  // it checks a claim against text already in front of it rather than reading
+  // a page cold. See getDisproveModel.
+  disprove_call: 0.004,
   extract_call: 0.002,
   intake_call: 0.001,
   tavily_search: 0.008,

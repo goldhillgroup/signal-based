@@ -5,7 +5,7 @@ import { US_STATES, AGREED_STATES, stateNameFor } from "@/lib/pipeline/us-states
 import { CheckIcon, ChevronDownIcon, XIcon } from "./icons";
 
 /**
- * State selection as a real PARAMETER — one, two, three or all four of the
+ * State selection as a real PARAMETER — any number of the
  * agreed states, not a single pick.
  *
  * The whole pipeline (POST /api/search, the orchestrator, the metro/phrasing
@@ -63,7 +63,7 @@ export function StatePicker({
           onClick={selectAllAgreed}
           className="-my-1 cursor-pointer rounded px-1 py-1.5 text-[11px] font-semibold text-gh-sky underline-offset-2 transition-colors duration-200 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
         >
-          {allAgreed ? "Clear all four" : "All four agreed"}
+          {allAgreed ? "Clear all" : "All four agreed"}
         </button>
       </div>
 

@@ -15,6 +15,9 @@ import { DEFAULT_ICP } from "../lib/pipeline/icp-types.js";
 import { VALID_INDUSTRIES } from "../lib/pipeline/intake-types.js";
 import { SUCCESSION_QUERY_SETS } from "../lib/pipeline/apify.js";
 import { recheckAfterFor, isWrongKindOfBusiness } from "../lib/pipeline/recheck-policy.js";
+import { BAND_OPTIONS } from "../lib/search-options.js";
+import { DEFAULT_SCHEDULE } from "../lib/pipeline/schedule.js";
+import { monthlyPageUse } from "../lib/pipeline/schedule-types.js";
 import type { Industry } from "../lib/supabase/types.js";
 
 // "Construction and contracting / luxury and custom homebuilding / landscaping
@@ -90,4 +93,31 @@ test("'New York and the Northeast' actually searches the Northeast", () => {
   const northeast = ["NJ", "PA", "CT", "MA", "RI", "NH", "VT", "ME"];
   const present = northeast.filter((s) => AGREED_STATES.includes(s));
   assert.ok(present.length >= 6, `only ${present.length} Northeast states are searched`);
+});
+
+test("the form's revenue chips offer the ICP's bands, not the old brief's", () => {
+  // The chips are what a person actually clicks. The default and the
+  // classifier both moved to $5-30M while these still read "$3-15M
+  // (baseline)", so the form kept offering the profile the system no longer
+  // used.
+  const labels = BAND_OPTIONS.map((b) => b.label).join(" ");
+  assert.doesNotMatch(labels, /\$3-15M/, "the old brief's band is still offered");
+  assert.ok(
+    BAND_OPTIONS.some((b) => b.min === 5 && b.max === 15),
+    "the ICP's sweet spot ($5-15M) must be one click"
+  );
+  assert.ok(
+    BAND_OPTIONS.some((b) => b.min === 5 && b.max === 30),
+    "the ICP's full band ($5-30M) must be one click"
+  );
+});
+
+test("the scheduled harvest aims at the ICP too", () => {
+  // A job nobody watches must not be running the old profile.
+  assert.equal(DEFAULT_SCHEDULE.revenueMinMusd, 5);
+  assert.equal(DEFAULT_SCHEDULE.revenueMaxMusd, 15, "sweet spot, not the full band");
+  // And it must stay inside the Firecrawl quota — widening it silently
+  // multiplies a bill nobody is watching.
+  const use = monthlyPageUse(DEFAULT_SCHEDULE.targetPerRun, DEFAULT_SCHEDULE.industries.length);
+  assert.ok(use.fits, `${Math.round(use.pages)} pages vs ${use.quota}`);
 });

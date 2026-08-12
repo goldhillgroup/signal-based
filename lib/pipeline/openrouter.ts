@@ -571,6 +571,30 @@ Before answering, double-check: if founderName is null, are you certain no indiv
 // and +6,000 chars is ~1,600 extra input tokens, roughly $0.003/company.
 const MAX_PAGE_CHARS = 12000;
 
+/**
+ * The model that CHECKS a classification, which need not be the one that made
+ * it.
+ *
+ * Classify and disprove cost the same $0.012, so the second pass doubles the
+ * OpenRouter bill on every company that shows a signal — and OpenRouter is
+ * 50-76% of a search. But the two jobs are not equally hard. Classify reads a
+ * whole page and builds a claim from nothing. Disprove is handed the claim and
+ * the same text and asked whether the page really supports it, which is a
+ * reading-comprehension check against material already in front of it.
+ *
+ * Defaults to the cheaper model for that reason, and is a separate setting so
+ * it can be pointed back at the classifier's model in one edit if the eval
+ * ever says the check got worse. DISPROVE_MODEL in Settings overrides.
+ */
+const DEFAULT_DISPROVE_MODEL = "anthropic/claude-haiku-4.5";
+
+export async function getDisproveModel(): Promise<string> {
+  return (
+    (await resolveSetting("DISPROVE_MODEL", process.env.DISPROVE_MODEL)) ||
+    DEFAULT_DISPROVE_MODEL
+  );
+}
+
 export async function classifySignal(
   titleHint: string,
   pageUrl: string,
@@ -666,7 +690,7 @@ export async function disprovePass(
       },
     ],
     1200,
-    await getClassifyModel(),
+    await getDisproveModel(),
     true
   );
   return extractJson<DisproveResult>(raw);

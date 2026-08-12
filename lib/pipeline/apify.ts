@@ -193,6 +193,19 @@ const BLOCKED_HOSTS = [
   "homeadvisor.com",
   "buildzoom.com",
   "zillow.com",
+  // Named EXACTLY, because the junk-domain rule's trade-word veto protects
+  // them: "lawnstarter" contains "lawn", "networx" is close enough to nothing.
+  // The veto is right to be blunt — it is what stops a real landscaper being
+  // skipped — so known marketplaces have to be listed rather than pattern-
+  // matched. An exact host cannot catch a real company by accident.
+  "lawnstarter.com",
+  "networx.com",
+  "procore.com",
+  "buildertrend.com",
+  "legacy.com",
+  "quora.com",
+  "crunchbase.com",
+  "bizapedia.com",
   // Structurally never a family-owned trade business, and all three turned up
   // in one real run off an alphabetical chamber-of-commerce member list
   // (abac.edu, accenture.com, adp.com). Each cost a full Sonnet call to be
@@ -364,7 +377,47 @@ export function isOffTradeName(name: string | null | undefined): boolean {
   return OFF_TRADE_NAME_RE.some((re) => re.test(name));
 }
 
+/**
+ * Hosts that are plainly not an operating company in one of the ICP trades,
+ * judged on the DOMAIN ALONE — so the decision is free and lands before
+ * anything is fetched or classified.
+ *
+ * Worth roughly $0.022 each: a page fetch (~$0.01) plus a classify call
+ * ($0.012), both of which were being spent to be told a funeral home is a
+ * funeral home. Measured across every company on disk it skips 49 of 601
+ * rejections and 0 of 318 leads.
+ *
+ * ANCHORED PER LABEL, and that is the whole difficulty. A first version used
+ * bare substrings, and "inc.com" matched naturalscapeinc.com, techscapeinc.com
+ * — a HIGH-confidence signal lead — and five other real companies. The saving
+ * is small; losing one real lead to save it would be a bad trade, so the rules
+ * are per-label or per-known-host, never a loose substring.
+ *
+ * THE TRADE VETO IS THE SAFETY NET. Any trade word anywhere in the host and
+ * the rule does not apply, however junk-looking the rest: a .org that says
+ * "landscaping" is far more likely to be a real company than an association
+ * worth skipping blind.
+ */
+const JUNK_LABEL_RE =
+  /^(news|times|herald|gazette|tribune|courant|journal|press|post|daily|weekly|magazine|media|obituary|obituaries|legacy|memorial|tribute|chamber|association|institute|foundation|council|society|wiki|reddit|quora|pinterest|glassdoor|indeed|ziprecruiter|zillow|realtor|trulia|redfin|procore|buildertrend|angi|thumbtack|homeadvisor|lawnstarter|networx|porch|houzz|manta|bizapedia|crunchbase|bloomberg|forbes|entrepreneur)$/i;
+const JUNK_SUBSTR_RE = /(funeral|crematory|cremation|obituar|newspaper|freepress|dailynews)/i;
+const JUNK_TLD_RE = /\.(org|edu|gov)$/i;
+const TRADE_WORD_RE =
+  /(landscap|lawn|tree|irrigat|garden|hardscape|nursery|builder|homes|construct|contract|remodel|plumb|electric|hvac|heating|cooling|mechanical|roof|excavat|concret|paving|fabricat|machine|millwork|supply|distribut|pest|pool|janitorial|facilit)/i;
+
+export function isJunkDomain(domain: string | null | undefined): boolean {
+  if (!domain) return false;
+  const host = String(domain).toLowerCase().replace(/^www\./, "");
+  if (TRADE_WORD_RE.test(host)) return false;
+  return (
+    host.split(".").some((label) => JUNK_LABEL_RE.test(label)) ||
+    JUNK_SUBSTR_RE.test(host) ||
+    JUNK_TLD_RE.test(host)
+  );
+}
+
 export function isBlocked(host: string): boolean {
+  if (isJunkDomain(host)) return true;
   if (BLOCKED_TLDS.some((t) => host.endsWith(t))) return true;
   if (isForeignTld(host)) return true;
   if (MEDIA_HOST_RE.test(host)) return true;

@@ -47,15 +47,24 @@ export const MODE_META: Record<
 export const MODE_ORDER: SearchMode[] = ["hybrid", "signal", "filter"];
 
 /**
- * Step 01 of the stated method names a $3-15M band. Kept as the DEFAULT rather
- * than a hard rule — "no limit" is one click away, and the estimate itself
- * comes from soft textual proxies (crew size, years in business) rather than
- * real financials, so it should never feel like a locked constraint.
+ * The client's written ICP names $5M-$30M, with $5M-$15M as the sweet spot.
+ *
+ * These were $3-15M, from the earlier brief, and the chips are what a person
+ * actually clicks — so the form was still offering the old profile after the
+ * default and the classifier had both moved. Seven companies had already been
+ * cut as "too big" that sit inside the new ceiling.
+ *
+ * Both bands he names are offered, sweet spot first because it is where he
+ * says most of his clients are. Kept as DEFAULTS rather than hard rules —
+ * "no limit" is one click away, and the estimate comes from soft textual
+ * proxies (crew size, years in business) rather than real financials, so it
+ * should never feel like a locked constraint.
  */
 export const BAND_OPTIONS: { label: string; min: number | null; max: number | null }[] = [
-  { label: "$3-15M (baseline)", min: 3, max: 15 },
-  { label: "Under $3M", min: null, max: 3 },
-  { label: "$15M+", min: 15, max: null },
+  { label: "$5-15M (sweet spot)", min: 5, max: 15 },
+  { label: "$5-30M (full ICP)", min: 5, max: 30 },
+  { label: "Under $5M", min: null, max: 5 },
+  { label: "$30M+", min: 30, max: null },
   { label: "No limit", min: null, max: null },
 ];
 

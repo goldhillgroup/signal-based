@@ -30,6 +30,13 @@ export const SCHEDULE_KEY = "WEEKLY_HARVEST";
 export const DEFAULT_SCHEDULE: WeeklySchedule = {
   enabled: false, // never starts spending on its own, has to be switched on
   dayOfWeek: 1, // Monday: results are waiting at the start of his week
+  // The two verticals the delivered proof covers, NOT all eight. The harvest
+  // spends on its own schedule against a fixed Firecrawl quota, so widening it
+  // silently multiplies a bill nobody is watching — 516 pages a month at two
+  // verticals becomes 2,064 at eight. The one-off search form is where the
+  // full ICP is reachable, because a person is standing there choosing it.
+  // Jonathan can add verticals here himself; the estimate line below says what
+  // each one costs before he saves.
   industries: ["landscaping", "home_builder"],
   states: [...AGREED_STATES],
   // 5, not 10 — and the reason is worth keeping, because the number has now
@@ -53,7 +60,13 @@ export const DEFAULT_SCHEDULE: WeeklySchedule = {
   mode: "hybrid",
   // Same baseline the one-off form defaults to, so a scheduled scan and a
   // manual one for the same thing return the same companies.
-  revenueMinMusd: 3,
+  // $5-15M, the sweet spot from the written ICP — not the full $5-30M.
+  //
+  // These were 3 and 15, the earlier brief, left behind when DEFAULT_ICP and
+  // the classifier both moved. A scheduled job nobody watches should aim at
+  // the middle of the profile rather than its edges: the wider band is one
+  // click away here, and a person setting it is making a deliberate choice.
+  revenueMinMusd: 5,
   revenueMaxMusd: 15,
   refinement: null,
   lastRunOn: null,
