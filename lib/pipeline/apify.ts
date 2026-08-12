@@ -153,9 +153,20 @@ const VERTICAL_SEARCH_TERMS: Record<Industry, string[]> = {
   ],
 };
 
-function searchTermsFor(industry: Industry | null): string[] {
-  if (industry) return VERTICAL_SEARCH_TERMS[industry];
-  return [...VERTICAL_SEARCH_TERMS.landscaping, ...VERTICAL_SEARCH_TERMS.home_builder];
+/**
+ * Maps search terms for the selected verticals.
+ *
+ * Takes a LIST because the client can now pick more than one — "landscaping
+ * and HVAC" is a perfectly sensible search and used to require two separate
+ * runs. An empty list means every vertical in the ICP.
+ *
+ * The old version merged `landscaping` and `home_builder` for the no-selection
+ * case, which was correct when those were the only two and silently wrong the
+ * moment the ICP grew to eight.
+ */
+function searchTermsFor(industries: Industry[]): string[] {
+  const picked = industries.length ? industries : (Object.keys(VERTICAL_SEARCH_TERMS) as Industry[]);
+  return picked.flatMap((i) => VERTICAL_SEARCH_TERMS[i]);
 }
 
 // Directories/aggregators/socials — never the company's own site, so the
@@ -583,12 +594,12 @@ export function placeToCandidate(place: RawPlace): Candidate {
 }
 
 async function discoverViaMaps(
-  industry: Industry | null,
+  industries: Industry[],
   states: string[],
   limit: number,
   round: number
 ): Promise<Candidate[]> {
-  const allTerms = searchTermsFor(industry);
+  const allTerms = searchTermsFor(industries);
   const locationQuery = locationForRound(states, round);
 
   // The round budget, already divided by however many states are covered in
@@ -925,6 +936,8 @@ function successionSetForRound(sets: string[][], round: number): string[] {
   return sets[(round - 1) % sets.length];
 }
 
+const MAX_VERTICALS_PER_ROUND = 3;
+
 // The trade family each vertical's queries are anchored to. Used to turn a
 // free-text Signal focus into a query of the same proven shape rather than
 // pasting the client's sentence into Google on its own — "founder retiring,
@@ -959,12 +972,13 @@ const TRADE_TERMS: Record<Industry, string> = {
  */
 export function refinementQueries(
   refinement: string | null | undefined,
-  industry: Industry | null
+  industries: Industry[]
 ): string[] {
   if (!refinement) return [];
-  const trades = industry
-    ? [TRADE_TERMS[industry]]
-    : [TRADE_TERMS.landscaping, TRADE_TERMS.home_builder];
+  // One trade anchor per selected vertical, capped for the same reason the
+  // query list is: the phrase count multiplies by it.
+  const picked = industries.length ? industries : (Object.keys(TRADE_TERMS) as Industry[]);
+  const trades = picked.slice(0, MAX_VERTICALS_PER_ROUND).map((i) => TRADE_TERMS[i]);
   const phrases = String(refinement)
     .split(/[,;.\n]|\bor\b|\band\b/i)
     .map((p) => p.replace(/["“”]/g, "").trim())
@@ -974,22 +988,39 @@ export function refinementQueries(
   return trades.flatMap((t) => phrases.map((p) => `"${p}" ${t}`));
 }
 
+/**
+ * Succession queries for the selected verticals, for this round.
+ *
+ * Takes a LIST: "landscaping and HVAC" is one search now, not two runs. An
+ * empty list means every vertical.
+ *
+ * CAPPED, because the cost is linear in the number picked. Each vertical
+ * contributes three queries per round at ~$0.0035 a SERP page, so selecting
+ * all eight would put 24 queries on every discovery call — roughly four times
+ * what a single-vertical run has always spent, on every round. The cap keeps
+ * the bill of a wide search close to a narrow one; verticals rotate by round
+ * so the ones trimmed this round lead the next, and nothing is permanently
+ * skipped.
+ */
 export function successionTermsFor(
-  industry: Industry | null,
+  industries: Industry[],
   round: number,
   refinement?: string | null
 ): string[] {
   // Jonathan's own words go FIRST, so a budget that cannot afford every
   // phrasing this round spends what it has on what he actually asked for.
-  const focused = refinementQueries(refinement, industry);
-  if (industry) return [...focused, ...successionSetForRound(SUCCESSION_QUERY_SETS[industry], round)];
-  // No vertical picked — same pattern as before rotation: both verticals'
-  // set for this round, merged. Query count is unchanged (6), so the SERP
-  // page bill for an industry-less search is exactly what it always was.
+  const focused = refinementQueries(refinement, industries);
+  const picked = industries.length
+    ? industries
+    : (Object.keys(SUCCESSION_QUERY_SETS) as Industry[]);
+  // Rotate which verticals lead, so a wide selection covers all of them across
+  // rounds rather than always spending on the first three.
+  const offset = picked.length ? round % picked.length : 0;
+  const rotated = [...picked.slice(offset), ...picked.slice(0, offset)];
+  const forThisRound = rotated.slice(0, MAX_VERTICALS_PER_ROUND);
   return [
     ...focused,
-    ...successionSetForRound(SUCCESSION_QUERY_SETS.landscaping, round),
-    ...successionSetForRound(SUCCESSION_QUERY_SETS.home_builder, round),
+    ...forThisRound.flatMap((i) => successionSetForRound(SUCCESSION_QUERY_SETS[i], round)),
   ];
 }
 
@@ -1006,7 +1037,7 @@ export function successionTermsFor(
 // question instead of re-buying the same SERP (see SUCCESSION_QUERY_SETS).
 // Still exactly one SERP page per query, before and after rotation.
 async function discoverViaWebSearch(
-  industry: Industry | null,
+  industries: Industry[],
   states: string[],
   limit: number,
   round = 1,
@@ -1031,7 +1062,7 @@ async function discoverViaWebSearch(
   // Rotating the starting offset means the phrasings the budget cannot afford
   // this round are the ones it reaches for next round, rather than being
   // permanently unreachable.
-  const allQueries = successionTermsFor(industry, round, refinement);
+  const allQueries = successionTermsFor(industries, round, refinement);
   const queryCount = Math.max(1, Math.min(allQueries.length, Math.floor(allQueries.length / share)));
   const qStart = ((round - 1) * queryCount) % allQueries.length;
   const queries = Array.from(
@@ -1084,7 +1115,15 @@ async function discoverViaWebSearch(
 // testing; a round should degrade to the surviving channels' results rather
 // than fail outright over an unrelated channel's hiccup).
 export async function discoverCandidates(params: {
-  industry: Industry | null;
+  /**
+   * The verticals to search. EMPTY MEANS ALL — the client can select any
+   * combination, so "landscaping and HVAC" is one run rather than two.
+   *
+   * The licensing and directory channels take a single vertical (a state
+   * licensing board has one classification per trade), so they use the first
+   * selected; web search and Maps merge them.
+   */
+  industries: Industry[];
   states: string[];
   limit: number;
   round?: number; // 1-indexed, later rounds ask Maps for more places per
@@ -1095,7 +1134,7 @@ export async function discoverCandidates(params: {
    *  only how the result is judged. See refinementQueries. */
   refinement?: string | null;
 }): Promise<{ candidates: Candidate[]; channelErrors: string[] }> {
-  const { industry, states, limit, round = 1, excludeDomains, refinement } = params;
+  const { industries, states, limit, round = 1, excludeDomains, refinement } = params;
 
   // EVERY REQUESTED STATE, EVERY CALL — in parallel, sharing one budget.
   //
@@ -1121,9 +1160,9 @@ export async function discoverCandidates(params: {
 
   const settled = await Promise.allSettled(
     groups.flatMap((group, g) => [
-      discoverViaDirectories(industry, group, perGroupLimit, round),
-      discoverViaLicensing(industry, group, perGroupLimit, round),
-      discoverViaWebSearch(industry, group, perGroupLimit, round, share, refinement),
+      discoverViaDirectories(industries[0] ?? null, group, perGroupLimit, round),
+      discoverViaLicensing(industries[0] ?? null, group, perGroupLimit, round),
+      discoverViaWebSearch(industries, group, perGroupLimit, round, share, refinement),
       // MAPS RUNS FOR ONE STATE PER ROUND, rotating — the other channels run
       // for all of them. Splitting the maps budget four ways instead would
       // put every call under PER_TERM_MIN, and the floor there would quietly
@@ -1133,7 +1172,7 @@ export async function discoverCandidates(params: {
       // low-yield backstop channel needs. share is 1 because this call now
       // owns the entire budget rather than a slice of it.
       g === mapsGroup
-        ? discoverViaMaps(industry, group, perGroupLimit, round)
+        ? discoverViaMaps(industries, group, perGroupLimit, round)
         : Promise.resolve([] as Candidate[]),
     ])
   );

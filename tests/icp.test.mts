@@ -20,7 +20,7 @@ test("the shipped default states the SIGNAL, not the category", () => {
 test("the default focus actually produces usable discovery queries", () => {
   // The whole point of storing it. A default that generated nothing would be
   // a settings card that does nothing.
-  const qs = refinementQueries(DEFAULT_ICP.signalFocus, "landscaping");
+  const qs = refinementQueries(DEFAULT_ICP.signalFocus, ["landscaping"]);
   assert.ok(qs.length > 0, "the default must generate at least one query");
   for (const q of qs) assert.match(q, /landscaping/);
 });
@@ -61,5 +61,5 @@ test("a runaway focus is capped and trimmed", () => {
 test("an empty focus is allowed — it means 'use the proven phrasings only'", () => {
   const icp = normalizeIcp({ signalFocus: "   " });
   assert.equal(icp.signalFocus, "");
-  assert.equal(refinementQueries(icp.signalFocus, "landscaping").length, 0);
+  assert.equal(refinementQueries(icp.signalFocus, ["landscaping"]).length, 0);
 });

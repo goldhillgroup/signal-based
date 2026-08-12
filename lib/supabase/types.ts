@@ -189,6 +189,8 @@ export interface Database {
           enrichment_status: EnrichmentStatus;
           enrichment_error: string | null;
           target_signals: number;
+          /** Verticals this search targeted. Empty means all eight. */
+          industries: string[];
           revenue_min_musd: number | null;
           revenue_max_musd: number | null;
           candidates_pool_exhausted: boolean;

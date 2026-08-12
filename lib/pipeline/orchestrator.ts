@@ -8,6 +8,7 @@ import { recheckAfterFor, rejectionScope, sizeVerdictStillBinds, parseRevenueBan
 import { extractEmails, bestEmailFor, type FoundEmail, bestPhoneFor, isSharedInbox } from "./page-email";
 import { callableName, cleanPersonName, cleanRevenueBand, cleanTitle, earnedConfidence } from "../lead-signal";
 import { buildWarningLine } from "./channel-health";
+import { INDUSTRY_META } from "../signal-meta";
 import { channelRates, orderByYield } from "./channel-priors";
 import { runWithCounters, estimateUsd, describeCost, type CostCounters } from "./cost-tracker";
 
@@ -308,7 +309,7 @@ export function bindsThisSearch(
     industry?: string | null;
     revenue_band?: string | null;
   },
-  searchIndustry: Industry,
+  searchIndustries: Industry[],
   band: { min: number | null; max: number | null } | undefined
 ): boolean {
   if (row.status !== "rejected") return true;
@@ -316,8 +317,12 @@ export function bindsThisSearch(
   switch (rejectionScope(row.rejection_reason ?? null)) {
     case "industry":
       // "Not a landscaper" is a fact about a landscaping search. Another
-      // vertical is entitled to its own look.
-      return row.industry === searchIndustry;
+      // vertical is entitled to its own look — and with several selected, the
+      // verdict only binds if the company was judged under one of THEM. An
+      // empty selection means all eight, so every industry verdict binds.
+      return searchIndustries.length === 0
+        ? true
+        : searchIndustries.includes(row.industry as Industry);
     case "size":
       // Only binds while this search's band would reach the same verdict.
       return sizeVerdictStillBinds(row.revenue_band ?? null, band);
@@ -368,7 +373,16 @@ function timeUpMessage(scanned: number, leads: number, pairs: number): string {
 
 export async function runSearchPipeline(
   searchId: string,
-  industry: Industry,
+  /**
+   * The verticals to search. EMPTY MEANS ALL EIGHT.
+   *
+   * A list because the client can pick any combination — "landscaping and
+   * HVAC" is one run now, not two. It changes two things and deliberately
+   * nothing else: which discovery queries are bought, and which classified
+   * verticals are accepted. The vertical STORED on a company is the one the
+   * classifier decided, never the one the search asked for.
+   */
+  industries: Industry[],
   states: string[],
   targetSignals: number,
   mode: SearchMode = "signal",
@@ -414,6 +428,11 @@ export async function runSearchPipeline(
     // multiplier for both capped a "find 8 signals" search at 48 companies —
     // inside which roughly 2 pairs exist — so the request was arithmetically
     // impossible and the run stopped believing it was finished. See scansFor.
+    // The vertical to file a row under when the classifier has not read the
+    // page yet (an unreachable domain, an unparseable reply). Any of the
+    // selected ones is equally arbitrary; the first is stable and honest.
+    const searchedVertical: Industry = industries[0] ?? "landscaping";
+
     const seekingSignals = mode !== "filter";
     const scanCeiling = scansFor(targetSignals, seekingSignals);
 
@@ -479,7 +498,7 @@ export async function runSearchPipeline(
         if (error || !data || data.length === 0) break;
         for (const r of data) {
           if (!r.domain) continue;
-          if (bindsThisSearch(r, industry, band)) seenDomains.add(r.domain);
+          if (bindsThisSearch(r, industries, band)) seenDomains.add(r.domain);
           else reopened++;
         }
         if (data.length < PAGE) break;
@@ -617,7 +636,7 @@ export async function runSearchPipeline(
       const { data: due } = await supabase
         .from("companies")
         .select("domain, source_url, state")
-        .eq("industry", industry)
+        .in("industry", industries.length ? industries : (Object.keys(INDUSTRY_META) as Industry[]))
         .in("state", states)
         .lt("recheck_after", nowIso2)
         .not("recheck_after", "is", null)
@@ -674,7 +693,7 @@ export async function runSearchPipeline(
       const { count } = await supabase
         .from("companies")
         .select("*", { count: "exact", head: true })
-        .eq("industry", industry)
+        .in("industry", industries.length ? industries : (Object.keys(INDUSTRY_META) as Industry[]))
         .in("state", states);
       rotationSeed = Math.floor((count ?? 0) / ROUND_SIZE);
     } catch {
@@ -732,7 +751,7 @@ export async function runSearchPipeline(
         discoveryCalls++;
         try {
           const { candidates: fresh, channelErrors } = await discoverCandidates({
-            industry,
+            industries,
             states,
             limit: roundLimit,
             round: discoveryCalls,
@@ -876,7 +895,7 @@ export async function runSearchPipeline(
           await supabase.from("companies").insert({
             ...base,
             name: cleanDomainName(candidate.domain),
-            industry,
+            industry: searchedVertical,
             status: "rejected",
             rejection_reason: "No About/Team/Leadership page could be fetched from this domain",
             recheck_after: recheckAfterFor("rejected", "could not be fetched"),
@@ -896,7 +915,7 @@ export async function runSearchPipeline(
           await supabase.from("companies").insert({
             ...base,
             name: resolveName(page.siteName, null, candidate.domain),
-            industry,
+            industry: searchedVertical,
             status: "rejected",
             rejection_reason:
               "Page too thin to evaluate, likely a JS-rendered shell or placeholder page",
@@ -931,7 +950,7 @@ export async function runSearchPipeline(
           await supabase.from("companies").insert({
             ...base,
             name: resolveName(page.siteName, null, candidate.domain),
-            industry,
+            industry: searchedVertical,
             status: "rejected",
             // A SENTENCE, not the exception. The thrown message is
             // `Could not parse JSON from model output: {"companyName": ...` —
@@ -955,12 +974,18 @@ export async function runSearchPipeline(
         // never the raw Google-search title (see openrouter.ts).
         const companyName = resolveName(page.siteName, classification.companyName, candidate.domain);
 
-        // Stored under the search's own vertical, not the classifier's
-        // read — a candidate came from a Maps category search scoped to one
-        // vertical already, so this row belongs in that vertical's folder
-        // regardless (the classifier's industry read is only used above to
-        // catch actual mismatches, e.g. a landscape-*architecture* firm
-        // with no install crews turning up in a landscaping search).
+        // STORED UNDER THE CLASSIFIER'S READ, not the search's.
+        //
+        // It used to be the search's vertical, which was defensible when a run
+        // could only ask for one: a Maps category search was already scoped,
+        // so the row belonged in that folder whatever the page said. With
+        // several verticals selectable at once that reasoning collapses — a
+        // "landscaping and HVAC" run would have to file every company under
+        // one of them, and half the folder would be mislabelled.
+        //
+        // The classifier has read the page and named the trade; that is a
+        // better fact than the query that happened to surface it.
+        //
         // City resolved HERE rather than in `base`, because base is built
         // before the page is classified. Maps is authoritative when it has one;
         // otherwise take what the classifier read off the page. Web search —
@@ -969,9 +994,37 @@ export async function runSearchPipeline(
         const withName = {
           ...base,
           name: companyName,
-          industry,
+          industry: (classification.industry === "other"
+            ? searchedVertical
+            : classification.industry) as Industry,
           city: base.city ?? cleanCity(classification.city),
         };
+
+        // OUT OF THE SELECTED VERTICALS, though a real business in a real ICP
+        // trade. A "landscaping and HVAC" run surfaced a construction company
+        // and a manufacturer — both genuine ICP verticals, neither one asked
+        // for. Filing them under the search anyway makes the folder mean
+        // something other than what was requested.
+        //
+        // Cut with a SHORT recheck, not the 545-day wrong-trade timeout: there
+        // is nothing wrong with this company, it simply was not what this
+        // search asked about, and a run that does include its vertical must
+        // find it immediately. bindsThisSearch already ensures an industry
+        // verdict only binds searches covering that vertical.
+        const inScope =
+          industries.length === 0 ||
+          industries.includes(classification.industry as Industry);
+        if (classification.industry !== "other" && !inScope) {
+          await supabase.from("companies").insert({
+            ...withName,
+            status: "rejected",
+            rejection_reason: `A ${INDUSTRY_META[classification.industry as Industry]?.label ?? classification.industry} company — outside the verticals this search asked for.`,
+            recheck_after: recheckAfterFor("rejected", "not selected for this search"),
+          });
+          rejected++;
+          await bump(supabase, searchId, { rejected_count: rejected });
+          return;
+        }
 
         if (classification.industry === "other") {
           // recheck_after, like every other rejection path in this file (:599,

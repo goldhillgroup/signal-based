@@ -224,7 +224,10 @@ interface SearchesContextValue {
   // Jonathan's leads, not scoped to one search_id.
   fetchAllCompanies: () => Promise<Company[]>;
   createSearch: (params: {
-    industry: Industry;
+    /** Verticals to search. Empty or omitted means every vertical in the ICP. */
+    industries?: Industry[];
+    /** Older single-vertical callers. `industries` wins when both are given. */
+    industry?: Industry;
     /** Structured form path. Use `states` for multi-state free-text requests. */
     state?: string;
     states?: string[];
@@ -348,7 +351,8 @@ export function SearchesProvider({ children }: { children: ReactNode }) {
 
   const createSearch = useCallback(
     async (params: {
-      industry: Industry;
+      industries?: Industry[];
+      industry?: Industry;
       state?: string;
       states?: string[];
       refinement?: string;

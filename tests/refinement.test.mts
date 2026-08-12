@@ -13,15 +13,15 @@ import { refinementQueries, successionTermsFor, isOffTradeName } from "../lib/pi
 import { callableName, cleanPersonName, earnedConfidence, relationshipStated } from "../lib/lead-signal.js";
 
 test("no refinement leaves the proven rotation exactly as it was", () => {
-  const base = successionTermsFor("landscaping", 1);
-  assert.deepEqual(successionTermsFor("landscaping", 1, null), base);
-  assert.deepEqual(successionTermsFor("landscaping", 1, ""), base);
-  assert.equal(refinementQueries(null, "landscaping").length, 0);
-  assert.equal(refinementQueries("   ", "landscaping").length, 0);
+  const base = successionTermsFor(["landscaping"], 1);
+  assert.deepEqual(successionTermsFor(["landscaping"], 1, null), base);
+  assert.deepEqual(successionTermsFor(["landscaping"], 1, ""), base);
+  assert.equal(refinementQueries(null, ["landscaping"]).length, 0);
+  assert.equal(refinementQueries("   ", ["landscaping"]).length, 0);
 });
 
 test("the client's words become quoted queries anchored to the trade", () => {
-  const qs = refinementQueries("founder retiring, son or daughter taking over", "landscaping");
+  const qs = refinementQueries("founder retiring, son or daughter taking over", ["landscaping"]);
   assert.ok(qs.length > 0, "a stated focus must produce at least one query");
   for (const q of qs) {
     assert.match(q, /^"/, `each query leads with the quoted phrase: ${q}`);
@@ -32,27 +32,27 @@ test("the client's words become quoted queries anchored to the trade", () => {
 });
 
 test("the focus is asked FIRST, so a tight budget spends it on what was asked for", () => {
-  const qs = successionTermsFor("landscaping", 1, "founder retiring");
-  const base = successionTermsFor("landscaping", 1);
+  const qs = successionTermsFor(["landscaping"], 1, "founder retiring");
+  const base = successionTermsFor(["landscaping"], 1);
   assert.ok(/founder retiring/i.test(qs[0]), "client's words lead the list");
   assert.equal(qs.length, base.length + 1, "focus adds, never replaces the proven set");
 });
 
 test("a runaway focus cannot multiply the SERP bill", () => {
   const wordy = Array.from({ length: 40 }, (_, i) => `phrase number ${i} here`).join(", ");
-  assert.ok(refinementQueries(wordy, "landscaping").length <= 3, "capped at three");
+  assert.ok(refinementQueries(wordy, ["landscaping"]).length <= 3, "capped at three");
 });
 
 test("fragments too short or too long to be a real phrase are dropped", () => {
   // Single words and connectives would match everything; a paragraph matches
   // nothing. Neither is worth a paid SERP page.
-  assert.equal(refinementQueries("son", "landscaping").length, 0);
-  assert.equal(refinementQueries("a, b, or c", "landscaping").length, 0);
-  assert.equal(refinementQueries("x".repeat(200), "landscaping").length, 0);
+  assert.equal(refinementQueries("son", ["landscaping"]).length, 0);
+  assert.equal(refinementQueries("a, b, or c", ["landscaping"]).length, 0);
+  assert.equal(refinementQueries("x".repeat(200), ["landscaping"]).length, 0);
 });
 
 test("with no vertical chosen the focus covers both trade families", () => {
-  const qs = refinementQueries("second generation taking over", null);
+  const qs = refinementQueries("second generation taking over", []);
   assert.ok(qs.some((q) => /landscaping/.test(q)));
   assert.ok(qs.some((q) => /home builder|custom homes/.test(q)));
 });

@@ -134,7 +134,7 @@ for (let i = 0; i < Math.min(runs, CONFIGS.length); i++) {
   try {
     await runSearchPipeline(
       row.id,
-      cfg.industry,
+      [cfg.industry],
       cfg.states,
       cfg.target,
       cfg.mode,

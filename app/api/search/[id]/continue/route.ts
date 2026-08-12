@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { VALID_INDUSTRIES } from "@/lib/pipeline/intake-types";
 import { after } from "next/server";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { runSearchPipeline } from "@/lib/pipeline/orchestrator";
@@ -48,7 +49,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const { data: search, error } = await service
     .from("searches")
     .select(
-      "id, status, query, mode, target_signals, revenue_min_musd, revenue_max_musd, candidates_pool_exhausted, companies_scanned, qualified_count, verify_count, fit_only_count"
+      "id, status, query, mode, industries, target_signals, revenue_min_musd, revenue_max_musd, candidates_pool_exhausted, companies_scanned, qualified_count, verify_count, fit_only_count"
     )
     .eq("id", id)
     .single();
@@ -105,7 +106,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     .eq("search_id", id)
     .limit(200);
 
-  const industry = (sample?.[0]?.industry ?? "landscaping") as Industry;
+  // THE STORED LIST, not a sample of the folder's companies.
+  //
+  // It used to read one company's industry and use that for the whole
+  // continuation, which was fine while a run could target exactly one
+  // vertical. With several selectable, a sample picks whichever happened to
+  // be written first and the next pass would search only that one — quietly
+  // narrowing a search the client had deliberately made wide.
+  const industries = ((search.industries ?? []) as string[]).filter((v) =>
+    VALID_INDUSTRIES.includes(v as Industry)
+  ) as Industry[];
   const states = [...new Set((sample ?? []).map((c) => c.state).filter((s): s is string => !!s && s !== "-"))];
 
   // ── CLAIM THE PASS ATOMICALLY ────────────────────────────────────────
@@ -138,7 +148,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 
   after(() =>
-    runSearchPipeline(id, industry, states.length > 0 ? states : ["CA"], target, mode, null, {
+    runSearchPipeline(id, industries, states.length > 0 ? states : ["CA"], target, mode, null, {
       min: search.revenue_min_musd ?? null,
       max: search.revenue_max_musd ?? null,
     })

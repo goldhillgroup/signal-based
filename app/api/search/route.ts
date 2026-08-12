@@ -49,6 +49,7 @@ export async function POST(req: Request) {
 
   const body = (await req.json().catch(() => ({}))) as {
     industry?: string;
+    industries?: unknown;
     state?: string;
     states?: string[];
     refinement?: string;
@@ -59,10 +60,21 @@ export async function POST(req: Request) {
     revenueMaxMusd?: number | null;
   };
 
-  const industry = body.industry as Industry;
-  if (!VALID_INDUSTRIES.includes(industry)) {
+  // A LIST now — the client can pick any combination, and an empty one means
+  // every vertical in the ICP. `industry` is still accepted so an older
+  // client, a retry or a curl keeps working.
+  const rawIndustries = Array.isArray(body.industries)
+    ? body.industries
+    : body.industry
+      ? [body.industry]
+      : [];
+  const industries = [...new Set(rawIndustries)].filter(
+    (v): v is Industry => typeof v === "string" && VALID_INDUSTRIES.includes(v as Industry)
+  );
+  const industry = industries[0] as Industry;
+  if (rawIndustries.length > 0 && industries.length === 0) {
     return NextResponse.json(
-      { error: "industry must be 'landscaping' or 'home_builder'" },
+      { error: `industry must be one of: ${VALID_INDUSTRIES.join(", ")}` },
       { status: 400 }
     );
   }
@@ -148,6 +160,7 @@ export async function POST(req: Request) {
   const { data: search, error } = await supabase
     .from("searches")
     .insert({
+      industries,
       query,
       label,
       status: "running",
@@ -177,7 +190,7 @@ export async function POST(req: Request) {
   after(() =>
     runSearchPipeline(
       search.id,
-      industry,
+      industries,
       states,
       target,
       mode,

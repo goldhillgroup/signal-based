@@ -150,7 +150,7 @@ export async function executeHarvest(plan: HarvestPlan): Promise<void> {
     try {
       await runSearchPipeline(
         run.id,
-        run.industry,
+        [run.industry],
         schedule.states,
         schedule.targetPerRun,
         schedule.mode,

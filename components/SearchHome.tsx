@@ -63,7 +63,11 @@ export function SearchHome({
   // shortcut for people who already know what they want, which is what it is
   // now — kept, and second.
   const [showManual, setShowManual] = useState(true);
-  const [industry, setIndustry] = useState<Industry | null>(null);
+  // A SET, not one choice. "Landscaping and HVAC" is a reasonable search and
+  // used to mean two runs over the same geography. Empty means every vertical
+  // in the ICP, which is also the default — the client narrows if he wants to.
+  const [industries, setIndustries] = useState<Industry[]>([]);
+  const industry = industries[0] ?? null;
   // Defaults to all four agreed states — the signed scope, and the most likely
   // thing to want. It is not more expensive than picking one: the target
   // (companies to find) is what bounds cost, while locationForRound() rotates
@@ -102,7 +106,8 @@ export function SearchHome({
 
   // A nationwide search carries the sentinel "US" rather than a list, so
   // "something is selected" is the real precondition, not "a named state is".
-  const canSearch = industry !== null && states.length > 0 && !starting;
+  // No vertical picked means every vertical, so only geography is required.
+  const canSearch = states.length > 0 && !starting;
   const pending = intake?.questions.filter((q) => !resolved.includes(q.field)) ?? [];
 
   async function parse() {
@@ -154,13 +159,13 @@ export function SearchHome({
   }
 
   async function startSearch() {
-    if (!industry || states.length === 0 || starting) return;
+    if (states.length === 0 || starting) return;
     setError("");
     setStarting(true);
     try {
       const band = BAND_OPTIONS[bandIdx];
       const { id, label } = await createSearch({
-        industry,
+        industries,
         states,
         refinement,
         includeAlreadyChecked,
@@ -390,15 +395,19 @@ export function SearchHome({
                 <button
                   key={key}
                   type="button"
-                  onClick={() => setIndustry(key)}
-                  aria-pressed={industry === key}
+                  onClick={() =>
+                    setIndustries((cur) =>
+                      cur.includes(key) ? cur.filter((i) => i !== key) : [...cur, key]
+                    )
+                  }
+                  aria-pressed={industries.includes(key)}
                   className={`flex min-h-11 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 ${
-                    industry === key
+                    industries.includes(key)
                       ? "border-gh-navy bg-gh-navy text-white"
                       : "border-gh-border bg-gh-surface-sunken text-gh-ink-secondary hover:border-gh-sky/40 hover:text-gh-ink"
                   }`}
                 >
-                  {industry === key && <CheckIcon className="h-3.5 w-3.5 shrink-0" />}
+                  {industries.includes(key) && <CheckIcon className="h-3.5 w-3.5 shrink-0" />}
                   {INDUSTRY_META[key].label}
                 </button>
               ))}
@@ -451,7 +460,12 @@ export function SearchHome({
                 return: the focus decides what is ASKED within them. */}
             <p className="mb-1.5 text-[11px] leading-relaxed text-gh-ink-muted">
               What to look for within{" "}
-              {INDUSTRY_META[industry ?? "landscaping"].label.toLowerCase()} in{" "}
+              {industries.length === 0
+                ? "every vertical"
+                : industries.length <= 2
+                  ? industries.map((i) => INDUSTRY_META[i].label.toLowerCase()).join(" and ")
+                  : `${industries.length} verticals`}{" "}
+              in{" "}
               {states.includes(NATIONWIDE)
                 ? "the United States"
                 : states.length === 0
@@ -565,11 +579,7 @@ export function SearchHome({
               input is still missing rather than leaving him to guess. */}
           {!canSearch && !starting && (
             <p className="mt-1.5 text-center text-[11px] font-medium text-gh-ink-muted" aria-live="polite">
-              {industry === null && states.length === 0
-                ? "Pick a vertical and at least one state to search."
-                : industry === null
-                  ? "Pick a vertical to search."
-                  : "Pick at least one state to search."}
+              Pick at least one state to search.
             </p>
           )}
         </div>
