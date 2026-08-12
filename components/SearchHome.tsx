@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useSearches } from "@/lib/searches-store";
 import { AGREED_STATES, NATIONWIDE, stateNameFor } from "@/lib/pipeline/us-states";
 import { WhatCountsAsSignal } from "./WhatCountsAsSignal";
-import { MODE_META, MODE_ORDER, BAND_OPTIONS, REFINEMENT_EXAMPLES, bandIndexFor } from "@/lib/search-options";
+import { MODE_META, MODE_ORDER, BAND_OPTIONS, bandIndexFor, ICP_SIGNAL_GROUPS, FOCUS_PHRASES_THAT_STEER } from "@/lib/search-options";
 import type { Suggestion } from "@/lib/pipeline/suggestions";
 import { DEFAULT_ICP, type Icp } from "@/lib/pipeline/icp-types";
 import { INDUSTRY_META } from "@/lib/signal-meta";
@@ -129,6 +129,26 @@ export function SearchHome({
       : states.length <= 3
         ? states.map(stateNameFor).join(", ")
         : `${states.length} states`;
+
+
+  // SIGNAL CHIPS AND THE TEXT FIELD ARE THE SAME VALUE.
+  //
+  // The field stays the source of truth and the chips read from it, so a
+  // clicked chip and a typed phrase cannot disagree — a chip is "on" when its
+  // phrase is present, and clicking it adds or removes that phrase. Typing
+  // freely still works, and lights up any chip whose phrase you happen to
+  // write.
+  const focusPhrases = refinement
+    .split(/[,;\n]/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+  const toggleSignal = (phrase: string) => {
+    const has = focusPhrases.some((p) => p.toLowerCase() === phrase.toLowerCase());
+    const next = has
+      ? focusPhrases.filter((p) => p.toLowerCase() !== phrase.toLowerCase())
+      : [...focusPhrases, phrase];
+    setRefinement(next.join(", "));
+  };
 
   const canSearch = states.length > 0 && !starting;
   const pending = intake?.questions.filter((q) => !resolved.includes(q.field)) ?? [];
@@ -548,45 +568,79 @@ export function SearchHome({
             </SettingRow>
           </div>
 
-          {/* OPEN, not collapsed: the one field he actually types into, and
-              empty by default — a collapsed empty field is invisible rather
-              than tidy. */}
-          <div className="mt-4">
-            <label htmlFor="refinement" className="mb-1.5 block text-xs font-semibold text-gh-ink-secondary">
+          {/* ── SIGNAL FOCUS: PICKED, NOT TYPED ────────────────────────────
+              This was a free-text box with three example chips. Two problems.
+              The chips REPLACED whatever was in the field, so only one idea
+              could ever be expressed; and the other nine signals in his own
+              profile were reachable only by knowing they existed and typing
+              the right words.
+
+              Now it is the twelve signals, in the four groups they naturally
+              fall into, laid out as an even grid rather than a ragged wrap of
+              pills. Selection only — his standing definition in his own words
+              still lives in Settings, and this is the question "what am I
+              looking for THIS time".
+
+              Each row is a real checkbox: it gets keyboard, screen-reader
+              semantics and a 44px target for free, which a styled div does
+              not. */}
+          <fieldset className="mt-4">
+            <legend className="mb-1.5 text-xs font-semibold text-gh-ink-secondary">
               Signal focus <span className="font-normal text-gh-ink-muted">(optional)</span>
-            </label>
-            <p className="mb-1.5 text-[11px] leading-relaxed text-gh-ink-muted">
+            </legend>
+            <p className="mb-2.5 text-[11px] leading-relaxed text-gh-ink-muted">
               What to look for within {verticalSummary.toLowerCase()} in{" "}
               {stateSummary.toLowerCase()}. It shapes the questions the search
               asks, so it changes which companies get found — the verticals and
-              states stay fixed.
+              states stay fixed. Pick none and it looks for all of them.
             </p>
-            <input
-              id="refinement"
-              autoComplete="off"
-              value={refinement}
-              onChange={(e) => setRefinement(e.target.value)}
-              type="text"
-              placeholder={
-                icp.signalFocus
-                  ? `${icp.signalFocus} (your ideal client)`
-                  : "e.g. succession signals, founder retiring…"
-              }
-              className="w-full rounded-lg border border-gh-border bg-gh-surface-sunken px-3 py-2.5 text-sm text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none focus:ring-2 focus:ring-gh-sky/20"
-            />
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {REFINEMENT_EXAMPLES.map((ex) => (
-                <button
-                  key={ex}
-                  type="button"
-                  onClick={() => setRefinement(ex)}
-                  className="rounded-full border border-gh-border bg-gh-surface px-2.5 py-1 text-[11px] font-medium text-gh-ink-secondary transition-colors hover:border-gh-sky/40 hover:text-gh-ink"
-                >
-                  {ex}
-                </button>
+
+            <div className="space-y-3">
+              {ICP_SIGNAL_GROUPS.map((group) => (
+                <div key={group.heading}>
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gh-ink-muted">
+                    {group.heading}
+                  </p>
+                  <div className="grid gap-1.5 sm:grid-cols-3">
+                    {group.signals.map((sig) => {
+                      const on = focusPhrases.some(
+                        (ph) => ph.toLowerCase() === sig.phrase.toLowerCase()
+                      );
+                      return (
+                        <label
+                          key={sig.label}
+                          title={sig.phrase}
+                          className={`flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 text-[11px] font-medium leading-snug transition-colors duration-200 ${
+                            on
+                              ? "border-gh-navy bg-gh-navy text-white"
+                              : "border-gh-border bg-gh-surface text-gh-ink-secondary hover:border-gh-sky/40 hover:text-gh-ink"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            onChange={() => toggleSignal(sig.phrase)}
+                            className="h-3.5 w-3.5 shrink-0 accent-gh-sky"
+                          />
+                          {sig.label}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
               ))}
             </div>
-          </div>
+
+            {/* Honest about the cap rather than letting someone tick eight and
+                assume all eight are being searched for. */}
+            {focusPhrases.length > FOCUS_PHRASES_THAT_STEER && (
+              <p className="mt-2 text-[11px] leading-relaxed text-gh-ink-muted">
+                The first {FOCUS_PHRASES_THAT_STEER} steer which companies get
+                found — that cap keeps the search bill flat. All{" "}
+                {focusPhrases.length} still sharpen how each page is judged.
+              </p>
+            )}
+          </fieldset>
 
           <button
             type="button"

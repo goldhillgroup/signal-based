@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { WhatCountsAsSignal } from "./WhatCountsAsSignal";
-import { MODE_META, MODE_ORDER, BAND_OPTIONS, REFINEMENT_EXAMPLES } from "@/lib/search-options";
+import { MODE_META, MODE_ORDER, BAND_OPTIONS, ICP_SIGNALS } from "@/lib/search-options";
 import { DAY_NAMES, type WeeklySchedule as Schedule } from "@/lib/pipeline/schedule-types";
 import { INDUSTRY_META } from "@/lib/signal-meta";
 import type { Industry } from "@/lib/supabase/types";
@@ -262,17 +262,39 @@ export function WeeklySchedule({
             placeholder="e.g. succession signals, founder retiring..."
             className="w-full rounded-lg border border-gh-border bg-gh-surface-sunken px-3 py-2.5 text-base text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none focus:ring-2 focus:ring-gh-sky/20 sm:text-sm"
           />
+          {/* Same twelve signals as the one-off search form. This field had
+              three fixed examples that REPLACED whatever was typed, so the
+              harvest could only ever express one of them. */}
           <div className="mt-2 flex flex-wrap gap-1.5">
-            {REFINEMENT_EXAMPLES.map((ex) => (
-              <button
-                key={ex}
-                type="button"
-                onClick={() => patch({ refinement: ex })}
-                className="hover-spring cursor-pointer rounded-full border border-gh-border bg-gh-surface px-2.5 py-1 text-[11px] font-medium text-gh-ink-secondary transition-colors duration-200 hover:border-gh-sky/40 hover:text-gh-ink"
-              >
-                {ex}
-              </button>
-            ))}
+            {ICP_SIGNALS.map((sig) => {
+              const phrases = (schedule.refinement ?? "")
+                .split(/[,;\n]/)
+                .map((x) => x.trim())
+                .filter(Boolean);
+              const on = phrases.some((ph) => ph.toLowerCase() === sig.phrase.toLowerCase());
+              return (
+                <button
+                  key={sig.label}
+                  type="button"
+                  onClick={() => {
+                    const next = on
+                      ? phrases.filter((ph) => ph.toLowerCase() !== sig.phrase.toLowerCase())
+                      : [...phrases, sig.phrase];
+                    patch({ refinement: next.join(", ") || null });
+                  }}
+                  aria-pressed={on}
+                  title={sig.phrase}
+                  className={`hover-spring flex min-h-8 cursor-pointer items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 ${
+                    on
+                      ? "bg-gh-navy text-white"
+                      : "border border-gh-border bg-gh-surface text-gh-ink-secondary hover:border-gh-sky/40 hover:text-gh-ink"
+                  }`}
+                >
+                  {on && <CheckIcon className="h-3 w-3 shrink-0" />}
+                  {sig.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 

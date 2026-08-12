@@ -94,8 +94,85 @@ export function bandIndexFor(min: number | null, max: number | null): number {
  * search form, which is how the harvest ended up with no way to express it
  * at all.
  */
-export const REFINEMENT_EXAMPLES = [
-  "succession signals",
-  "founder retiring",
-  "second generation taking over",
+/**
+ * The twelve observable signals from the client's ICP, as things to click,
+ * in four groups of three.
+ *
+ * Twelve pills wrapping across a box is the same mess the settings rows just
+ * replaced. They group naturally — who is in the business, how the company
+ * describes itself, a handover actually in motion, and pressure that makes
+ * the timing right — and three per group lays out as an even grid at every
+ * width instead of a ragged wrap.
+ *
+ * His profile lists them explicitly under "Observable lead-generation
+ * signals", with the reasoning that "family conflict and succession concerns
+ * are rarely stated publicly, [so] the agency should look for indirect
+ * evidence". They were only ever reachable by typing the right phrase into a
+ * free-text box, which meant knowing they existed.
+ *
+ * `phrase` is what actually goes into the Signal focus field, so each one is
+ * written as words a company would use ABOUT ITSELF, not as a category name:
+ * "recently promoted to president" finds pages, "next_gen_promoted" does not.
+ * That field feeds both ends of the pipeline — discovery turns each phrase
+ * into a quoted query, and classification takes it as a hint — so the wording
+ * has to work as a search, not only as a label.
+ */
+export const ICP_SIGNAL_GROUPS: {
+  heading: string;
+  signals: { label: string; phrase: string }[];
+}[] = [
+  {
+    // Who is visibly in the business right now.
+    heading: "People",
+    signals: [
+      { label: "Founder + children", phrase: "founder and his son and daughter in leadership" },
+      { label: "Next gen promoted", phrase: "recently promoted to president" },
+      { label: "Siblings running it", phrase: "brothers and sisters executive team" },
+    ],
+  },
+  {
+    // How the company describes itself.
+    heading: "How they talk about themselves",
+    signals: [
+      { label: "2nd / 3rd generation", phrase: "second generation family owned" },
+      { label: "Anniversary story", phrase: "celebrating 50 years family owned" },
+      { label: "Legacy language", phrase: "preserving the family legacy" },
+    ],
+  },
+  {
+    // A handover actually in motion.
+    heading: "Handover in motion",
+    signals: [
+      { label: "Leadership transition", phrase: "announces leadership transition" },
+      { label: "Founder now chairman", phrase: "founder moves to chairman role" },
+      { label: "Ownership transfer", phrase: "ownership transfer to the family" },
+    ],
+  },
+  {
+    // Pressure on the business, which is what makes the timing right.
+    heading: "Outgrowing themselves",
+    signals: [
+      { label: "Growing fast", phrase: "expansion new facility acquisition" },
+      { label: "Professionalising (EOS)", phrase: "implemented EOS advisory board" },
+      { label: "Next gen in the news", phrase: "next generation featured interview" },
+    ],
+  },
 ];
+
+export const ICP_SIGNALS = ICP_SIGNAL_GROUPS.flatMap((g) => g.signals);
+
+/**
+ * Kept for the compact places that only want a taste rather than the full
+ * twelve — the ideal-client summary and the harvest form.
+ */
+export const REFINEMENT_EXAMPLES = ICP_SIGNALS.slice(0, 3).map((s) => s.phrase);
+
+/**
+ * How many phrases actually steer DISCOVERY.
+ *
+ * refinementQueries caps at three so a long paragraph cannot multiply the SERP
+ * bill. Everything selected still reaches the classifier as a hint, so nothing
+ * is wasted — but the form has to say which is which rather than let someone
+ * tick eight and assume all eight are being searched for.
+ */
+export const FOCUS_PHRASES_THAT_STEER = 3;

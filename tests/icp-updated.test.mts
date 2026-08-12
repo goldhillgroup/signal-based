@@ -15,7 +15,7 @@ import { DEFAULT_ICP } from "../lib/pipeline/icp-types.js";
 import { VALID_INDUSTRIES } from "../lib/pipeline/intake-types.js";
 import { SUCCESSION_QUERY_SETS } from "../lib/pipeline/apify.js";
 import { recheckAfterFor, isWrongKindOfBusiness } from "../lib/pipeline/recheck-policy.js";
-import { BAND_OPTIONS, bandIndexFor } from "../lib/search-options.js";
+import { BAND_OPTIONS, bandIndexFor, ICP_SIGNALS, ICP_SIGNAL_GROUPS } from "../lib/search-options.js";
 import { DEFAULT_SCHEDULE } from "../lib/pipeline/schedule.js";
 import { monthlyPageUse } from "../lib/pipeline/schedule-types.js";
 import { readdirSync, readFileSync } from "node:fs";
@@ -173,4 +173,24 @@ test("an unrecognised saved band never becomes 'No limit'", () => {
   // A band that IS offered still resolves to itself.
   assert.equal(BAND_OPTIONS[bandIndexFor(5, 30)].label, "$5-30M (full ICP)");
   assert.equal(BAND_OPTIONS[bandIndexFor(null, null)].label, "No limit");
+});
+
+test("every observable signal in the ICP is something he can click", () => {
+  // His profile lists twelve under "Observable lead-generation signals". They
+  // were reachable only by typing the right phrase into a free-text box, which
+  // meant knowing they existed.
+  assert.equal(ICP_SIGNALS.length, 12, "the ICP names twelve signals");
+  // Three per group, so the grid stays even at every width rather than
+  // wrapping into a ragged block.
+  for (const g of ICP_SIGNAL_GROUPS) {
+    assert.equal(g.signals.length, 3, `"${g.heading}" has ${g.signals.length}, breaking the grid`);
+  }
+  // The phrase is what reaches discovery and the classifier, so it has to read
+  // as words a company would use about itself — not as a category name.
+  for (const s of ICP_SIGNALS) {
+    assert.ok(s.phrase.split(/\s+/).length >= 3, `"${s.phrase}" is too thin to search with`);
+    assert.doesNotMatch(s.phrase, /_/, `"${s.phrase}" looks like an identifier, not a search`);
+    // Labels sit in a grid; a long one makes its whole row taller.
+    assert.ok(s.label.length <= 26, `"${s.label}" will wrap and unbalance the row`);
+  }
 });
