@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { VALID_INDUSTRIES } from "@/lib/pipeline/intake-types";
 import { createClient } from "@/lib/supabase/server";
 import { getSchedule, saveSchedule } from "@/lib/pipeline/schedule";
 import type { WeeklySchedule } from "@/lib/pipeline/schedule-types";
@@ -6,7 +7,9 @@ import { US_STATES } from "@/lib/pipeline/us-states";
 import type { Industry, SearchMode } from "@/lib/supabase/types";
 
 const VALID_STATES = new Set(US_STATES.map((s) => s.code));
-const VALID_INDUSTRIES: Industry[] = ["landscaping", "home_builder"];
+// Same shadowing bug as app/api/search/route.ts: a local copy froze at two
+// verticals while the ICP grew to eight, so the harvest could not be scheduled
+// for any of the six new ones.
 const VALID_MODES: SearchMode[] = ["signal", "filter", "hybrid"];
 
 export async function GET() {

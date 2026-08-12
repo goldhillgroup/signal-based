@@ -1,4 +1,5 @@
 import { getSettingFresh, setSetting } from "../settings";
+import { VALID_INDUSTRIES } from "./intake-types";
 import { AGREED_STATES } from "./us-states";
 import type { WeeklySchedule } from "./schedule-types";
 import type { Industry, SearchMode } from "../supabase/types";
@@ -73,7 +74,11 @@ export const DEFAULT_SCHEDULE: WeeklySchedule = {
 };
 
 const VALID_MODES: SearchMode[] = ["signal", "filter", "hybrid"];
-const VALID_INDUSTRIES: Industry[] = ["landscaping", "home_builder"];
+// Imported, never redeclared. This was a local copy frozen at two verticals,
+// and it is the most damaging place to have had one: it FILTERS a schedule on
+// read, so a harvest Jonathan saved for specialty trades would come back with
+// that vertical silently removed — his setting gone, with nothing to explain
+// where. tests/icp-updated guards the shape of this bug now, not the instance.
 
 /**
  * Always returns a usable schedule. A missing row, malformed JSON or a field

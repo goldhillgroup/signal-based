@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import { successionTermsFor, refinementQueries } from "../lib/pipeline/apify.js";
 import { bindsThisSearch } from "../lib/pipeline/orchestrator.js";
 import { INDUSTRY_META } from "../lib/signal-meta.js";
+import { industryLabel } from "../lib/pipeline/intake-types.js";
 import type { Industry } from "../lib/supabase/types.js";
 
 test("a mixed selection asks about every vertical picked", () => {
@@ -82,4 +83,19 @@ test("every vertical in the ICP can actually be selected", () => {
   for (const key of Object.keys(INDUSTRY_META) as Industry[]) {
     assert.ok(successionTermsFor([key], 1).length > 0, `${key} produces no queries`);
   }
+});
+
+test("a folder is named after the vertical it actually searched", () => {
+  // Two verticals were hardcoded and everything else fell through to
+  // "landscaping or home building", so a manufacturing search produced a
+  // folder called "landscaping or home building companies in Texas". The
+  // folder title is how a search is identified for the rest of its life.
+  assert.equal(industryLabel(["manufacturing"]), "manufacturing");
+  assert.equal(industryLabel(["trades"]), "specialty trades");
+  assert.equal(industryLabel(["landscaping", "trades"]), "landscaping and specialty trades");
+  assert.doesNotMatch(industryLabel(["distribution"]), /landscaping|home building/);
+  // Three or more is a count, not a list nobody can scan.
+  assert.match(industryLabel(["landscaping", "trades", "manufacturing"]), /^3 verticals/);
+  // No selection means every vertical, and the title should not claim one.
+  assert.doesNotMatch(industryLabel([]), /landscaping|home building/);
 });

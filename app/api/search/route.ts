@@ -3,7 +3,7 @@ import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { runSearchPipeline } from "@/lib/pipeline/orchestrator";
 import { getIcp } from "@/lib/pipeline/icp";
-import { industryLabel } from "@/lib/pipeline/intake-types";
+import { industryLabel, VALID_INDUSTRIES } from "@/lib/pipeline/intake-types";
 import { stateNameFor, US_STATES, NATIONWIDE } from "@/lib/pipeline/us-states";
 import { creditBlockerFor } from "@/lib/pipeline/preflight";
 import type { Industry, SearchMode } from "@/lib/supabase/types";
@@ -29,7 +29,11 @@ export const maxDuration = 300;
 
 const MIN_TARGET = 1;
 const MAX_TARGET = 200; // UI-level sanity cap, see MAX_SCAN_MULTIPLIER/ABSOLUTE_SCAN_CEILING in the orchestrator for the real cost ceiling
-const VALID_INDUSTRIES: Industry[] = ["landscaping", "home_builder"];
+// Deliberately NOT redeclared here. A local copy of this list shadowed the
+// shared one and stayed at the original two verticals, so the form offered
+// eight and the API refused six of them — the end-to-end tests missed it
+// entirely because they call runSearchPipeline directly and never cross this
+// route. Imported from intake-types, which derives it from INDUSTRY_META.
 const VALID_MODES: SearchMode[] = ["signal", "filter", "hybrid"];
 const VALID_STATE_CODES = new Set(US_STATES.map((s) => s.code));
 
@@ -149,7 +153,7 @@ export async function POST(req: Request) {
   // missing value, in a UI where the label is the only thing distinguishing
   // one folder from another.
   const where = states.length > 0 ? states.map(stateNameFor).join(", ") : "the United States";
-  const label = `${industryLabel(industry)} companies in ${where}`;
+  const label = `${industryLabel(industries)} companies in ${where}`;
   const query = refinement ? `${label}, ${refinement}` : label;
 
   const band = {

@@ -18,6 +18,8 @@ import { recheckAfterFor, isWrongKindOfBusiness } from "../lib/pipeline/recheck-
 import { BAND_OPTIONS } from "../lib/search-options.js";
 import { DEFAULT_SCHEDULE } from "../lib/pipeline/schedule.js";
 import { monthlyPageUse } from "../lib/pipeline/schedule-types.js";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { Industry } from "../lib/supabase/types.js";
 
 // "Construction and contracting / luxury and custom homebuilding / landscaping
@@ -120,4 +122,34 @@ test("the scheduled harvest aims at the ICP too", () => {
   // multiplies a bill nobody is watching.
   const use = monthlyPageUse(DEFAULT_SCHEDULE.targetPerRun, DEFAULT_SCHEDULE.industries.length);
   assert.ok(use.fits, `${Math.round(use.pages)} pages vs ${use.quota}`);
+});
+
+test("no module keeps its own private list of verticals", () => {
+  // A local `const VALID_INDUSTRIES = ["landscaping", "home_builder"]` in
+  // app/api/search/route.ts SHADOWED the shared one and froze at the original
+  // two, so the form offered eight verticals and the HTTP route refused six.
+  // The end-to-end tests missed it completely because they call
+  // runSearchPipeline directly and never cross that route.
+  //
+  // Guards the shape of the bug, not the one instance: any file redeclaring
+  // the list is a copy that can drift.
+  const roots = ["app", "lib", "components"];
+  const offenders: string[] = [];
+  const walk = (dir: string) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, e.name);
+      if (e.isDirectory()) walk(full);
+      else if (/\.(ts|tsx)$/.test(e.name)) {
+        const src = readFileSync(full, "utf8");
+        if (
+          /const\s+VALID_INDUSTRIES\s*[:=]/.test(src) &&
+          !full.endsWith("intake-types.ts")
+        ) {
+          offenders.push(full);
+        }
+      }
+    }
+  };
+  for (const r of roots) walk(r);
+  assert.deepEqual(offenders, [], `these redeclare the vertical list: ${offenders.join(", ")}`);
 });

@@ -326,8 +326,13 @@ export function CompaniesTable({
           className="rounded-lg border border-gh-border bg-gh-surface-sunken px-2.5 py-1.5 text-xs font-medium text-gh-ink-secondary focus:border-gh-sky focus:outline-none focus:ring-2 focus:ring-gh-sky/20"
         >
           <option value="all">All industries</option>
-          <option value="landscaping">{INDUSTRY_META.landscaping.label}</option>
-          <option value="home_builder">{INDUSTRY_META.home_builder.label}</option>
+          {/* Every vertical in the ICP. Two were listed by hand, so a lead in
+              any of the six added later could not be filtered for. */}
+          {(Object.keys(INDUSTRY_META) as Industry[]).map((key) => (
+            <option key={key} value={key}>
+              {INDUSTRY_META[key].label}
+            </option>
+          ))}
         </select>
       </div>
 

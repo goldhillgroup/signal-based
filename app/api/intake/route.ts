@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import type { Industry } from "@/lib/supabase/types";
+import { INDUSTRY_META } from "@/lib/signal-meta";
 import { createClient } from "@/lib/supabase/server";
 import { parseRequest, type SearchHistory } from "@/lib/pipeline/intake";
 
@@ -36,21 +38,23 @@ export async function POST(req: Request) {
   let history: SearchHistory[] = [];
   const { data } = await supabase
     .from("searches")
-    .select("query, label, mode, revenue_min_musd, revenue_max_musd")
+    .select("query, label, mode, industries, revenue_min_musd, revenue_max_musd")
     .eq("created_by", user.id)
     .order("created_at", { ascending: false })
     .limit(HISTORY_LIMIT);
 
   if (data) {
     history = data.map((row) => ({
-      // industry/state aren't columns on `searches` — they're encoded in the
-      // server-built label ("landscaping companies in Texas"). Reading them
-      // back from there beats a migration for a defaults heuristic.
-      industry: /home build/i.test(row.label ?? "")
-        ? ("home_builder" as const)
-        : /landscap/i.test(row.label ?? "")
-          ? ("landscaping" as const)
-          : null,
+      // `searches.industries` is the real answer now; the label parse below is
+      // the fallback for folders created before that column existed. It used to
+      // be the ONLY path and recognised two verticals, so a run in any of the
+      // six added later contributed nothing to the defaults heuristic.
+      industry:
+        (row.industries?.[0] as Industry | undefined) ??
+        (Object.keys(INDUSTRY_META) as Industry[]).find((key) =>
+          new RegExp(INDUSTRY_META[key].label.replace(/\s+/g, "\\s*"), "i").test(row.label ?? "")
+        ) ??
+        null,
       state: null,
       mode: row.mode ?? null,
       revenue_min_musd: row.revenue_min_musd,

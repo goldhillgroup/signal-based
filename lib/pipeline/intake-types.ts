@@ -105,8 +105,24 @@ export function applyAnswer(
  * Moved here when parse-query.ts (a regex parser that understood 9 of 50
  * states) was deleted in favour of intake.ts.
  */
-export function industryLabel(industry: Industry | null): string {
-  if (industry === "landscaping") return "landscaping";
-  if (industry === "home_builder") return "home building";
-  return "landscaping or home building";
+/**
+ * How a search names the verticals it covered, for the folder title.
+ *
+ * Two verticals were hardcoded and everything else fell through to the string
+ * "landscaping or home building" — so a search for manufacturing produced a
+ * folder called "landscaping or home building companies in Texas". The folder
+ * title is how a search is identified for the rest of its life, and it was
+ * confidently naming the wrong trade.
+ *
+ * A list, because a search can now cover several. Three or more are counted
+ * rather than listed: "landscaping, home building, construction, specialty
+ * trades and manufacturing companies in Texas" is not a title anyone can scan.
+ */
+export function industryLabel(industries: Industry[] | Industry | null): string {
+  const list = Array.isArray(industries) ? industries : industries ? [industries] : [];
+  if (list.length === 0) return "family-owned";
+  const names = list.map((i) => INDUSTRY_META[i]?.label.toLowerCase() ?? i);
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names.length} verticals of`;
 }
