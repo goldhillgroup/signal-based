@@ -70,6 +70,23 @@ const MIN_LIVE_READS = 40;
  * behaviour on day one anyway.
  */
 export async function channelRates(): Promise<Record<Channel, number>> {
+  return (await channelEvidence()).rates;
+}
+
+/**
+ * Rates AND how many observations stand behind them.
+ *
+ * The count is what lets exploration shrink. A fixed 25% reserve is right on
+ * day one and wasteful once the answer is known: measured across 852 of this
+ * installation's own reads, web search returns a confirmed pair once in 28
+ * companies, Maps once in 152, and the directory channel has produced ZERO in
+ * 106. Spending a quarter of every batch re-establishing that is not
+ * exploration, it is a subsidy.
+ */
+export async function channelEvidence(): Promise<{
+  rates: Record<Channel, number>;
+  observations: number;
+}> {
   const out = {} as Record<Channel, number>;
   for (const k of Object.keys(SEED) as Channel[]) out[k] = rate(SEED[k]);
 
@@ -80,7 +97,7 @@ export async function channelRates(): Promise<Record<Channel, number>> {
       .select("discovery_channel, has_signal")
       .not("discovery_channel", "is", null)
       .limit(5000);
-    if (!data?.length) return out;
+    if (!data?.length) return { rates: out, observations: 0 };
 
     const live: Partial<Record<Channel, { reads: number; signals: number }>> = {};
     for (const row of data) {
@@ -90,13 +107,40 @@ export async function channelRates(): Promise<Record<Channel, number>> {
       live[c]!.reads++;
       if (row.has_signal) live[c]!.signals++;
     }
+    let observed = 0;
     for (const [c, obs] of Object.entries(live) as [Channel, { reads: number; signals: number }][]) {
+      observed += obs.reads;
       if (obs.reads >= MIN_LIVE_READS) out[c] = rate(obs);
     }
+    return { rates: out, observations: observed };
   } catch {
     // seeds stand
   }
-  return out;
+  return { rates: out, observations: 0 };
+}
+
+/**
+ * How much of a batch to spend on channels that are NOT top-ranked.
+ *
+ * Decays from a quarter to a twelfth as this installation's own evidence
+ * accumulates. The floor is deliberately not zero and never will be: the
+ * ordering is otherwise self-fulfilling — a channel that has an unlucky week
+ * sinks, stops being classified, stops generating evidence, and can never
+ * recover however good it actually is. A twelfth is enough to keep every
+ * channel earning observations while the leader takes the rest.
+ *
+ * HALF_LIFE is where the reserve sits midway between the two. 400 reads is
+ * roughly two full searches at the current ceiling, which is about when the
+ * per-channel numbers stopped moving in practice.
+ */
+const EXPLORE_MAX = 0.25;
+const EXPLORE_MIN = 1 / 12;
+const HALF_LIFE = 400;
+
+export function explorationFor(observations: number): number {
+  if (observations <= 0) return EXPLORE_MAX;
+  const decay = HALF_LIFE / (HALF_LIFE + observations);
+  return EXPLORE_MIN + (EXPLORE_MAX - EXPLORE_MIN) * decay;
 }
 
 /**

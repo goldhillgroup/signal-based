@@ -1211,11 +1211,32 @@ export async function discoverCandidates(params: {
   const mapsGroup = (round - 1) % groups.length;
   const perGroupLimit = Math.max(1, Math.ceil(limit / share));
 
+  // BUYING IS WEIGHTED, NOT EQUAL.
+  //
+  // Every channel used to buy the same perGroupLimit, and only the READ order
+  // was yield-aware. That is half a fix: a buffer stuffed with candidates from
+  // a channel that never produces pairs still costs the discovery calls that
+  // found them, and still has to be drained eventually.
+  //
+  // Measured on 852 of this installation's own reads:
+  //   web_search   441 read ->  16 pairs   1 in 28
+  //   maps         303 read ->   2 pairs   1 in 152
+  //   directory    106 read ->   0 pairs   never
+  //
+  // So web search buys deeper and the other two buy a floor. NOT zero, for the
+  // reason channel-priors gives: a channel with no candidates generates no
+  // evidence and can never recover from a bad run. Maps also earns its floor
+  // twice over — it is the only channel that returns a phone number and an
+  // address with the listing, and it finds companies that FIT even when they
+  // show no pair.
+  const deepLimit = Math.max(1, Math.ceil(perGroupLimit * 1.5));
+  const floorLimit = Math.max(1, Math.floor(perGroupLimit * 0.5));
+
   const settled = await Promise.allSettled(
     groups.flatMap((group, g) => [
-      discoverViaDirectories(industries[0] ?? null, group, perGroupLimit, round),
-      discoverViaLicensing(industries[0] ?? null, group, perGroupLimit, round),
-      discoverViaWebSearch(industries, group, perGroupLimit, round, share, refinement),
+      discoverViaDirectories(industries[0] ?? null, group, floorLimit, round),
+      discoverViaLicensing(industries[0] ?? null, group, floorLimit, round),
+      discoverViaWebSearch(industries, group, deepLimit, round, share, refinement),
       // MAPS RUNS FOR ONE STATE PER ROUND, rotating — the other channels run
       // for all of them. Splitting the maps budget four ways instead would
       // put every call under PER_TERM_MIN, and the floor there would quietly
@@ -1225,7 +1246,7 @@ export async function discoverCandidates(params: {
       // low-yield backstop channel needs. share is 1 because this call now
       // owns the entire budget rather than a slice of it.
       g === mapsGroup
-        ? discoverViaMaps(industries, group, perGroupLimit, round)
+        ? discoverViaMaps(industries, group, floorLimit, round)
         : Promise.resolve([] as Candidate[]),
     ])
   );

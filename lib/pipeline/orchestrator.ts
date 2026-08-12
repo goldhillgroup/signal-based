@@ -9,7 +9,7 @@ import { extractEmails, bestEmailFor, type FoundEmail, bestPhoneFor, isSharedInb
 import { callableName, cleanPersonName, cleanRevenueBand, cleanTitle, earnedConfidence } from "../lead-signal";
 import { buildWarningLine } from "./channel-health";
 import { INDUSTRY_META } from "../signal-meta";
-import { channelRates, orderByYield } from "./channel-priors";
+import { channelEvidence, explorationFor, orderByYield } from "./channel-priors";
 import { runWithCounters, estimateUsd, describeCost, type CostCounters } from "./cost-tracker";
 
 // Contact enrichment (Anymailfinder + MillionVerifier) lives in
@@ -703,7 +703,12 @@ export async function runSearchPipeline(
 
     // Per-channel signal rates: this installation's own history where it has
     // enough, the measured seeds otherwise. Read once per run, not per round.
-    const rates = await channelRates();
+    // Rates AND how much evidence stands behind them: the exploration reserve
+    // shrinks as this installation accumulates its own reads, so a batch stops
+    // spending a quarter of itself re-establishing that the directory channel
+    // has produced zero pairs in 106 companies. See explorationFor.
+    const { rates, observations } = await channelEvidence();
+    const explore = explorationFor(observations);
 
     let discoveryCalls = rotationSeed; // drives metro/state rotation, NOT the same as classify rounds
     let poolDry = false;
@@ -788,7 +793,7 @@ export async function runSearchPipeline(
           // dropped — the scan ceiling is simply spent on the most promising
           // candidates first, which is where the 7x difference between
           // web_search and maps actually turns into signals.
-          pending.splice(0, pending.length, ...orderByYield(pending, rates));
+          pending.splice(0, pending.length, ...orderByYield(pending, rates, explore));
           totalDiscovered += fresh.length;
           await bump(supabase, searchId, { candidates_found: totalDiscovered });
 
