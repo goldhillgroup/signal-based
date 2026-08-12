@@ -12,6 +12,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { isJunkDomain, isBlocked } from "../lib/pipeline/apify.js";
 import { UNIT_USD } from "../lib/pipeline/pricing.js";
+import { isWrongKindOfBusiness } from "../lib/pipeline/recheck-policy.js";
 
 test("skips domains that are plainly not an operating trade business", () => {
   for (const d of [
@@ -74,4 +75,26 @@ test("nothing empty or malformed is treated as junk", () => {
   for (const d of ["", null, undefined]) {
     assert.equal(isJunkDomain(d as unknown as string), false);
   }
+});
+
+test("an export never contains what the page refuses to show", () => {
+  // The folder exported EVERY row, including the ones hidden from the "Not a
+  // fit" tab for being a different kind of business. The tab read "Not a fit
+  // 39" while the button beside it offered "67 not a fit", and the sheet had
+  // 28 funeral homes in it that the product had already decided were not worth
+  // his attention. A hidden row is hidden everywhere or nowhere.
+  const rows = [
+    { status: "qualified", rejectionReason: null },
+    { status: "rejected", rejectionReason: "Only one generation is on the leadership page." },
+    { status: "rejected", rejectionReason: "This is a funeral home, not a landscaping company." },
+    { status: "rejected", rejectionReason: "A local newspaper's opinion site." },
+  ];
+  const exportable = rows.filter(
+    (c) => c.status !== "rejected" || !isWrongKindOfBusiness(c.rejectionReason)
+  );
+  assert.equal(exportable.length, 2, "the funeral home and the newspaper must not be exported");
+  assert.ok(
+    exportable.some((r) => /only one generation/i.test(r.rejectionReason ?? "")),
+    "an ARGUABLE cut must still be exported — that is the point of showing it"
+  );
 });

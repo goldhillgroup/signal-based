@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { isWrongKindOfBusiness } from "@/lib/pipeline/recheck-policy";
 import Link from "next/link";
 import { Company } from "@/lib/company";
 import { SearchFolder, useSearches } from "@/lib/searches-store";
@@ -105,6 +106,25 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
   }
 
 
+  // Everything on the page: the leads plus the cuts worth arguing with.
+
+
+  // Excludes the ones hidden from the "Not a fit" tab as a different kind
+
+
+  // of business, so an export cannot contain what the UI refuses to show.
+
+
+  const exportable = companies.filter(
+
+
+    (c) => c.status !== "rejected" || !isWrongKindOfBusiness(c.rejectionReason)
+
+
+  );
+
+
+
   const stats = useMemo(() => getSummaryStats(companies), [companies]);
   const industryRows = useMemo(
     () =>
@@ -195,22 +215,30 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
           <div>
             <h1 className="font-display text-2xl font-semibold text-gh-ink">{folder.label}</h1>
             <p className="mt-1 text-sm text-gh-ink-secondary">&ldquo;{folder.query}&rdquo;</p>
+            {/* EXPORTS WHAT THE PAGE SHOWS.
+                It exported every row, including the ones deliberately hidden
+                from the "Not a fit" tab for being a different KIND of business
+                — funeral homes, newspapers, obituary sites. So the tab read
+                "Not a fit 39" while the button beside it offered "67 not a
+                fit", and the sheet Jonathan opened had 28 funeral homes in it
+                that the product had already decided were not worth his
+                attention. A hidden row is hidden everywhere or nowhere. */}
             <button
               type="button"
-              onClick={() => downloadCompaniesCsv(companies, folder.label)}
+              onClick={() => downloadCompaniesCsv(exportable, folder.label)}
               className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-gh-border bg-gh-surface px-3 py-1.5 text-xs font-semibold text-gh-ink-secondary transition-colors hover:border-gh-sky/40 hover:text-gh-ink"
             >
               <DownloadIcon className="h-3.5 w-3.5" />
-              Download {companies.length} rows (CSV)
-              {companies.length !== stats.accepted && (
+              Download {exportable.length} rows (CSV)
+              {exportable.length !== stats.accepted && (
                 <span className="font-normal text-gh-ink-muted">
-                  {stats.accepted} leads + {companies.length - stats.accepted} not a fit
+                  {stats.accepted} leads + {exportable.length - stats.accepted} not a fit
                 </span>
               )}
             </button>
             {/* Beside the CSV, not instead of it. The download is the archive;
                 this is the one you use when a sheet is already open. */}
-            <SheetsButton companies={companies} className="mt-2 ml-2" />
+            <SheetsButton companies={exportable} className="mt-2 ml-2" />
           </div>
           <div className="text-right">
             <p className="text-xs text-gh-ink-muted">
