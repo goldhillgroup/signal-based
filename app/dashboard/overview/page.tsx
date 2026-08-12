@@ -39,7 +39,24 @@ async function getCounts() {
   // not that, however real it is to the crawler.
   const attached = () => supabase.from("companies").select("*", head).not("search_id", "is", null);
 
-  const [searches, scanned, icpFit, signals, contacts, costs] = await Promise.all([
+  // HAND-AUDITED ROWS ARE EXCLUDED FROM THE RATE, and this is the number that
+  // most flattered itself.
+  //
+  // "Hit rate — companies read per signal" counted Jonathan's own 28
+  // hand-verified leads among the signals while counting the 67 companies of
+  // his proof list among those read. The crawler never read any of them: he
+  // did, by hand, before it existed. Mixing his work into a measurement of the
+  // machine's showed 1 in 12 where the machine's real figure is 1 in 47 — the
+  // headline stat on the first page anyone opens, overstating the product by
+  // roughly four times.
+  //
+  // Everything else on this page still counts them, correctly: they ARE leads,
+  // they ARE reachable, and he should see them. Only the rate is a claim about
+  // how well the crawler performs, and only the crawler belongs in it.
+  const crawled = () => attached().neq("discovery_channel", "hand_audit");
+
+  const [searches, scanned, icpFit, signals, contacts, costs, crawledRead, crawledSignals] =
+    await Promise.all([
     supabase.from("searches").select("*", head),
     attached(),
     attached().eq("status", "qualified"),
@@ -55,6 +72,8 @@ async function getCounts() {
       .not("companies.search_id", "is", null),
     // Not head-only — this one needs the values, not the count.
     supabase.from("searches").select("cost_estimate_usd"),
+    crawled(),
+    crawled().eq("has_signal", true),
   ]);
 
   const spent = (costs.data ?? []).reduce(
@@ -74,6 +93,8 @@ async function getCounts() {
     scanned: scanned.count ?? 0,
     icpFit: icpFit.count ?? 0,
     signals: signals.count ?? 0,
+    crawledRead: crawledRead.count ?? 0,
+    crawledSignals: crawledSignals.count ?? 0,
     contacts: contacts.count ?? 0,
     spent,
   };
@@ -81,9 +102,13 @@ async function getCounts() {
 
 
 export default async function OverviewPage() {
-  const [{ recent, searches, scanned, icpFit, signals, contacts, spent }, health, schedule] =
-    await Promise.all([getCounts(), readHarvestHealth(), getSchedule()]);
-  const rate = signals > 0 ? Math.round(scanned / signals) : null;
+  const [
+    { recent, searches, scanned, icpFit, signals, crawledRead, crawledSignals, contacts, spent },
+    health,
+    schedule,
+  ] = await Promise.all([getCounts(), readHarvestHealth(), getSchedule()]);
+  // The crawler's own rate. See getCounts for why the hand-audited list is out.
+  const rate = crawledSignals > 0 ? Math.round(crawledRead / crawledSignals) : null;
 
   return (
     <div className="mx-auto max-w-4xl space-y-7">
@@ -138,7 +163,7 @@ export default async function OverviewPage() {
             label: "Hit rate",
             value: rate ?? 0,
             prefix: "1 in ",
-            hint: rate ? "companies read per signal" : "no signals yet",
+            hint: rate ? "companies the crawler reads per signal" : "no signals yet",
             accent: "var(--gh-cat-2)",
           },
           {

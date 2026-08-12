@@ -30,7 +30,7 @@ const TARGET_OPTIONS = [5, 8, 10, 20, 50];
 // silently mishandled — a multi-state request, a region, a metro — so the
 // examples double as a demonstration that those now work.
 const ASK_EXAMPLES = [
-  "Landscaping companies in Texas and Oklahoma, $3-15M",
+  "Landscaping and HVAC companies in Texas, $5-30M",
   "Family-owned home builders around the Bay Area",
   "Lawn care firms in the Southeast, 10 leads",
 ];
@@ -94,7 +94,7 @@ export function SearchHome({
   const willRead = scansFor(target, seekingSignals);
   const perPass = companiesPerPass(RUN_CEILING_MS);
   // Opens on the band saved as the ideal client, not a hardcoded 0. The
-  // baseline still IS $3-15M — that is DEFAULT_ICP — but it is now one place
+  // baseline is now $5-15M (the ICP sweet spot) — that is DEFAULT_ICP — one place
   // Jonathan can change rather than three that have to be kept in step.
   const [bandIdx, setBandIdx] = useState(() =>
     bandIndexFor(icp.revenueMinMusd, icp.revenueMaxMusd)
@@ -247,7 +247,7 @@ export function SearchHome({
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) parse();
           }}
           rows={3}
-          placeholder="e.g. Family-owned landscaping companies in Texas and Oklahoma doing $3-15M…"
+          placeholder="e.g. Family-owned HVAC and landscaping companies in Texas doing $5-30M…"
           className="w-full resize-none rounded-lg border border-gh-border bg-gh-surface-sunken px-3 py-2.5 text-sm text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none focus:ring-2 focus:ring-gh-sky/20"
         />
         <div className="mt-2 flex flex-wrap gap-1.5">

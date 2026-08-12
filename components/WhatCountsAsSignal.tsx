@@ -47,7 +47,7 @@ export function WhatCountsAsSignal({ compact = false }: { compact?: boolean }) {
       {!compact && (
         <p className="mt-2.5 text-[11px] leading-relaxed text-gh-ink-secondary">
           Both, in the company&rsquo;s own words, quoted so you can check it.
-          Roughly one company in thirty-seven.
+          Roughly one company in forty.
         </p>
       )}
     </div>
