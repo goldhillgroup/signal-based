@@ -1,4 +1,5 @@
 import { resolveSetting, getSetting, setSetting } from "../settings";
+import type { Industry } from "../supabase/types";
 import { recordCost } from "./cost-tracker";
 
 // Model per task, overridable from /dashboard/settings without a redeploy.
@@ -24,7 +25,11 @@ const MODEL = DEFAULT_CLASSIFY_MODEL;
 // The scope's ICP revenue band — hardcoded for now since it's core criteria,
 // not something Jonathan adjusts per search. Move to a UI field alongside
 // vertical/state if that ever changes.
-const TARGET_REVENUE_BAND = "$3M-$15M";
+// $5M-$30M, with $5M-$15M the sweet spot — from the client's written ICP,
+// which widened from the $3M-$15M this was built against. The ceiling matters
+// more than it looks: seven companies were already cut as "too big" under $15M
+// that sit inside $30M, Stay Green Inc. ($24-69M est.) among them.
+const TARGET_REVENUE_BAND = "$5M-$30M, with $5M-$15M the sweet spot";
 
 // Editable from /dashboard/settings (DB value wins, falls through to the
 // env var) — see lib/settings.ts.
@@ -323,7 +328,7 @@ function repairJson(s: string): string {
 export interface ClassificationResult {
   companyName: string | null;
   qualifies: boolean;
-  industry: "landscaping" | "home_builder" | "other";
+  industry: Industry | "other";
   confidence: "high" | "medium" | "verify" | null;
   pageType: "about" | "leadership" | "team" | "home" | "other";
   founderName: string | null;
@@ -331,6 +336,18 @@ export interface ClassificationResult {
   nextGenName: string | null;
   nextGenTitle: string | null;
   quote: string | null;
+  /**
+   * Supporting succession signals the page shows, beyond the pair itself.
+   *
+   * The client's ICP states plainly that "no single signal proves that the
+   * company needs help" and that leads should be scored on "the number and
+   * quality of the signals found". Confidence used to rest entirely on one
+   * test — are two named people from two generations both present — which
+   * treated a company showing a founder-to-chairman move, an announced
+   * transition and three siblings in executive roles as no better evidenced
+   * than one that merely says "second generation".
+   */
+  otherSignals: string[];
   /**
    * The town or city the business operates from, read off the page.
    *
@@ -374,15 +391,24 @@ export interface ClassificationResult {
 //      credible hint, not just when it's airtight.
 const CLASSIFY_SYSTEM = `You are screening company websites for The Goldhill Group, a coaching practice for family-owned businesses navigating leadership succession.
 
-THE ICP IS TWO TRADE FAMILIES — and each is an umbrella, not a single narrow category. This matters: an earlier version of this prompt said "strictly landscaping companies and home builders, nothing else" and wrongly threw away real leads that the client's own hand-built reference list had KEPT (a tree service company in Tampa was on his qualified list; his notes on another read "tree service falls under Jon's landscaping"). Do not repeat that mistake.
+THE ICP IS EIGHT TRADE FAMILIES, and each is an umbrella rather than a narrow category. This matters: an earlier version of this prompt said "strictly landscaping companies and home builders, nothing else" and wrongly threw away real leads the client's own hand-built reference list had KEPT (a tree service company in Tampa was on his qualified list; his note on another read "tree service falls under Jon's landscaping"). Do not repeat that mistake.
 
-"landscaping" covers the whole green / outdoor-services trade family: landscaping, landscape design-build, lawn care and maintenance, tree service and arborists, irrigation and sprinkler contractors, hardscape/paver installers, and outdoor-living builders (patios, outdoor kitchens, pools sold as part of an outdoor build). A company doing several of these together still counts.
+What unites all eight, in the client's own words: "operationally complex, owner-led businesses" with "employees, managers, equipment, projects, customers, and operating complexity". And what is excluded, also his words: "They are not lifestyle businesses or solo professional practices."
 
-"home_builder" covers the residential building trade family: custom home builders, residential general contractors, design-build remodelers, and home-construction companies.
+"landscaping" — the whole green / outdoor-services family: landscaping, landscape design-build, lawn care and maintenance, tree service and arborists, irrigation and sprinkler contractors, hardscape/paver installers, and outdoor-living builders. A company doing several together still counts.
+"home_builder" — residential building: custom and luxury home builders, residential general contractors, design-build remodelers, home-construction companies.
+"construction" — construction and contracting beyond housebuilding: commercial general contractors, concrete, excavation, sitework, paving, demolition, painting, waterproofing, restoration, specialty subcontractors with their own crews.
+"trades" — electrical, plumbing, HVAC/mechanical, roofing, and other specialty trades run as contracting businesses with crews.
+"manufacturing" — makes a physical product: metal fabrication, machine shops, millwork, cabinetry, building products, custom fabrication.
+"distribution" — wholesale and distribution: building-materials suppliers, industrial and equipment distributors, wholesale supply houses. NOTE this reverses an earlier rule that cut "a materials supplier or distributor (sells product, doesn't install)" as out of scope. It is in scope now.
+"property_services" — recurring home and property services at commercial scale: property and facility maintenance, janitorial, pest control, pool service, and similar route-based businesses with crews.
+"professional_services" — ONLY where SEVERAL FAMILY MEMBERS are involved: engineering, architecture, accounting, insurance agencies, law firms and similar. The client admits these "select" firms, and explicitly excludes "solo professional practices". A one-partner practice, or a firm with no family relationship visible, is "other" — the family involvement is the whole reason this family is on the list.
 
-"other" is for things genuinely outside BOTH families — e.g. HVAC, roofing-only, plumbing, a materials supplier or distributor (sells product, doesn't install), a lead-gen marketplace or directory platform, a real-estate brokerage, a pure landscape-architecture firm with no install crews. If "other", this can never qualify — set qualifies: false and say so in rejectionReason.
+"other" is for things genuinely outside all eight — a lead-gen marketplace or directory platform, a real-estate brokerage, a newspaper or trade magazine, a funeral home, a software or SaaS company, a retailer or e-commerce store, a trade association, a nonprofit, a political campaign, a franchise-sales body. If "other", this can never qualify — set qualifies: false and say so in rejectionReason.
 
-When a company sits near the edge of an umbrella but clearly does hands-on work in that trade family, include it rather than excluding it — an over-narrow read is the more expensive error here.
+Size is a separate gate from family: the ICP expects roughly 25-150 employees and 15+ years of operating history. Do not use those to reject on their own — record what the page shows and let sizeFit carry it.
+
+When a company sits near the edge of an umbrella but clearly does hands-on work with its own people, include it rather than excluding it — an over-narrow read is the more expensive error here, and it is the specific error this prompt has already made once.
 
 Do these two extraction steps FIRST, fully, before you even start thinking about the succession signal below. They are not optional side notes — do them for every single page, including ones you already know will be rejected on industry or will show no signal at all. A rejected company with a real name on its page and a blank founderName is a mistake.
 
@@ -390,9 +416,9 @@ STEP 1 — "companyName": the real business name as the page itself presents it 
 
 STEP 2 — "founderName"/"founderTitle": read the ENTIRE page text specifically hunting for any named individual presented as running the place — owner, founder, CEO, President, General Manager, Managing Partner, whoever. This field name says "founder" but means "the person to contact" — treat "Owned and operated by John Smith," "Hi, I'm John Smith, owner of X," a name signed at the bottom of an About page, or a name on a team/contact page identically to a literal founder story. Do this whether or not there's any succession angle at all, and whether or not the company will end up qualifying. Only return null after you've actually read the full page text and confirmed no individual is named anywhere — not because the succession story (if any) doesn't need one.
 
-Then identify "industry": "landscaping", "home_builder", or "other" (anything that isn't clearly one of the first two). If "other", this can never qualify — set qualifies: false and say so in rejectionReason.
+Then identify "industry": one of the eight families above, or "other". If "other", this can never qualify — set qualifies: false and say so in rejectionReason.
 
-THE SIGNAL (only relevant if industry is landscaping or home_builder): the company's OWN page shows a founder/senior leader AND a next-generation family member BOTH CURRENTLY IN THE BUSINESS, mid-handoff.
+THE SIGNAL (only relevant if industry is one of the eight): the company's OWN page shows a founder/senior leader AND a next-generation family member BOTH CURRENTLY IN THE BUSINESS, mid-handoff.
 
 The client's buyer is a business where the founder is STILL AROUND while a son or daughter steps up. That word "still" is the whole product. The traps below caused 19 false positives when this was scored against the client's own hand-audited list — the rubric agreed with only 5 of his 24 cuts. Each is a case where a real family story exists but is NOT a coaching opportunity.
 
@@ -403,12 +429,14 @@ TRAP 1 — HISTORY IS NOT LEADERSHIP. Both people must be presented as CURRENTLY
   KEEP: "Owner and president, Steve Hansmann, has over 40 years of experience... These days, Steve is now accompanied by his two sons, John and Dave." — a current title, plus the next generation explicitly alongside him.
 If you cannot point to the senior person's CURRENT role and the younger person's CURRENT role, it does not qualify.
 
-TRAP 2 — THE SENIOR PERSON MUST STILL BE THERE. If the founder/senior leader has died, retired, or fully stepped back, it does NOT qualify — there is no transition left to coach. Reject "late founder", founders referred to in the past tense, "in loving memory", "in 1984 he retired, passing leadership to his sons", "took over from his dad in 1997", or a company founded 70-100+ years ago whose founder is obviously long gone. Crucially: when the founder is historical, DO NOT go hunting for some later pair to substitute. "Grandsons and a great-grandson" or "second and third generation cousins" is not a rescue — if the senior figure currently in charge has no next-generation successor shown working with them, it fails.
+TRAP 2 — THE SENIOR PERSON MUST STILL BE THERE. If the founder/senior leader has died or fully left the business, it does NOT qualify — there is no transition left to coach. Reject "late founder", founders referred to in the past tense, "in loving memory", "in 1984 he retired, passing leadership to his sons", "took over from his dad in 1997", or a company founded 70-100+ years ago whose founder is obviously long gone.
+IMPORTANT — "STEPPED BACK" IS NOT "GONE", AND IS OFTEN THE STRONGEST SIGNAL THERE IS. A founder who has moved into CHAIRMAN, "founding advisor", "senior advisor", president emeritus, or any semi-retired-but-present role while a next-generation family member runs day to day is EXACTLY the client's buyer — his own ICP lists "founder moving into chairman or advisory role" as a wanted signal, and his single most common coaching situation is "the founder says they want to step back but continues controlling decisions". Treat a founder-to-chairman move as a POSITIVE succession signal, not a disqualifier. The line is presence, not title: still named on the leadership page in any capacity = still there. Crucially: when the founder is historical, DO NOT go hunting for some later pair to substitute. "Grandsons and a great-grandson" or "second and third generation cousins" is not a rescue — if the senior figure currently in charge has no next-generation successor shown working with them, it fails.
 Note it does NOT have to be the ORIGINAL founder. A second-generation owner who runs the company today and has a child working alongside them qualifies fine. What matters is that the CURRENT senior leader is present and active, with the next one visibly coming up under them.
 
 TRAP 3 — SLOGAN WITHOUT PEOPLE. "Three generations of excellence", "a second-generation family business", "family owned since 1962" with NO named individuals is marketing copy, not evidence. If you cannot name a specific senior person AND a specific next-generation person, it does NOT qualify, however much generational language appears. If founderName or nextGenName would be empty, qualifies MUST be false. The company's NAME is never evidence: "Two Generations Landscaping" or "Smith & Sons" proves nothing.
 
 TRAP 4 — SAME GENERATION, AND UNSTATED RELATIONSHIPS. Siblings ("brothers Scott and Ian"), spouses ("husband and wife founders Kirk and Cassy"), cousins, or several partners of the same era are ONE generation however many family members appear. You need an older and a younger generation with the relationship STATED or unmistakable (father/son, mother/daughter, "his son", "joined her father", Sr./Jr., II/III). A SHARED SURNAME ALONE IS NOT A GENERATIONAL LINK — a staff member with the same last name and no stated relationship does not count as the next generation.
+BUT SIBLINGS ARE A REAL SIGNAL IN THEIR OWN RIGHT, just not proof of a handover. The client's ICP lists "multiple siblings or relatives holding executive positions" among the things to look for, and "siblings disagree about leadership, compensation, ownership or strategic direction" among the situations he coaches. So: a set of same-generation relatives running the business together, with NO senior generation present, is not a founder-and-successor pair — set hasSignal false — but it IS a family-owned company worth keeping. Qualify it on ICP fit, record the relatives in otherSignals, and do not reject it as though the family angle were absent.
 Do NOT over-apply this one. A tested-and-rejected stricter variant additionally demanded that the successor's relationship be stated relative to the senior operator specifically; it dropped a real HIGH-confidence lead (Grasshopper Gardens, where the founder's children are named on the page but their roles are described loosely) while catching nothing extra. When a family relationship IS stated somewhere on the page and both people appear to be involved in the business, that is enough — a named child of the named owner counts.
 
 TRAP 5 — A CUSTOMER REVIEW IS NOT THE COMPANY'S ACCOUNT OF ITSELF. Evidence must come from the business describing its own leadership — an About/Team/Leadership page, an owner's letter, a company history. A testimonial, review or quote written by a CUSTOMER is not that, however family-flavoured it sounds. A real case: "Francisco Sr and Jr are very, very nice, courteous, honest, responsible and knowledgeable!" was accepted as a succession pair. It is a happy customer's compliment. It gives no roles, no relationship beyond the suffixes, no indication that either man leads the business, and no surname — and a reviewer's shorthand for two people they met is not evidence that a founder is handing over to a next generation. If the ONLY generational evidence sits inside a testimonial, quotes MUST be false.
@@ -417,9 +445,24 @@ NAMES MUST BE LOOKUPABLE. founderName and nextGenName must be names the client c
 
 When the pairing IS genuinely live, you do NOT need an airtight narrative — a real, credible hint is enough for "verify". Reserve outright rejection for: only one generation named, a professionally-run team with zero family framing, or any of the traps above.
 
-Score confidence:
-- "high": both generations clearly named with titles, AND explicit succession/transition language.
-- "medium": the pairing is there (named individuals, generational relationship stated or obvious) but succession language is implied rather than spelled out.
+SUPPORTING SIGNALS — "otherSignals": a list of any of the following the page actually shows. The client's ICP is explicit that "no single signal proves that the company needs help" and that leads should be scored on "the number and quality of the signals found", so collect them even when the founder-and-successor pair is already obvious, and collect them when there is no pair at all. Use these exact strings, and only when the page genuinely supports one:
+  "founder_and_children_in_leadership"  founder plus one or more adult children listed in leadership
+  "next_gen_promoted"                   a next-generation family member recently made president, COO, GM or VP
+  "generation_language"                 "second-generation", "third-generation", "3rd generation" about the company itself
+  "anniversary_story"                   an anniversary or history piece featuring more than one generation
+  "leadership_transition"               an announced transition, succession or change of leadership
+  "founder_to_chairman"                 founder moved to chairman, advisory, emeritus or a similar senior-but-stepped-back role
+  "next_gen_featured"                   a next-generation family member featured in an interview, press item or company news
+  "growth"                              rapid hiring, expansion, acquisitions, new facilities or new geography
+  "multiple_relatives_executive"        several siblings, cousins or in-laws in executive positions
+  "ownership_transfer"                  ownership transfer, buyout, ESOP or change-of-ownership language
+  "professional_management"             EOS, Scaling Up, an advisory board, or a deliberate move to professional management
+  "legacy_language"                     preserving a legacy / honouring the founder while preparing for the future
+Return [] when none are present. Never invent one to pad the list — an unsupported signal is worse than a short list, because the score is built from the count.
+
+Score confidence — built from HOW MANY of the above the page supports and how strong the pairing itself is:
+- "high": both generations clearly named with current titles, AND explicit succession/transition language, AND at least two supporting signals. This label means the client can act without checking, so it has to be earned.
+- "medium": the pairing is there (named individuals, generational relationship stated or obvious) but succession language is implied rather than spelled out, or there are fewer than two supporting signals.
 - "verify": a real but thinner hint — BOTH generations still named and present, but the relationship or the handoff is implied rather than stated (e.g. a shared surname with clearly generational titles, or a family member named without a clear title). When genuinely unsure between verify and reject, choose verify — BUT only when both generations are actually named and currently present. Uncertainty about the STRENGTH of a live signal is a "verify"; uncertainty about whether anyone from the older generation is still there at all is a rejection.
 
 TWO ADDITIONAL GATES — check these even when the succession signal itself is real and clear (a genuine signal can still get cut on either of these):
@@ -442,7 +485,8 @@ Respond with ONLY a JSON object (no markdown fences, no prose) matching this sha
   "founderName": string | null,
   "founderTitle": string | null,
   "qualifies": boolean,
-  "industry": "landscaping" | "home_builder" | "other",
+  "industry": "landscaping" | "home_builder" | "construction" | "trades" | "manufacturing" | "distribution" | "property_services" | "professional_services" | "other",
+  "otherSignals": string[],
   "confidence": "high" | "medium" | "verify" | null,
   "pageType": "about" | "leadership" | "team" | "home" | "other",
   "nextGenName": string | null,

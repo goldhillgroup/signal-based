@@ -35,9 +35,18 @@ check("This is a trade publication, not a single business.", null);
 check("A real-estate brokerage, not a builder.", null);
 
 // ── Wrong TRADE — must now schedule, not blacklist ────────────────────────
-check("Outside the landscaping/home-builder ICP entirely — HVAC contractor.", 545);
-check("Not a landscaping company — roofing only.", 545);
-check("A materials supplier — sells product, doesn't install.", 545);
+// HVAC, roofing, plumbing and "materials supplier" USED to live here. They
+// are gone on purpose: the client's updated ICP names "electrical, plumbing,
+// HVAC, and specialty trades" and "distribution" as target verticals, so a
+// company cut with those words is no longer a wrong-trade verdict at all and
+// must not be handed an 18-month timeout on the strength of a stale rule.
+check("Outside both target trade families — this is a pet grooming salon.", 545);
+check("Not a landscaping company — outside the ICP entirely.", 545);
+
+// The trades the ICP now WANTS fall through to the ordinary 90-day rule,
+// which is the honest answer: nothing about the trade disqualifies them.
+check("Wrong industry — an HVAC contractor.", 545);
+check("A materials supplier — sells product, doesn't install.", 90);
 
 // ── The signal rule: THE one that changes, must stay at 90 ────────────────
 check("Cut — only one generation is on the leadership page.", 90);
@@ -88,9 +97,9 @@ function is(label: string, got: unknown, want: unknown) {
 // --- scope classification, on real rejection strings ---
 is("marketplace is global", rejectionScope("Not a real company — a lead-gen marketplace."), "global");
 is("wrong trade is industry", rejectionScope("Outside the landscaping ICP — this is an HVAC contractor."), "industry");
-is("supplier is industry", rejectionScope("Wrong industry — a materials supplier, not an installer."), "industry");
-is("too small is size", rejectionScope("Too small — reads below the $3M lower bound set for this search."), "size");
-is("too big is size", rejectionScope("Too big — reads above the $15M upper bound set for this search."), "size");
+is("wrong-industry wording is still industry-scoped", rejectionScope("Wrong industry — a pet grooming salon, not an installer."), "industry");
+is("too small is size", rejectionScope("Too small — reads below the $5M lower bound set for this search."), "size");
+is("too big is size", rejectionScope("Too big — reads above the $30M upper bound set for this search."), "size");
 is("no successor is global", rejectionScope("Only the founder is named; no next-gen on the leadership page."), "global");
 is("fetch failure is global", rejectionScope("Page could not be fetched (404)."), "global");
 is("unknown wording defaults to global", rejectionScope("something nobody has written before"), "global");

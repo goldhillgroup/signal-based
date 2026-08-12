@@ -9,8 +9,14 @@ import type {
 // Goldhill-brand categorical palette, validated (dataviz skill): 2-slot order
 // passes every adjacent-pair + normal-vision check in light mode.
 export const INDUSTRY_META: Record<Industry, { label: string; color: string }> = {
-  landscaping: { label: "Landscaping", color: "var(--gh-cat-1)" }, // #2451a4
-  home_builder: { label: "Home Builder", color: "var(--gh-cat-3)" }, // #1b8a5a
+  landscaping: { label: "Landscaping", color: "var(--gh-cat-1)" },
+  home_builder: { label: "Home Builder", color: "var(--gh-cat-3)" },
+  construction: { label: "Construction", color: "var(--gh-cat-2)" },
+  trades: { label: "Specialty Trades", color: "var(--gh-cat-4)" },
+  manufacturing: { label: "Manufacturing", color: "var(--gh-cat-5)" },
+  distribution: { label: "Distribution", color: "var(--gh-cat-6)" },
+  property_services: { label: "Property Services", color: "var(--gh-cat-7)" },
+  professional_services: { label: "Professional Services", color: "var(--gh-cat-8)" },
 };
 
 // Confidence reuses the fixed status palette on purpose — it IS a status

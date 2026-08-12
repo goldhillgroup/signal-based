@@ -111,6 +111,46 @@ const VERTICAL_SEARCH_TERMS: Record<Industry, string[]> = {
     "home construction company",
     "design build remodeler",
   ],
+  construction: [
+    "commercial general contractor",
+    "concrete contractor",
+    "excavating contractor",
+    "paving contractor",
+    "site work contractor",
+  ],
+  trades: [
+    "electrical contractor",
+    "plumbing contractor",
+    "HVAC contractor",
+    "mechanical contractor",
+    "roofing contractor",
+  ],
+  manufacturing: [
+    "manufacturing company",
+    "metal fabrication company",
+    "machine shop",
+    "millwork manufacturer",
+    "custom fabrication company",
+  ],
+  distribution: [
+    "wholesale distributor",
+    "building materials supplier",
+    "industrial supply company",
+    "equipment distributor",
+  ],
+  property_services: [
+    "property maintenance company",
+    "facility services company",
+    "commercial cleaning company",
+    "pest control company",
+    "pool service company",
+  ],
+  professional_services: [
+    "family owned engineering firm",
+    "family owned accounting firm",
+    "family owned insurance agency",
+    "family owned architecture firm",
+  ],
 };
 
 function searchTermsFor(industry: Industry | null): string[] {
@@ -750,6 +790,129 @@ export const SUCCESSION_QUERY_SETS: Record<Industry, string[][]> = {
       '"legacy" family owned home builder "second generation" OR "third generation"',
     ],
   ],
+
+  // ── THE SIX VERTICALS ADDED WITH THE UPDATED ICP ────────────────────────
+  //
+  // Built to a different recipe from the two above, and deliberately so. The
+  // landscaping and home_builder sets hunt the language a company uses ABOUT
+  // ITSELF on its own About page ("second generation", "& sons").
+  //
+  // The updated ICP points somewhere else. More than half its twelve
+  // observable signals are things that get ANNOUNCED rather than described:
+  // "leadership-transition announcements", "next-generation family members
+  // featured in interviews or company news", "anniversary stories highlighting
+  // multiple generations", "founder moving into chairman or advisory role",
+  // "ownership-transfer indicators", "rapid hiring, expansion, acquisitions".
+  // Those live in local business journals and trade press, not on the About
+  // page — which is exactly the ground a plain web search reaches and Maps
+  // never does. Each set below therefore mixes one self-description query with
+  // two announcement-shaped ones.
+  construction: [
+    [
+      '"second generation" family owned construction OR "general contractor" company',
+      '"named president" OR "promoted to president" family construction company son OR daughter',
+      '"third generation" concrete OR excavating OR paving contractor family owned',
+    ],
+    [
+      '"joined his father" OR "joined her father" construction OR contracting company',
+      '"succeeds his father" OR "succeeds her father" construction company president',
+      '"family owned and operated since" general contractor OR construction company',
+    ],
+    [
+      '"& sons" OR "and sons" construction OR contracting company',
+      '"passing the torch" OR "leadership transition" family construction company',
+      '"my father started" OR "my grandfather started" construction company',
+    ],
+  ],
+  trades: [
+    [
+      '"second generation" family owned electrical OR plumbing OR HVAC contractor',
+      '"joined the family business" plumbing OR electrical OR heating company',
+      '"third generation" OR "3rd generation" HVAC OR plumbing OR electrical contractor',
+    ],
+    [
+      '"took over the family business" plumbing OR electrical OR HVAC company',
+      '"named president" OR "promoted to vice president" family plumbing OR electrical company',
+      '"son of founder" OR "daughter of founder" mechanical OR roofing contractor',
+    ],
+    [
+      '"& sons" plumbing OR electrical OR heating OR roofing company',
+      '"family owned and operated since" HVAC OR plumbing OR electrical contractor',
+      '"next generation" leadership plumbing OR electrical OR mechanical contractor',
+    ],
+  ],
+  manufacturing: [
+    [
+      '"second generation" family owned manufacturing OR "metal fabrication" company',
+      '"joined his father" OR "joined her father" manufacturing OR "machine shop" company',
+      '"third generation" family owned manufacturer OR millwork company',
+    ],
+    [
+      '"named president" OR "named chief executive" family manufacturing company son OR daughter',
+      '"celebrates 50 years" OR "celebrates 75 years" family owned manufacturing company',
+      '"took over the family business" manufacturing OR fabrication company',
+    ],
+    [
+      '"& sons" manufacturing OR fabrication OR "machine shop" company',
+      '"leadership transition" OR "succession plan" family owned manufacturer',
+      '"founder" "chairman" family manufacturing company son OR daughter president',
+    ],
+  ],
+  distribution: [
+    [
+      '"second generation" family owned distributor OR wholesale company',
+      '"third generation" "building materials" OR "industrial supply" family owned',
+      '"joined the family business" distribution OR wholesale company',
+    ],
+    [
+      '"named president" family owned distributor son OR daughter',
+      '"celebrates" anniversary family owned wholesale OR supply company generations',
+      '"took over the family business" supply OR distribution company',
+    ],
+    [
+      '"& sons" supply OR distributing OR wholesale company',
+      '"family owned and operated since" distributor OR "supply company"',
+      '"passing the torch" family owned distribution OR supply company',
+    ],
+  ],
+  property_services: [
+    [
+      '"second generation" family owned "property maintenance" OR "facility services" company',
+      '"joined his father" OR "joined her father" "pest control" OR janitorial OR "pool service" company',
+      '"third generation" family owned "pest control" OR cleaning OR maintenance company',
+    ],
+    [
+      '"took over the family business" "property services" OR janitorial OR "pest control" company',
+      '"named president" family owned facility OR maintenance services company',
+      '"family owned and operated since" "pest control" OR "pool service" OR janitorial company',
+    ],
+    [
+      '"& sons" "pest control" OR maintenance OR cleaning OR "pool service" company',
+      '"next generation" leadership property OR facility services company family',
+      '"my father started" "pest control" OR janitorial OR landscaping maintenance company',
+    ],
+  ],
+  professional_services: [
+    // The ICP admits these only where SEVERAL FAMILY MEMBERS are involved —
+    // "not lifestyle businesses or solo professional practices" — so every
+    // query here carries the family constraint rather than relying on the
+    // classifier to apply it after the crawl is paid for.
+    [
+      '"second generation" family owned engineering OR accounting OR insurance firm',
+      '"father and son" OR "father and daughter" engineering OR architecture firm principals',
+      '"joined the family firm" accounting OR insurance OR engineering practice',
+    ],
+    [
+      '"third generation" family owned insurance agency OR accounting firm',
+      '"named managing partner" OR "named president" family firm son OR daughter',
+      '"& sons" OR "& daughters" engineering OR insurance OR accounting firm',
+    ],
+    [
+      '"family owned and operated since" engineering OR insurance OR accounting firm',
+      '"succession" "family firm" engineering OR accounting principal retiring',
+      '"my father founded" engineering OR insurance OR architecture firm',
+    ],
+  ],
 };
 
 /**
@@ -770,6 +933,12 @@ function successionSetForRound(sets: string[][], round: number): string[] {
 const TRADE_TERMS: Record<Industry, string> = {
   landscaping: 'landscaping OR "tree service" OR irrigation OR "lawn care" company',
   home_builder: '"home builder" OR "custom homes" OR construction OR remodeling company',
+  construction: '"general contractor" OR concrete OR excavating OR paving OR "site work" company',
+  trades: 'electrical OR plumbing OR HVAC OR mechanical OR roofing contractor',
+  manufacturing: 'manufacturing OR "metal fabrication" OR "machine shop" OR millwork company',
+  distribution: 'wholesale OR distributor OR "building materials" OR "industrial supply" company',
+  property_services: '"property maintenance" OR "facility services" OR janitorial OR "pest control" company',
+  professional_services: 'engineering OR accounting OR insurance OR architecture firm "family owned"',
 };
 
 /**

@@ -368,6 +368,16 @@ const CSLB_UA =
 const CSLB_CLASSES: Record<Industry, string[]> = {
   landscaping: ["C-27"],
   home_builder: ["B-2"],
+  // The rest of the ICP's verticals mapped to CSLB's own classifications.
+  // Manufacturing, distribution and professional services are NOT licensed
+  // trades — an empty list means this channel simply skips them rather than
+  // guessing a code and returning somebody else's industry.
+  construction: ["C-8", "C-12"],
+  trades: ["C-10", "C-36", "C-20"],
+  manufacturing: [],
+  distribution: [],
+  property_services: ["C-55"],
+  professional_services: [],
 };
 
 /** One classification = one postback. See CSLB_CLASSES for why not batched. */
@@ -508,6 +518,13 @@ async function socrataQuery(
 const WA_SPECIALTY_LIKE: Record<Industry, string[]> = {
   landscaping: ["%LANDSCAP%", "%TREE%", "%IRRIGAT%"],
   home_builder: ["%GENERAL%", "%RESIDENTIAL%", "%FRAMING%"],
+  construction: ["%CONCRETE%", "%EXCAVAT%", "%PAVING%", "%SITE%"],
+  trades: ["%ELECTRIC%", "%PLUMB%", "%HVAC%", "%HEATING%", "%MECHANIC%", "%ROOF%"],
+  // Not construction trades, so the board has no classification for them.
+  manufacturing: [],
+  distribution: [],
+  property_services: ["%PEST%", "%POOL%"],
+  professional_services: [],
 };
 
 async function loadWashington(industry: Industry | null): Promise<LicenseRow[]> {

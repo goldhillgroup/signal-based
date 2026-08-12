@@ -1210,16 +1210,24 @@ export async function runSearchPipeline(
         // showing no number, while the page had it in the footer the whole
         // time. Places stays authoritative where it has one; this only fills a
         // blank, and costs nothing — the page is already fetched and paid for.
+        // Supporting signals, written best-effort for the same reason the phone
+        // is: the column needs a migration, and a company must never be LOST
+        // because one has not been applied yet.
+        const otherSignals = Array.isArray(classification.otherSignals)
+          ? classification.otherSignals.filter((v) => typeof v === "string" && v.length < 60).slice(0, 12)
+          : [];
+
         const pagePhone = candidate.phone ? null : bestPhoneFor(classifyText);
-        if (candidate.phone || candidate.address || pagePhone) {
-          const patch: { phone?: string; address?: string } = {};
+        if (candidate.phone || candidate.address || pagePhone || otherSignals.length) {
+          const patch: { phone?: string; address?: string; other_signals?: string[] } = {};
           if (candidate.phone || pagePhone) patch.phone = candidate.phone ?? pagePhone!;
           if (candidate.address) patch.address = candidate.address;
+          if (otherSignals.length) patch.other_signals = otherSignals;
           const { error: contactErr } = await supabase
             .from("companies")
             .update(patch)
             .eq("id", inserted.id);
-          if (contactErr && /phone|address/.test(contactErr.message ?? "")) {
+          if (contactErr && /phone|address|other_signals/.test(contactErr.message ?? "")) {
             phoneColumnMissing = true;
           }
         }

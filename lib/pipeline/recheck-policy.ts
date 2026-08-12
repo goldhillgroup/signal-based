@@ -80,7 +80,12 @@ const RULES: Rule[] = [
     // 78 rows currently marked permanent that is about $1.40 every year and a
     // half. Cheap insurance against silently blacklisting a company that grew
     // into the ICP.
-    test: /outside the (landscaping|icp)|not a landscaping|wrong industry|supplier|hvac|roofing|plumbing/i,
+    // "supplier", "hvac", "roofing" and "plumbing" are GONE from this list.
+    // They were here because those trades were outside the ICP; the updated
+    // ICP names them explicitly — "electrical, plumbing, HVAC, and specialty
+    // trades", plus distribution — so matching on them now schedules a real
+    // target for an 18-month timeout on the strength of a stale rule.
+    test: /outside the (landscaping|icp)|not a landscaping|wrong industry|outside both (target )?trade families/i,
     days: 545,
     scope: "industry",
     why: "wrong trade today, trades diversify, so worth one look in 18 months",
@@ -216,8 +221,13 @@ const WRONG_KIND_RE = new RegExp(
     "magazine", "publishing", "publication", "journalis",
     "political campaign", "candidate", "reunion", "q&a platform",
     "nonprofit", "non-profit", "trade association", "membership organi",
-    "brokerage", "real estate", "architect", "advertising", "marketing agency",
-    "law firm", "attorney", "software", "saas", "e-?commerce", "retailer", "dealer",
+    "brokerage", "real estate", "advertising", "marketing agency",
+    "software", "saas", "e-?commerce", "retailer",
+    // "architect", "law firm", "attorney", "dealer" and "manufactur" were here
+    // and are deliberately not any more: the updated ICP admits professional
+    // services where several family members are involved, plus manufacturing
+    // and distribution. A company cut for one of those is now an ARGUABLE cut
+    // the client should see, not noise to hide.
     "marketplace", "directory", "lead-?gen", "permit (expedit|consult)",
     "insurance", "staffing", "recruit",
   ].map((w) => `\\b${w}`).join("|"),

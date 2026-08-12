@@ -1,4 +1,6 @@
 import { Company } from "./company";
+import type { Industry } from "./supabase/types";
+import { INDUSTRY_META } from "./signal-meta";
 
 // A 'filter'/'hybrid' company accepted on ICP fit alone (no signal found) is
 // still status: 'qualified' in the DB (see orchestrator.ts) — confidence:
@@ -28,15 +30,17 @@ export function getSummaryStats(companies: Company[]) {
 
 export function getIndustryBreakdown(companies: Company[]) {
   const pool = companies.filter((c) => c.status === "qualified");
-  const counts = { landscaping: 0, home_builder: 0 };
-  pool.forEach((c) => {
-    counts[c.industry] += 1;
-  });
+  // Derived from INDUSTRY_META rather than a hardcoded pair, so adding a
+  // vertical to the ICP cannot leave a silently uncounted slice here. Only
+  // verticals actually present are returned — an eight-row breakdown where six
+  // read 0% is noise, not information.
+  const counts = new Map<Industry, number>();
+  pool.forEach((c) => counts.set(c.industry, (counts.get(c.industry) ?? 0) + 1));
   const total = pool.length || 1;
-  return [
-    { key: "landscaping" as const, count: counts.landscaping, pct: Math.round((counts.landscaping / total) * 100) },
-    { key: "home_builder" as const, count: counts.home_builder, pct: Math.round((counts.home_builder / total) * 100) },
-  ];
+  return (Object.keys(INDUSTRY_META) as Industry[])
+    .map((key) => ({ key, count: counts.get(key) ?? 0, pct: Math.round(((counts.get(key) ?? 0) / total) * 100) }))
+    .filter((r) => r.count > 0)
+    .sort((a, b) => b.count - a.count);
 }
 
 // Daily discovery volume (first_seen_at) for the trend chart. firstSeenAt may

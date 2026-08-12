@@ -9,10 +9,14 @@
  */
 
 import { US_STATES } from "./us-states";
+import { INDUSTRY_META } from "../signal-meta";
 import type { Industry, SearchMode } from "../supabase/types";
 
 export const VALID_STATE_CODES = new Set(US_STATES.map((s) => s.code));
-export const VALID_INDUSTRIES: Industry[] = ["landscaping", "home_builder"];
+// All eight ICP families. Derived from INDUSTRY_META rather than listed again,
+// so a vertical added to the profile cannot be silently rejected by the intake
+// parser while every other part of the pipeline accepts it.
+export const VALID_INDUSTRIES: Industry[] = Object.keys(INDUSTRY_META) as Industry[];
 export const VALID_MODES: SearchMode[] = ["signal", "filter", "hybrid"];
 
 /** Hard ceiling on questions. The point is a fast start, not an interview. */

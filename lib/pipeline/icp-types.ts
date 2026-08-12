@@ -50,8 +50,13 @@ export interface Icp {
  */
 export const DEFAULT_ICP: Icp = {
   signalFocus: "founder still leading with a son or daughter stepping up beside them",
-  revenueMinMusd: 3,
-  revenueMaxMusd: 15,
+  // $5M-$30M, from the client's written ICP. It was $3M-$15M, which was the
+  // brief this was built against; the ceiling in particular was cutting real
+  // leads — seven companies were rejected as "too big" that sit inside $30M.
+  // His stated sweet spot is $5M-$15M, which the classifier is told separately
+  // so it can prefer the middle without rejecting the edges.
+  revenueMinMusd: 5,
+  revenueMaxMusd: 30,
 };
 
 /** Clamp anything read from storage or posted by a form into a usable Icp. */

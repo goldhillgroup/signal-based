@@ -5,7 +5,25 @@
 // York, Texas, and Florida') and covered by the delivered proof. Surfaced
 // first in the picker as the agreed baseline — every other state stays
 // selectable, since the point is a default, not a restriction.
-export const AGREED_STATES = ["CA", "NY", "TX", "FL"];
+/**
+ * The client's priority states, in his own order: "California; New York and
+ * the Northeast; Florida; Texas."
+ *
+ * "The Northeast" was the half that had nowhere to go — the list held only NY,
+ * so a phrase covering nine states searched one. The rest are the Northeast as
+ * the Census defines it, which is also how a business there would describe
+ * itself: New England plus the Mid-Atlantic.
+ *
+ * They are PRIORITY, not restriction — the ICP says "located in the United
+ * States, with priority given to" these — so the state picker still offers all
+ * fifty and this is only what a search starts with.
+ */
+export const AGREED_STATES = [
+  "CA",
+  "NY", "NJ", "PA", "CT", "MA", "RI", "NH", "VT", "ME",
+  "FL",
+  "TX",
+];
 
 export const US_STATES: { code: string; name: string }[] = [
   { code: "AL", name: "Alabama" },

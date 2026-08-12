@@ -160,8 +160,8 @@ export function WeeklySchedule({
         <label id="sched-vertical" className="mb-1.5 block text-xs font-semibold text-gh-ink-secondary">
           Verticals to scan
         </label>
-        <div role="group" aria-labelledby="sched-vertical" className="flex gap-2">
-          {(["landscaping", "home_builder"] as Industry[]).map((key) => {
+        <div role="group" aria-labelledby="sched-vertical" className="flex flex-wrap gap-2">
+          {(Object.keys(INDUSTRY_META) as Industry[]).map((key) => {
             const on = schedule.industries.includes(key);
             return (
               <button

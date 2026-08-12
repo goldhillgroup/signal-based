@@ -8,7 +8,31 @@
 // which is a much worse failure mode. Keep them even though nothing in this
 // app reads them.
 
-export type Industry = "landscaping" | "home_builder";
+/**
+ * The client's ICP families. Eight, not two.
+ *
+ * It was landscaping and home builders, which is what the first brief said.
+ * His written ICP names six more — construction and contracting; electrical,
+ * plumbing, HVAC and specialty trades; manufacturing; distribution; home and
+ * property services; and professional-services firms where several family
+ * members are involved. What unites them is stated in the ICP itself:
+ * "operationally complex, owner-led businesses ... employees, managers,
+ * equipment, projects, customers", explicitly "not lifestyle businesses or
+ * solo professional practices".
+ *
+ * Kept as a closed union rather than free text: the database CHECK constraint
+ * mirrors it exactly, and a classifier typo inventing a vertical nobody
+ * searches for would be silent.
+ */
+export type Industry =
+  | "landscaping"
+  | "home_builder"
+  | "construction"
+  | "trades"
+  | "manufacturing"
+  | "distribution"
+  | "property_services"
+  | "professional_services";
 export type CompanyStatus = "pending" | "qualified" | "rejected";
 export type Confidence = "high" | "medium" | "verify";
 export type PageType = "about" | "leadership" | "team" | "home" | "other";
@@ -55,6 +79,18 @@ export interface Database {
           address: string | null;
           city: string | null;
           revenue_band: string | null;
+          /**
+           * Supporting succession signals from the ICP's observable list —
+           * founder_to_chairman, next_gen_promoted, leadership_transition,
+           * multiple_relatives_executive, growth, professional_management, ...
+           *
+           * The ICP is explicit that "no single signal proves that the company
+           * needs help" and that confidence should reflect "the number and
+           * quality of the signals found". Never null: the column defaults to
+           * an empty array so a lead with none reads as "none found" rather
+           * than "never looked".
+           */
+          other_signals: string[];
           employee_band: string | null;
           status: CompanyStatus;
           confidence: Confidence | null;

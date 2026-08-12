@@ -42,12 +42,19 @@
   --gh-gold: #fde428;
   --gh-orange: #ef8b19;
 
-  /* categorical (validated: all-pass light mode adjacency) */
+  /* categorical (validated: all-pass light mode adjacency)
+     Eight, because the ICP now has eight verticals. The first five are
+     unchanged so every existing chart and chip keeps its colour; 6-8 continue
+     the same rotation of hue families (cool / warm / neutral) at comparable
+     lightness, so no one vertical reads as louder than its neighbours. */
   --gh-cat-1: #2451a4; /* navy-blue    */
   --gh-cat-2: #ef8b19; /* orange       */
   --gh-cat-3: #1b8a5a; /* teal-green   */
   --gh-cat-4: #6b4c8a; /* plum         */
   --gh-cat-5: #c99a00; /* gold         */
+  --gh-cat-6: #b5453a; /* brick-red    */
+  --gh-cat-7: #2d7d8f; /* slate-teal   */
+  --gh-cat-8: #7a6a52; /* clay-brown   */
 
   /* status (fixed, never themed) */
   --gh-good: #0ca30c;

@@ -107,6 +107,36 @@ const DIRECTORY_ANGLES: Record<Industry, string[]> = {
     "NARI (National Association of the Remodeling Industry) local chapter member directory",
     "a local Chamber of Commerce or BBB-accredited-business directory listing for custom home builders or design-build remodelers",
   ],
+  construction: [
+    "the official state contractor licensing board's public license-holder lookup for general/commercial contractors",
+    "AGC (Associated General Contractors) or ABC (Associated Builders and Contractors) local chapter member directory",
+    "a local Chamber of Commerce or BBB-accredited-business directory listing for general contractors",
+  ],
+  trades: [
+    "the official state licensing board's public lookup for electrical, plumbing or HVAC contractors",
+    "PHCC, ACCA, IEC or NECA local chapter member directory",
+    "a local Chamber of Commerce or BBB-accredited-business directory for plumbing, electrical and HVAC contractors",
+  ],
+  manufacturing: [
+    "a state manufacturers association or MEP (Manufacturing Extension Partnership) member directory",
+    "NAM (National Association of Manufacturers) or a regional manufacturers' council member list",
+    "a local Chamber of Commerce directory listing for manufacturers and fabricators",
+  ],
+  distribution: [
+    "NAW (National Association of Wholesaler-Distributors) or a trade-specific distributor association member directory",
+    "a building-materials or industrial-supply buying-group member list",
+    "a local Chamber of Commerce directory listing for wholesalers and distributors",
+  ],
+  property_services: [
+    "BSCAI, ISSA or NPMA (pest management) member directory, or a state pest-control association member list",
+    "the official state licensing board's public lookup for pest control or pool service operators",
+    "a local Chamber of Commerce or BBB-accredited-business directory for property and facility services",
+  ],
+  professional_services: [
+    "a state society of CPAs, professional engineers, or independent insurance agents member directory",
+    "an AIA (architects) or ACEC (engineering companies) local chapter member list",
+    "a local Chamber of Commerce directory listing for family owned professional firms",
+  ],
 };
 
 function anglesFor(industry: Industry | null): string[] {
