@@ -1,5 +1,23 @@
 import { resolveSetting, getSetting, setSetting } from "../settings";
 import type { Industry } from "../supabase/types";
+
+/**
+ * The vendor could not answer — no credit, bad key, rate limited.
+ *
+ * Distinct from every other failure in this file because the correct response
+ * is different in kind: a malformed reply is about one page and is worth
+ * retrying or recording; this is about the whole run and must stop it.
+ */
+export class VendorUnavailableError extends Error {
+  readonly status: number;
+  readonly detail: string;
+  constructor(message: string, status: number, detail: string) {
+    super(message);
+    this.name = "VendorUnavailableError";
+    this.status = status;
+    this.detail = detail;
+  }
+}
 import { recordCost } from "./cost-tracker";
 
 // Model per task, overridable from /dashboard/settings without a redeploy.
@@ -191,6 +209,29 @@ export async function chat(
   }
 
   if (!res.ok) {
+    // A VENDOR-LEVEL FAILURE IS NOT A VERDICT ABOUT A COMPANY.
+    //
+    // 402 (out of credit), 401/403 (bad key) and 429 (rate limited) say
+    // nothing whatever about the page being read. They were being caught by
+    // the per-company handler and written as a REJECTION — so when the
+    // OpenRouter balance hit zero mid-run, 72 real manufacturers were marked
+    // "could not be judged", entered cross-search memory as settled, and were
+    // scheduled to be skipped for two weeks. The run then reported status
+    // "complete" with no error, having spent $1.68 fetching pages it never
+    // read. That is the worst shape a failure can take: it looks like an
+    // answer.
+    if (res.status === 402 || res.status === 401 || res.status === 403 || res.status === 429) {
+      const body = await res.text().catch(() => "");
+      throw new VendorUnavailableError(
+        res.status === 402
+          ? "OpenRouter is out of credit, so no company could be judged. Nothing was recorded against the companies this run fetched — add credit in Settings and run it again."
+          : res.status === 429
+            ? "OpenRouter is rate limiting this account, so judging had to stop. Nothing was recorded against the companies already fetched — try again shortly."
+            : "OpenRouter rejected the API key, so no company could be judged. Check the key in Settings.",
+        res.status,
+        body.slice(0, 200)
+      );
+    }
     const errBody = await res.text().catch(() => "");
     throw new Error(`OpenRouter request failed: ${res.status} ${errBody.slice(0, 300)}`);
   }

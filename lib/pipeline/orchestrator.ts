@@ -1,6 +1,6 @@
 import { createServiceRoleClient } from "../supabase/server";
 import { discoverCandidates, fetchCompanyPages, pickBestPage, fetchSingleUrl, isOffTradeName, type Candidate, type FetchedPage } from "./apify";
-import { classifySignal, disprovePass } from "./openrouter";
+import { VendorUnavailableError, classifySignal, disprovePass } from "./openrouter";
 import { findContact } from "./anymailfinder";
 import { verifyEmail } from "./millionverifier";
 import type { Industry, SearchMode, SearchRow } from "../supabase/types";
@@ -349,11 +349,20 @@ function cleanCity(v: string | null | undefined): string | null {
  * cross-search memory means the second pass picks up new companies rather than
  * re-reading the ones already settled.
  */
-function timeUpMessage(scanned: number, kept: number): string {
+function timeUpMessage(scanned: number, leads: number, pairs: number): string {
+  // Counts the LEADS SAVED, not the target counter. Those became different
+  // numbers when hybrid started counting founder-and-successor pairs toward
+  // its target: a run that kept 13 good companies and found no pair announced
+  // "The 0 found are saved and complete", which reads as a failed run.
+  const found =
+    pairs > 0
+      ? `${leads} lead${leads === 1 ? "" : "s"} — ${pairs} with a founder-and-successor pair —`
+      : `${leads} lead${leads === 1 ? "" : "s"}`;
   return (
     `Stopped at the time limit after checking ${scanned} companies. ` +
-    `The ${kept} found are saved and complete. Run the same search again to ` +
-    `carry on — it will pick up where this one left off, not start over.`
+    `The ${found} already found ${leads === 1 ? "is" : "are"} saved and complete. ` +
+    `Run the same search again to carry on — it will pick up where this one ` +
+    `left off, not start over.`
   );
 }
 
@@ -705,7 +714,7 @@ export async function runSearchPipeline(
 
     roundLoop: while (countsTowardTarget() < targetSignals && totalScanned < scanCeiling) {
       if (outOfTime()) {
-        stoppedEarlyReason = timeUpMessage(totalScanned, countsTowardTarget());
+        stoppedEarlyReason = timeUpMessage(totalScanned, accepted, qualified + verify);
         break roundLoop;
       }
       round++;
@@ -911,6 +920,11 @@ export async function runSearchPipeline(
         try {
           classification = await classifySignal(candidate.title, page.url, classifyText, refinement);
         } catch (e) {
+          // The vendor being unavailable is not a verdict about this company.
+          // Rethrow so the run stops and says so, instead of recording 72
+          // rejections that were never actually judged. See
+          // VendorUnavailableError.
+          if (e instanceof VendorUnavailableError) throw e;
           console.warn(
             `classify failed for ${candidate.domain}: ${(e as Error).message}`.slice(0, 500)
           );
@@ -1337,6 +1351,16 @@ export async function runSearchPipeline(
       finished_at: new Date().toISOString(),
     });
   } catch (e) {
+    // A vendor outage already carries a sentence written for the client and
+    // says what to do about it; anything else gets the raw message, which is
+    // for whoever is debugging. Either way this is status 'failed' — a run
+    // that could not judge anything must never read as "complete, found
+    // nothing", which is indistinguishable from a thorough search of barren
+    // ground.
+    const vendorDown = e instanceof VendorUnavailableError;
+    if (vendorDown) {
+      console.warn(`Search ${searchId} stopped: ${(e as VendorUnavailableError).detail}`);
+    }
     await bump(supabase, searchId, {
       status: "failed",
       error_message: (e as Error).message?.slice(0, 500) ?? "Unknown error",
