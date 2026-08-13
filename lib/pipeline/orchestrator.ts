@@ -474,6 +474,32 @@ export async function runSearchPipeline(
     const deadlineAt = Date.now() + Math.max(30_000, RUN_CEILING_MS - DEADLINE_MARGIN_MS);
     const outOfTime = () => Date.now() >= deadlineAt;
 
+    // ONE CHECK IS NOT ENOUGH, because outOfTime can only fire BETWEEN
+    // operations and a single operation can outlast the whole remaining budget.
+    //
+    // The vendor timeouts, measured from the code: an Apify actor run is capped
+    // at 120s, a rendered page fetch at 90s, a Firecrawl scrape at 60s. So a
+    // round that begins at t=180s passes outOfTime (deadline 255s), enters a
+    // fetch, and returns at t=300s — by which time the platform has already
+    // killed the function. The clean ending never runs, and the row is left
+    // saying `running` until something else notices.
+    //
+    // That is exactly what happened on a live run: killed mid-flight at 60
+    // companies, row stranded for ten minutes, 44 companies saved and nothing
+    // anywhere saying so.
+    //
+    // So the question before each stage is not "is there time left" but "is
+    // there room for THIS". Late in a run that means we stop buying new
+    // candidates and simply drain the buffer already paid for, which is better
+    // behaviour anyway.
+    const WORST_CASE_MS = {
+      /** Apify actor run, timeoutSecs = 120. */
+      discovery: 120_000,
+      /** Rendered page fetch, AbortSignal.timeout(90_000). */
+      fetch: 90_000,
+    } as const;
+    const hasRoomFor = (ms: number) => Date.now() + ms < deadlineAt;
+
     // CROSS-SEARCH MEMORY — the thing that makes next month's scan different
     // from today's. Previously this started empty every run, so re-running a
     // state re-discovered and re-paid for the identical companies and handed
@@ -779,6 +805,13 @@ export async function runSearchPipeline(
       // status: 'failed', which would misrepresent real, saved results as
       // a failed run.
       let roundChannelErrors: string[] = [];
+      // Only buy MORE candidates if a discovery call can finish inside the
+      // budget. Out of room means drain what is already paid for and stop
+      // cleanly, rather than starting a 120-second call with 40 seconds left.
+      if (pending.length === 0 && !poolDry && !hasRoomFor(WORST_CASE_MS.discovery)) {
+        stoppedEarlyReason = "ran out of time before it could look for more companies";
+        break roundLoop;
+      }
       if (pending.length === 0 && !poolDry) {
         discoveryCalls++;
         try {
@@ -855,6 +888,15 @@ export async function runSearchPipeline(
           await bump(supabase, searchId, { candidates_pool_exhausted: true });
         }
         break;
+      }
+
+      // Same question before the fetch, which is the stage that actually
+      // overran on the live run: a rendered page is capped at 90 seconds, and
+      // starting one with less than that left is how a function gets killed
+      // holding a batch it never wrote down.
+      if (!hasRoomFor(WORST_CASE_MS.fetch)) {
+        stoppedEarlyReason = "ran out of time before it could read another batch";
+        break roundLoop;
       }
 
       // ── consume this round's batch from the buffer ───────────────────────
