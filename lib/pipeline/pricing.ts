@@ -41,5 +41,20 @@ export const UNIT_USD = {
  * The page-crawl fallback (0.013) only runs when the paid lookup FAILED, and a
  * failed lookup is not billed, so it can never stack on top of the above.
  */
+/**
+ * What reading ONE company costs, at the top of the observed range.
+ *
+ * Measured across real runs rather than summed from the unit prices above,
+ * because the discovery share varies enormously with how wide the search is:
+ *
+ *   1 vertical,  1 state    $0.019 a company
+ *   8 verticals, 12 states  $0.037 a company
+ *
+ * The confirm dialog quotes the HIGH end. A dialog whose whole job is to state
+ * the cost before money moves must not under-quote it — being pleasantly
+ * surprised is fine, the reverse is not.
+ */
+export const SEARCH_CEILING_PER_COMPANY_USD = 0.037;
+
 export const ENRICH_CEILING_PER_COMPANY_USD =
   UNIT_USD.anymailfinder_lookup + UNIT_USD.millionverifier_check;

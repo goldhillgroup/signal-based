@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { SettingRow } from "./SettingRow";
+import { ConfirmDialog } from "./ConfirmDialog";
+import { SEARCH_CEILING_PER_COMPANY_USD } from "@/lib/pipeline/pricing";
+import { targetUnit } from "@/lib/pipeline/target-count";
 import { useRouter } from "next/navigation";
 import { useSearches } from "@/lib/searches-store";
 import { AGREED_STATES, NATIONWIDE, stateNameFor } from "@/lib/pipeline/us-states";
@@ -103,6 +106,13 @@ export function SearchHome({
 
   const [running, setRunning] = useState<{ id: string; label: string } | null>(null);
   const [starting, setStarting] = useState(false);
+  // A SEARCH SPENDS MONEY AND DID NOT ASK.
+  //
+  // Enrichment has confirmed for a long time — "Look up these emails?", with the
+  // bill on it — because it bills per person looked up. A search bills per
+  // company READ, which is the bigger number of the two: a wide one reads 240
+  // and costs several dollars. It went straight from a click to spending.
+  const [confirmSearch, setConfirmSearch] = useState(false);
   const [error, setError] = useState("");
 
   // A nationwide search carries the sentinel "US" rather than a list, so
@@ -684,7 +694,7 @@ export function SearchHome({
 
           <button
             type="button"
-            onClick={startSearch}
+            onClick={() => setConfirmSearch(true)}
             disabled={!canSearch}
             className="mt-5 w-full cursor-pointer rounded-xl bg-gh-navy py-3 text-sm font-semibold text-white transition-colors duration-200 hover:bg-gh-navy-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -732,6 +742,46 @@ export function SearchHome({
           onDismiss={() => setRunning(null)}
         />
       )}
+
+    {/* Confirms before ANY money moves, matching the enrichment dialog that has
+        always done this. The numbers are the same ones printed on the form, so
+        the dialog cannot quote a figure the form disagrees with. */}
+    <ConfirmDialog
+      open={confirmSearch}
+      title="Start this search?"
+      confirmLabel="Yes, start searching"
+      cancelLabel="No, go back"
+      onConfirm={() => {
+        setConfirmSearch(false);
+        startSearch();
+      }}
+      onCancel={() => setConfirmSearch(false)}
+      body={
+        <>
+          <p>
+            Reads up to{" "}
+            <strong className="font-semibold text-gh-ink">{willRead} companies</strong>{" "}
+            across {verticalSummary.toLowerCase()} in {stateSummary.toLowerCase()}, looking
+            for {target} {targetUnit(mode, target)}.
+          </p>
+          <p className="mt-2">
+            Costs up to{" "}
+            <strong className="font-semibold text-gh-ink">
+              ${(willRead * SEARCH_CEILING_PER_COMPANY_USD).toFixed(2)}
+            </strong>{" "}
+            — less if it finds what it needs early, or if it has already read some of
+            these companies before. Nothing is charged for finding an email address;
+            that is a separate step you approve on its own.
+          </p>
+          {passes > 1 && (
+            <p className="mt-2">
+              This takes about {passes} passes and carries on by itself between them.
+            </p>
+          )}
+        </>
+      }
+    />
+
     </div>
   );
 }
