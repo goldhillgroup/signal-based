@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { isWrongKindOfBusiness } from "@/lib/pipeline/recheck-policy";
-import { ENRICH_CEILING_PER_COMPANY_USD } from "@/lib/pipeline/pricing";
+import { enrichScopesFor } from "@/lib/enrich-scopes";
+import { EnrichScopeDialog } from "./EnrichScopeDialog";
 import Link from "next/link";
 import { useSearches, type SearchFolder } from "@/lib/searches-store";
 import { RadarIcon } from "./icons";
@@ -40,7 +40,7 @@ export function ReturnOverview() {
   const [choosing, setChoosing] = useState<{
     id: string;
     label: string;
-    scopes: { key: string; label: string; hint: string; ids: string[] }[];
+    scopes: ReturnType<typeof enrichScopesFor>;
   } | null>(null);
 
   const running = folders.filter((f) => f.status === "running");
@@ -61,35 +61,7 @@ export function ReturnOverview() {
     setError("");
     try {
       const companies = await fetchCompanies(id);
-      const pairs = companies.filter((c) => c.status === "qualified" && c.hasSignal === true);
-      const leads = companies.filter((c) => c.status === "qualified");
-      const cut = companies.filter(
-        (c) => c.status === "rejected" && !isWrongKindOfBusiness(c.rejectionReason)
-      );
-      setChoosing({
-        id,
-        label,
-        scopes: [
-          {
-            key: "pairs",
-            label: `Just the ${pairs.length} pair${pairs.length === 1 ? "" : "s"}`,
-            hint: "Founder and successor both named and running it today",
-            ids: pairs.map((c) => c.id),
-          },
-          {
-            key: "leads",
-            label: `All ${leads.length} lead${leads.length === 1 ? "" : "s"}`,
-            hint: "Every company that fits the profile, pairs included",
-            ids: leads.map((c) => c.id),
-          },
-          {
-            key: "everything",
-            label: `Plus the ${cut.length} cut`,
-            hint: "Also the companies cut on a gate you might disagree with",
-            ids: [...leads.map((c) => c.id), ...cut.map((c) => c.id)],
-          },
-        ],
-      });
+      setChoosing({ id, label, scopes: enrichScopesFor(companies) });
     } catch (e) {
       setError((e as Error).message || "Could not read that list.");
     } finally {
@@ -187,53 +159,13 @@ export function ReturnOverview() {
           folder page shows as tabs, so what you can enrich matches what you
           would be looking at. Each carries its own price because they differ by
           an order of magnitude — on a real folder: $0.11, $0.84, $1.85. */}
-      {choosing && (
-        <div
-          className="fixed inset-0 z-50 grid place-items-center bg-gh-ink/40 p-4 backdrop-blur-sm"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Choose who to find emails for"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setChoosing(null);
-          }}
-        >
-          <div className="w-full max-w-md rounded-2xl border border-gh-border bg-gh-surface p-5 shadow-lg">
-            <h3 className="font-display text-base font-semibold text-gh-ink">Find emails for who?</h3>
-            <p className="mt-1 text-xs leading-relaxed text-gh-ink-muted">
-              {choosing.label}. Billed only for addresses actually found, and it
-              looks up the successor first where there is one.
-            </p>
-            <div className="mt-4 flex flex-col gap-2">
-              {choosing.scopes.map((sc) => (
-                <button
-                  key={sc.key}
-                  type="button"
-                  disabled={sc.ids.length === 0}
-                  onClick={() => enrich(choosing.id, sc.ids)}
-                  className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-gh-border bg-gh-surface-sunken px-3.5 py-2.5 text-left transition-colors duration-200 hover:border-gh-sky/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <span className="min-w-0">
-                    <span className="block text-sm font-semibold text-gh-ink">{sc.label}</span>
-                    <span className="mt-0.5 block text-[11px] leading-snug text-gh-ink-muted">
-                      {sc.hint}
-                    </span>
-                  </span>
-                  <span className="tabular shrink-0 text-xs font-semibold text-gh-ink-secondary">
-                    ~${(sc.ids.length * ENRICH_CEILING_PER_COMPANY_USD).toFixed(2)}
-                  </span>
-                </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={() => setChoosing(null)}
-              className="mt-3 w-full cursor-pointer rounded-lg px-3 py-2 text-xs font-medium text-gh-ink-muted transition-colors hover:text-gh-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
-            >
-              Not now
-            </button>
-          </div>
-        </div>
-      )}
+      <EnrichScopeDialog
+        open={choosing !== null}
+        folderLabel={choosing?.label ?? ""}
+        scopes={choosing?.scopes ?? []}
+        onPick={(ids) => choosing && enrich(choosing.id, ids)}
+        onCancel={() => setChoosing(null)}
+      />
     </div>
   );
 }

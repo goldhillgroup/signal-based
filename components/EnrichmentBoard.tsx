@@ -4,10 +4,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearches, type SearchFolder } from "@/lib/searches-store";
 import { CountUp } from "./CountUp";
-import { ConfirmDialog } from "./ConfirmDialog";
 import { EnrichProgress } from "./EnrichProgress";
 import { UsersIcon, CheckIcon } from "./icons";
-import { ENRICH_CEILING_PER_COMPANY_USD } from "@/lib/pipeline/pricing";
+import { enrichScopesFor } from "@/lib/enrich-scopes";
+import { EnrichScopeDialog } from "./EnrichScopeDialog";
 
 /**
  * Contact enrichment as its own job, across every search.
@@ -41,18 +41,14 @@ function signalCount(f: SearchFolder): number {
   return f.qualifiedCount + f.verifyCount;
 }
 
-/** The real ceiling per company — see ENRICH_CEILING_PER_COMPANY_USD. */
-const PER_EMAIL_USD = ENRICH_CEILING_PER_COMPANY_USD;
-
 export function EnrichmentBoard() {
-  const { folders, loading, startEnrichment, refreshFolders } = useSearches();
+  const { folders, loading, startEnrichment, refreshFolders, fetchCompanies } = useSearches();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
   /** The click waiting on a yes/no. null when no dialog is open. */
   const [pending, setPending] = useState<{
     id: string;
-    scope: "signals" | "all";
-    count: number;
+    scopes: ReturnType<typeof enrichScopesFor>;
     label: string;
   } | null>(null);
   /** The run the user just started, so its progress can be shown. */
@@ -97,20 +93,33 @@ export function EnrichmentBoard() {
    * other destructive-or-costly action in the app asks first; this was the one
    * that did not.
    */
-  function askEnrich(id: string, scope: "signals" | "all", count: number, label: string) {
+  /**
+   * Load the folder's companies and offer the same three choices as everywhere
+   * else. Scoped by explicit ids rather than the server's scope words, because
+   * "only the fits" — the one you want after calling the pairs — has no word:
+   * the API knows "signals" and "all", and "all" re-buys the pairs.
+   */
+  async function askEnrich(id: string, label: string) {
     setError("");
-    setPending({ id, scope, count, label });
+    setBusy(id);
+    try {
+      setPending({ id, label, scopes: enrichScopesFor(await fetchCompanies(id)) });
+    } catch (e) {
+      setError((e as Error).message || "Could not read that list.");
+    } finally {
+      setBusy(null);
+    }
   }
 
-  async function confirmEnrich() {
+  async function confirmEnrich(ids: string[]) {
     if (!pending) return;
-    const { id, scope } = pending;
+    const { id } = pending;
     setPending(null);
     setBusy(id);
     setError("");
     try {
-      await startEnrichment(id, scope);
-      setWatching({ id, target: pending.count });
+      await startEnrichment(id, undefined, ids);
+      setWatching({ id, target: ids.length });
     } catch (e) {
       setError((e as Error).message || "Could not start enrichment.");
     } finally {
@@ -130,37 +139,12 @@ export function EnrichmentBoard() {
         />
       )}
 
-      <ConfirmDialog
+      <EnrichScopeDialog
         open={pending !== null}
-        title="Look up these emails?"
-        confirmLabel="Yes, look them up"
-        cancelLabel="No, go back"
-        onConfirm={confirmEnrich}
+        folderLabel={pending?.label ?? ""}
+        scopes={pending?.scopes ?? []}
+        onPick={confirmEnrich}
         onCancel={() => setPending(null)}
-        body={
-          pending && (
-            <>
-              <p>
-                Searching for a contact at{" "}
-                <strong className="font-semibold text-gh-ink">
-                  {pending.count} {pending.count === 1 ? "company" : "companies"}
-                </strong>{" "}
-                in {pending.label}.
-              </p>
-              {/* "Up to" and "only when found" are both load-bearing. The vendor
-                  bills per address it actually returns, so the real number is
-                  usually lower than this — quoting a firm figure would look
-                  like an overcharge on the invoice. */}
-              <p className="mt-2">
-                Costs up to{" "}
-                <strong className="font-semibold text-gh-ink">
-                  ${(pending.count * PER_EMAIL_USD).toFixed(2)}
-                </strong>
-                , charged only for the addresses actually found.
-              </p>
-            </>
-          )
-        }
       />
 
       <div className="grid grid-cols-3 gap-3">
@@ -188,23 +172,16 @@ export function EnrichmentBoard() {
                     small subset of everything that fits the ICP. Both show the
                     count AND the money, so the choice is made with the numbers
                     visible instead of after the invoice. */}
-                <div className="flex shrink-0 flex-col items-end gap-1.5 sm:flex-row sm:items-center">
-                  {sig > 0 && (
-                    <ScopeButton
-                      busy={busy === f.id}
-                      onClick={() => askEnrich(f.id, "signals", sig, f.label)}
-                      label={`Just the ${sig} pair${sig === 1 ? "" : "s"}`}
-                      cost={sig * PER_EMAIL_USD}
-                      primary
-                    />
-                  )}
-                  {all > sig && (
-                    <ScopeButton
-                      busy={busy === f.id}
-                      onClick={() => askEnrich(f.id, "all", all, f.label)}
-                      label={sig > 0 ? `All ${all}` : `All ${all} lead${all === 1 ? "" : "s"}`}
-                      cost={all * PER_EMAIL_USD}
-                    />
+                <div className="flex shrink-0 items-center gap-1.5">
+                  {all > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => askEnrich(f.id, f.label)}
+                      disabled={busy === f.id}
+                      className="shrink-0 cursor-pointer rounded-lg bg-gh-navy px-3 py-1.5 text-[11px] font-semibold text-white transition-colors duration-200 hover:bg-gh-navy-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {busy === f.id ? "Reading…" : "Find emails"}
+                    </button>
                   )}
                   {sig === 0 && all === 0 && (
                     <span className="text-[11px] text-gh-ink-muted">nothing to enrich</span>
@@ -234,7 +211,7 @@ export function EnrichmentBoard() {
             <Row key={f.id} folder={f} note={f.enrichmentError}>
               <button
                 type="button"
-                onClick={() => askEnrich(f.id, "signals", signalCount(f), f.label)}
+                onClick={() => askEnrich(f.id, f.label)}
                 disabled={busy === f.id}
                 className="shrink-0 cursor-pointer rounded-lg border border-gh-border bg-gh-surface px-3 py-1.5 text-[11px] font-semibold text-gh-ink transition-colors duration-200 hover:bg-gh-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 disabled:opacity-40"
               >
@@ -258,43 +235,6 @@ export function EnrichmentBoard() {
         </Group>
       )}
     </div>
-  );
-}
-
-/**
- * One enrichment scope. Shows the count and the money together — the whole
- * point of splitting the button is that the two options differ in price, so
- * hiding the price would defeat it.
- */
-function ScopeButton({
-  busy,
-  onClick,
-  label,
-  cost,
-  primary,
-}: {
-  busy: boolean;
-  onClick: () => void;
-  label: string;
-  cost: number;
-  primary?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={busy}
-      className={`shrink-0 cursor-pointer rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 disabled:cursor-not-allowed disabled:opacity-40 ${
-        primary
-          ? "bg-gh-navy text-white hover:bg-gh-navy-2"
-          : "border border-gh-border bg-gh-surface text-gh-ink-secondary hover:border-gh-sky/40 hover:text-gh-ink"
-      }`}
-    >
-      {busy ? "Starting…" : label}
-      <span className={`tabular ml-1.5 font-normal ${primary ? "text-white/60" : "text-gh-ink-muted"}`}>
-        ~${cost.toFixed(2)}
-      </span>
-    </button>
   );
 }
 

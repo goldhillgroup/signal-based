@@ -22,6 +22,7 @@ import { CompaniesTable } from "./CompaniesTable";
 import { CompanyDrawer } from "./CompanyDrawer";
 import { ArrowLeftIcon, RadarIcon, ZapIcon, InboxIcon, UsersIcon, DownloadIcon } from "./icons";
 import { ENRICH_CEILING_PER_COMPANY_USD } from "@/lib/pipeline/pricing";
+import { enrichScopesFor } from "@/lib/enrich-scopes";
 import { SheetsButton } from "./SheetsButton";
 
 export function FolderView({ folder: folderProp, companies: companiesProp }: { folder: SearchFolder; companies: Company[] }) {
@@ -115,34 +116,9 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
   // of business, so an export cannot contain what the UI refuses to show.
 
 
-  // The three enrichable groups, matching the three tabs exactly. Derived here
-  // rather than in the buttons so the counts on the buttons and the rows in the
-  // list can never disagree.
-  const pairIds = companies.filter((c) => c.status === "qualified" && c.hasSignal === true).map((c) => c.id);
-  const leadIds = companies.filter((c) => c.status === "qualified").map((c) => c.id);
-  const cutWorthArguingIds = companies
-    .filter((c) => c.status === "rejected" && !isWrongKindOfBusiness(c.rejectionReason))
-    .map((c) => c.id);
-  const enrichScopes = [
-    {
-      key: "pairs" as const,
-      label: `Just the ${pairIds.length} pair${pairIds.length === 1 ? "" : "s"}`,
-      hint: "Founder and successor both named and currently running it",
-      ids: pairIds,
-    },
-    {
-      key: "leads" as const,
-      label: `All ${leadIds.length} leads`,
-      hint: "Every company that fits the profile, pairs included",
-      ids: leadIds,
-    },
-    {
-      key: "everything" as const,
-      label: `Plus the ${cutWorthArguingIds.length} cut`,
-      hint: "Also looks up the companies cut on a gate you might disagree with",
-      ids: [...leadIds, ...cutWorthArguingIds],
-    },
-  ];
+  // Same three choices as everywhere else. See lib/enrich-scopes — three
+  // surfaces each had their own idea of this, and two of them decided for you.
+  const enrichScopes = enrichScopesFor(companies);
 
   const exportable = companies.filter(
 
