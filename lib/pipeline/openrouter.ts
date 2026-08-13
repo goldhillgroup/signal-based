@@ -663,10 +663,27 @@ export async function classifySignal(
   // Sampling is not deterministic, so asking again is the whole fix. Once, not
   // in a loop: if the second answer is also unusable the input is the problem,
   // and the rejection path records that honestly with a recheck date.
+  // 2400, RAISED FROM 1200, AND THE RETRY ASKS FOR MORE STILL.
+  //
+  // A live run lost 4 of 20 companies to "the result came back unreadable" —
+  // 20% of a paid batch, discarded after the fetch and the classify were both
+  // billed. I could not reproduce the failure on those pages afterwards, so
+  // this is not a proven cause; what IS measured is the headroom, and it is
+  // thin: a 2,955-character page used 1,059 of the 1,200 tokens. 88% on a small
+  // page, with twenty fields to fill including a quote, a signal list and a
+  // rejection sentence. A long page has nowhere to go.
+  //
+  // The comment on the empty-completion branch above already said the right
+  // thing — "a bigger budget is the fix, not a retry" — and the retry I added
+  // yesterday asked again with the SAME budget, which is precisely the case it
+  // warned about. Retrying identically cannot fix truncation.
+  //
+  // Costs nothing when unused: output tokens bill for what is generated, not
+  // for the ceiling.
   try {
-    return extractJson<ClassificationResult>(await chat(messages, 1200, model, true));
+    return extractJson<ClassificationResult>(await chat(messages, 2400, model, true));
   } catch {
-    return extractJson<ClassificationResult>(await chat(messages, 1200, model, true));
+    return extractJson<ClassificationResult>(await chat(messages, 4000, model, true));
   }
 }
 
