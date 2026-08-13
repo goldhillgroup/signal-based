@@ -6,7 +6,7 @@ import { verifyEmail } from "./millionverifier";
 import type { Industry, SearchMode, SearchRow } from "../supabase/types";
 import { recheckAfterFor, rejectionScope, sizeVerdictStillBinds, parseRevenueBand } from "./recheck-policy";
 import { extractEmails, bestEmailFor, type FoundEmail, bestPhoneFor, isSharedInbox } from "./page-email";
-import { callableName, cleanPersonName, cleanRevenueBand, cleanTitle, earnedConfidence } from "../lead-signal";
+import { callableName, cleanPersonName, cleanRevenueBand, cleanTitle, earnedConfidence, fitOnlyIsLeadWorthy, realCompanyName } from "../lead-signal";
 import { buildWarningLine } from "./channel-health";
 import { INDUSTRY_META } from "../signal-meta";
 import { channelEvidence, explorationFor, orderByYield } from "./channel-priors";
@@ -137,6 +137,18 @@ function resolveName(
 // Matches classifySignal's MAX_PAGE_CHARS — compose to the same ceiling so
 // the slice there never cuts a section mid-way.
 const CLASSIFY_TEXT_BUDGET = 12000;
+
+/**
+ * The company describing itself as a family business, in its own words.
+ *
+ * Paired with "is anybody named on this page" to decide whether a company with
+ * NO succession pair is still a lead. Deliberately loose — "family owned",
+ * "third generation", "our family" — because this is not the evidence a pair
+ * rests on, it is the difference between a page that says something about who
+ * runs the place and a page that says nothing at all.
+ */
+const FAMILY_LANGUAGE_RE =
+  /\b(family[- ]?(owned|run|operated|business|company)|(second|third|fourth|2nd|3rd|4th|next)[- ]generation|generations?\s+of|our family|the \w+ family|father|mother|son|daughter|brothers?|sisters?|grandfather|founded by)\b/i;
 
 /**
  * The text classify actually reads: the best page, plus the best DISTINCT
@@ -996,6 +1008,25 @@ export async function runSearchPipeline(
         // otherwise take what the classifier read off the page. Web search —
         // the highest-yield channel — supplies no location at all, so without
         // this fallback the best leads in the folder showed a blank city.
+        // A placeholder scraped off a staging banner ("CURRENT_LIVE_SITE")
+        // reached a real folder as something to call. See realCompanyName.
+        if (!realCompanyName(companyName)) {
+          await supabase.from("companies").insert({
+            ...base,
+            name: candidate.domain,
+            industry: (classification.industry === "other"
+              ? searchedVertical
+              : classification.industry) as Industry,
+            status: "rejected",
+            rejection_reason:
+              "The page gave no usable business name — only template or placeholder text.",
+            recheck_after: recheckAfterFor("rejected", "page too thin to evaluate"),
+          });
+          rejected++;
+          await bump(supabase, searchId, { rejected_count: rejected });
+          return;
+        }
+
         const withName = {
           ...base,
           name: companyName,
@@ -1177,6 +1208,43 @@ export async function runSearchPipeline(
           finalQualifies = false;
           rejectionReason =
             "No longer family-owned, acquired/consolidated, current leadership shows no family members.";
+        } else if (
+          finalQualifies &&
+          !hasSignal &&
+          !fitOnlyIsLeadWorthy(
+            classification.founderName,
+            // The NAME counts here, alongside the page text.
+            //
+            // Without it the rule was decided by an accident of markup: a run
+            // kept "Brothers Landscape Services" because the word Brothers
+            // happened to appear as text on its own page, and cut "Third
+            // Generation Lawn & Landscape" because that site renders its name
+            // as an image. Identical evidence, opposite outcomes.
+            //
+            // This does NOT contradict Trap 3, which says the company name is
+            // never evidence of a succession PAIR — "Smith & Sons" proves
+            // nothing about two living people. That remains true and is
+            // enforced where pairs are judged. This is the weakest tier, and
+            // the question here is only "does anything at all suggest a family
+            // business worth a look", which a name like that legitimately does.
+            FAMILY_LANGUAGE_RE.test(classifyText) || FAMILY_LANGUAGE_RE.test(companyName),
+            classification.otherSignals
+          )
+        ) {
+          // NOTHING KNOWN IS NOT THE SAME AS FITS.
+          //
+          // stillFamilyOwned above is deliberately generous: it only fails on a
+          // specific reason in the text, because cutting a real family firm on
+          // a page that never mentions ownership is the more expensive error.
+          // But it was the ONLY family test a fit-only lead had to pass, so a
+          // page saying nothing resolved to "family-owned: true" and became a
+          // lead. One live run put 9 of 24 leads in the folder naming no
+          // individual at all, five of them solo architecture studios — which
+          // the written ICP excludes by name. They had not qualified, they had
+          // failed to disqualify themselves. See fitOnlyIsLeadWorthy.
+          finalQualifies = false;
+          rejectionReason =
+            "Right trade and location, but the page shows no owner by name and no family or generational language — nothing to act on yet.";
         } else if (finalQualifies && belowBand) {
           finalQualifies = false;
           rejectionReason = `Too small, reads below the $${band!.min}M lower bound set for this search.`;

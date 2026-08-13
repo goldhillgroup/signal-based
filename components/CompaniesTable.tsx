@@ -428,9 +428,36 @@ export function CompaniesTable({
             </section>
           ))}
           {filtered.length === 0 && (
-            <p className="py-10 text-center text-sm text-gh-ink-muted">
-              No leads match these filters.
-            </p>
+            // An empty tab has to say WHY, or a zero reads as a failure.
+            //
+            // "Founder + successor 0" on a folder of 24 leads looks like the
+            // product did not work. It usually means the opposite: it read 60
+            // companies, found none where both generations were named and
+            // present, and refused to pretend otherwise. Hiding the tab when
+            // it is empty was the other option and it is worse — the one thing
+            // this product exists to find would silently disappear on exactly
+            // the runs where its absence is the finding.
+            <div className="py-10 text-center">
+              {tab === "signal" ? (
+                <>
+                  <p className="text-sm font-medium text-gh-ink-secondary">
+                    No founder-and-successor pair in this batch.
+                  </p>
+                  <p className="mx-auto mt-1.5 max-w-md text-xs leading-relaxed text-gh-ink-muted">
+                    Both generations have to be named and currently running the
+                    business, in the company&rsquo;s own words. That turns up in
+                    roughly one company in forty, so an empty batch is normal
+                    rather than a failure — the{" "}
+                    {companies.filter((c) => c.status === "qualified").length} leads
+                    under &ldquo;All leads&rdquo; are still family-owned companies
+                    that fit the profile. Running the same search again carries on
+                    from where it stopped.
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm text-gh-ink-muted">No leads match these filters.</p>
+              )}
+            </div>
           )}
         </div>
       )}

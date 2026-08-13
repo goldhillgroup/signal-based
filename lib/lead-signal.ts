@@ -194,6 +194,58 @@ export function callableName(v: string | null | undefined): boolean {
 }
 
 /**
+ * Is this a real business name, or scaffolding the crawler picked up?
+ *
+ * A live run put "CURRENT_LIVE_SITE" in the folder as a company. It came off a
+ * staging banner, and it reached the sheet as something Jonathan was invited to
+ * call. Template tokens, SEO title furniture and CMS placeholders all look like
+ * names to a classifier reading page text.
+ */
+const PLACEHOLDER_NAME_RE =
+  /^(current_live_site|untitled|home ?page|new ?page|page ?title|your ?(company|business|site)|company ?name|site ?name|lorem ipsum|test(ing)? ?(site|page|company)?|example|placeholder|default|index|welcome|coming soon|under construction|localhost|staging|wordpress site|my ?(site|blog))$/i;
+
+export function realCompanyName(v: string | null | undefined): boolean {
+  if (!v) return false;
+  const t = String(v).trim();
+  if (t.length < 2 || t.length > 90) return false;
+  // ALL_CAPS_WITH_UNDERSCORES is a token, never a trading name.
+  if (/^[A-Z0-9]+(_[A-Z0-9]+)+$/.test(t)) return false;
+  if (/^https?:|^www\./i.test(t)) return false;
+  return !PLACEHOLDER_NAME_RE.test(t.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim());
+}
+
+/**
+ * Does a company with NO succession pair still show enough to be a lead?
+ *
+ * The gap this closes. `stillFamilyOwned` is deliberately generous — the prompt
+ * says a company only fails it "when there's a real, specific reason in the
+ * text", because cutting a real family firm on a page that simply never
+ * mentions ownership is the more expensive error. Correct for that gate.
+ *
+ * But in hybrid/filter mode it was the ONLY family test a fit-only lead had to
+ * pass, so "the page says nothing" resolved to "family-owned: true" and the
+ * company became a lead. Measured on one live run: 9 of 24 leads named no
+ * individual at all, and five were solo architecture studios — which the
+ * client's written ICP excludes by name ("not lifestyle businesses or solo
+ * professional practices"). They had not qualified; they had merely failed to
+ * disqualify themselves.
+ *
+ * So a lead with no pair needs one POSITIVE piece of evidence: somebody
+ * callable to ring, or the company's own family/generational language. Neither
+ * is a high bar, and a page offering neither has told us nothing — which is not
+ * the same as telling us it fits.
+ */
+export function fitOnlyIsLeadWorthy(
+  founderName: string | null | undefined,
+  familyLanguageOnPage: boolean,
+  supportingSignals: string[] | null | undefined
+): boolean {
+  if (callableName(founderName)) return true;
+  if (familyLanguageOnPage) return true;
+  return Array.isArray(supportingSignals) && supportingSignals.length > 0;
+}
+
+/**
  * Is the family link actually STATED, or merely implied by a shared surname?
  *
  * 39 of 44 signal leads share a surname between the two named people — which is
