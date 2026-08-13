@@ -631,6 +631,46 @@ export function SearchHome({
               ))}
             </div>
 
+            {/* IN HIS OWN WORDS, and not a second setting — the same string the
+                chips above edit.
+                
+                The chips cover the twelve signals in the written ICP, which is
+                most of what he wants most of the time. It is not everything he
+                knows: "founder's daughter just came back from running someone
+                else's branch" is a real thing a coach notices and no checkbox
+                will ever carry it. Removing the box made the product only as
+                expressive as my list of twelve.
+                
+                One source of truth, two ways to edit it: typing lights up any
+                chip whose phrase you happen to write, and clicking a chip
+                writes its phrase into the text. Neither can silently disagree
+                with the other, because there is only one value. */}
+            <div className="mt-3">
+              <label
+                htmlFor="refinement"
+                className="mb-1.5 block text-[11px] font-semibold text-gh-ink-secondary"
+              >
+                Or describe it yourself
+              </label>
+              <textarea
+                id="refinement"
+                rows={2}
+                autoComplete="off"
+                value={refinement}
+                onChange={(e) => setRefinement(e.target.value)}
+                placeholder={
+                  icp.signalFocus
+                    ? `${icp.signalFocus} (your ideal client)`
+                    : "e.g. founder in his sixties, daughter recently made general manager"
+                }
+                className="w-full resize-y rounded-lg border border-gh-border bg-gh-surface px-3 py-2.5 text-sm leading-relaxed text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none focus:ring-2 focus:ring-gh-sky/20"
+              />
+              <p className="mt-1 text-[11px] leading-relaxed text-gh-ink-muted">
+                Separate several with commas. This is the same text the buttons
+                above write, so you can tick a few and then edit the wording.
+              </p>
+            </div>
+
             {/* Honest about the cap rather than letting someone tick eight and
                 assume all eight are being searched for. */}
             {focusPhrases.length > FOCUS_PHRASES_THAT_STEER && (

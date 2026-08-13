@@ -79,7 +79,16 @@ export function requiredCreditFor(targetSignals: number): number {
  *
  * So the answer is the MINIMUM of the two, per key.
  */
+/**
+ * Set when a KEY's own spend limit is what ran out, rather than the account
+ * balance. It changes the advice completely — "top up" is wrong and wastes
+ * someone's time when the account already holds credit and the ceiling is a
+ * number in the dashboard next to the key.
+ */
+let keyCapBound = false;
+
 export async function openRouterRemaining(): Promise<number | null> {
+  keyCapBound = false;
   const [primary, fallback] = await Promise.all([
     resolveSetting("OPENROUTER_API_KEY", process.env.OPENROUTER_API_KEY),
     resolveSetting("OPENROUTER_API_KEY_2", process.env.OPENROUTER_API_KEY_2),
@@ -87,16 +96,54 @@ export async function openRouterRemaining(): Promise<number | null> {
 
   const read = async (key: string, capped: boolean): Promise<number | null> => {
     try {
-      const res = await fetch("https://openrouter.ai/api/v1/credits", {
-        headers: { Authorization: `Bearer ${key}` },
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (!res.ok) return null;
-      const b = (await res.json()) as Credits;
+      // BOTH endpoints, because they answer different questions and the app
+      // shipped for weeks reading only the first.
+      //
+      //   /credits  what the ACCOUNT has        {total_credits, total_usage}
+      //   /key      what THIS KEY may spend     {limit, limit_remaining, usage}
+      //
+      // A key can carry its own spend limit set in the OpenRouter dashboard,
+      // entirely independent of the account balance. Measured on the live key
+      // the moment this was written: the account reported $8.07 available
+      // while the key reported limit $5, usage $5.05, limit_remaining 0. So
+      // the gate said "go", discovery ran and was billed, and then every
+      // single classify call was refused — a folder of fetched companies with
+      // nothing judged, which is the exact failure this function exists to
+      // prevent.
+      //
+      // Same shape as the self-imposed delta cap documented above: whenever
+      // there are two ceilings, the answer is the MINIMUM, never the friendlier
+      // one.
+      const [creditsRes, keyRes] = await Promise.all([
+        fetch("https://openrouter.ai/api/v1/credits", {
+          headers: { Authorization: `Bearer ${key}` },
+          signal: AbortSignal.timeout(10_000),
+        }),
+        fetch("https://openrouter.ai/api/v1/key", {
+          headers: { Authorization: `Bearer ${key}` },
+          signal: AbortSignal.timeout(10_000),
+        }).catch(() => null),
+      ]);
+      if (!creditsRes.ok) return null;
+      const b = (await creditsRes.json()) as Credits;
       const total = b.data?.total_credits;
       const used = b.data?.total_usage;
       if (typeof total !== "number" || typeof used !== "number") return null;
-      const accountLeft = total - used;
+      let accountLeft = total - used;
+
+      // A key with no limit set reports limit: null — uncapped, so it does not
+      // constrain anything and must not be read as zero.
+      if (keyRes?.ok) {
+        const k = (await keyRes.json()) as {
+          data?: { limit?: number | null; limit_remaining?: number | null };
+        };
+        const limit = k.data?.limit;
+        const remaining = k.data?.limit_remaining;
+        if (typeof limit === "number" && typeof remaining === "number") {
+          if (remaining < accountLeft) keyCapBound = true;
+          accountLeft = Math.min(accountLeft, remaining);
+        }
+      }
       if (!capped) return accountLeft;
       // Headroom under our own delta cap, which the pipeline enforces.
       const baseline = Number(await getSettingFresh(BASELINE_SETTING));
@@ -130,6 +177,16 @@ export async function creditBlockerFor(targetSignals: number): Promise<string | 
   const left = await openRouterRemaining();
   if (left === null) return null;
   if (left >= need) return null;
+  // Which ceiling ran out decides the advice. "Top up" is actively wrong when
+  // the account holds credit and the limit is a number beside the key.
+  if (keyCapBound) {
+    return (
+      `This OpenRouter key has hit its own spend limit, so no company could be judged — ` +
+      `$${left.toFixed(2)} available against about $${need.toFixed(2)} needed for ${targetSignals} results. ` +
+      `The ACCOUNT may still hold credit: the cap is on the key itself. ` +
+      `Raise that key's limit in the OpenRouter dashboard, or paste a different key into Settings.`
+    );
+  }
   return (
     `Not enough OpenRouter credit for a search this size, $${left.toFixed(2)} left, ` +
     `about $${need.toFixed(2)} needed for ${targetSignals} results. ` +
@@ -161,6 +218,13 @@ export async function preflightBlocker(): Promise<string | null> {
   const left = await openRouterRemaining();
   if (left === null) return null; // fail open, see above
   if (left > 0.5) return null;
+  if (keyCapBound) {
+    return (
+      `This OpenRouter key has hit its own spend limit, so no company could be judged. ` +
+      `The ACCOUNT may still hold credit — the cap is on the key itself. ` +
+      `Raise that key's limit in the OpenRouter dashboard, or paste a different key into Settings.`
+    );
+  }
   return "Skipped: no OpenRouter credit is available to classify with. Top it up and the next run will go ahead.";
 }
 
