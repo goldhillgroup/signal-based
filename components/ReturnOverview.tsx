@@ -159,7 +159,12 @@ export function ReturnOverview() {
           folder page shows as tabs, so what you can enrich matches what you
           would be looking at. Each carries its own price because they differ by
           an order of magnitude — on a real folder: $0.11, $0.84, $1.85. */}
+      {/* Keyed by folder so opening a different list starts fresh. A
+          useEffect resetting state on open is the other way to do this and
+          it is a synchronous setState inside an effect — lint rejects it,
+          and rightly: remounting is the React answer. */}
       <EnrichScopeDialog
+        key={choosing?.id ?? "none"}
         open={choosing !== null}
         folderLabel={choosing?.label ?? ""}
         scopes={choosing?.scopes ?? []}

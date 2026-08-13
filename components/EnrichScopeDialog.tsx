@@ -1,22 +1,27 @@
 "use client";
 
+import { useState } from "react";
 import { ENRICH_CEILING_PER_COMPANY_USD } from "@/lib/pipeline/pricing";
 import type { EnrichScope } from "@/lib/enrich-scopes";
 
 /**
  * Choose who to look up an email for, and confirm it, in one step.
  *
- * ONE COMPONENT because there are three places to start enrichment and every
- * one of them had grown its own version. Two decided for you without asking,
- * the third offered two choices where there are three, and the middle option
- * re-bought the pairs you had already paid for. Writing a fourth copy here
- * would have been the same mistake a fourth time.
+ * A CHECKLIST, NOT THREE BUTTONS. The first version offered pairs, fits, or
+ * everything — which is three of the seven combinations, and left out the one
+ * most likely to be wanted: pairs AND fits, without the rejected companies. The
+ * three groups are disjoint, so ticking them composes cleanly and nothing is
+ * ever counted twice.
  *
- * Every scope shows its own count and its own price, because they differ by an
- * order of magnitude and the choice is a spending decision. A scope with
- * nothing in it stays VISIBLE and disabled rather than disappearing: a folder
- * with no confirmed pair is exactly the case where the old buttons quietly did
- * nothing and reported success, and "Only the 0 pairs, ~$0.00" says so.
+ * ONE PRICE, ON THE BUTTON. Three separate "~$0.39"s invited arithmetic to work
+ * out what a combination would cost. The number that matters is the one about
+ * to be spent, so it sits on the action, and it is stated as a ceiling — this
+ * bills only for addresses actually FOUND, and a miss is free, so the real
+ * figure is almost always lower.
+ *
+ * ONE COMPONENT because three places start enrichment and each had grown its
+ * own version — two spending without asking at all. A fourth copy here would
+ * have been the same mistake a fourth time.
  */
 export function EnrichScopeDialog({
   open,
@@ -31,7 +36,18 @@ export function EnrichScopeDialog({
   onPick: (ids: string[]) => void;
   onCancel: () => void;
 }) {
+  // PAIRS AND FITS BY DEFAULT — every lead the search accepted. Pairs alone was
+  // the old silent default and it is too narrow: a folder of 24 leads with no
+  // confirmed pair would have opened with nothing ticked and nothing to do. The
+  // cut companies stay opt-in, because arguing with a rejection is a deliberate
+  // act rather than the normal case.
+  const [picked, setPicked] = useState<Set<string>>(new Set(["pairs", "fits"]));
+
   if (!open) return null;
+
+  const chosen = scopes.filter((s) => picked.has(s.key) && s.ids.length > 0);
+  const ids = chosen.flatMap((s) => s.ids);
+  const total = ids.length;
 
   return (
     <div
@@ -46,36 +62,83 @@ export function EnrichScopeDialog({
       <div className="w-full max-w-md rounded-2xl border border-gh-border bg-gh-surface p-5 shadow-lg">
         <h3 className="font-display text-base font-semibold text-gh-ink">Find emails for who?</h3>
         <p className="mt-1 text-xs leading-relaxed text-gh-ink-muted">
-          {folderLabel}. Billed only for addresses actually found, and it looks up
-          the successor first where there is one.
+          {folderLabel}. Pick any combination. It looks up the successor first
+          where there is one.
         </p>
 
-        <div className="mt-4 flex flex-col gap-2">
-          {scopes.map((sc) => (
-            <button
-              key={sc.key}
-              type="button"
-              disabled={sc.ids.length === 0}
-              onClick={() => onPick(sc.ids)}
-              className="flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-lg border border-gh-border bg-gh-surface-sunken px-3.5 py-2.5 text-left transition-colors duration-200 hover:border-gh-sky/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <span className="min-w-0">
-                <span className="block text-sm font-semibold text-gh-ink">{sc.label}</span>
-                <span className="mt-0.5 block text-[11px] leading-snug text-gh-ink-muted">
-                  {sc.hint}
+        <div className="mt-4 flex flex-col gap-1.5">
+          {scopes.map((sc) => {
+            const empty = sc.ids.length === 0;
+            const on = picked.has(sc.key) && !empty;
+            return (
+              <label
+                key={sc.key}
+                // Empty groups stay VISIBLE and disabled rather than vanishing.
+                // A folder with no confirmed pair is exactly the case where the
+                // old single button quietly did nothing and reported success —
+                // "Founder + successor  0" says so plainly.
+                className={`flex min-h-11 items-center gap-3 rounded-lg border px-3.5 py-2.5 transition-colors duration-200 ${
+                  empty
+                    ? "cursor-not-allowed border-gh-border bg-gh-surface-sunken opacity-40"
+                    : on
+                      ? "cursor-pointer border-gh-sky/50 bg-gh-sky/5"
+                      : "cursor-pointer border-gh-border bg-gh-surface-sunken hover:border-gh-sky/40"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={on}
+                  disabled={empty}
+                  onChange={() =>
+                    setPicked((cur) => {
+                      const next = new Set(cur);
+                      if (next.has(sc.key)) next.delete(sc.key);
+                      else next.add(sc.key);
+                      return next;
+                    })
+                  }
+                  className="h-4 w-4 shrink-0 accent-gh-sky"
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold text-gh-ink">{sc.label}</span>
+                  <span className="mt-0.5 block text-[11px] leading-snug text-gh-ink-muted">
+                    {sc.hint}
+                  </span>
                 </span>
-              </span>
-              <span className="tabular shrink-0 text-xs font-semibold text-gh-ink-secondary">
-                ~${(sc.ids.length * ENRICH_CEILING_PER_COMPANY_USD).toFixed(2)}
-              </span>
-            </button>
-          ))}
+                <span className="tabular shrink-0 text-sm font-semibold text-gh-ink-secondary">
+                  {sc.ids.length}
+                </span>
+              </label>
+            );
+          })}
         </div>
 
         <button
           type="button"
+          disabled={total === 0}
+          onClick={() => onPick(ids)}
+          className="mt-4 min-h-11 w-full cursor-pointer rounded-lg bg-gh-navy px-4 py-2.5 text-sm font-semibold text-white transition-colors duration-200 hover:bg-gh-navy-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {total === 0 ? (
+            "Pick at least one"
+          ) : (
+            <>
+              Find emails for {total} {total === 1 ? "company" : "companies"}
+              <span className="tabular ml-1.5 font-normal text-white/60">
+                up to ${(total * ENRICH_CEILING_PER_COMPANY_USD).toFixed(2)}
+              </span>
+            </>
+          )}
+        </button>
+        <p className="mt-1.5 text-center text-[11px] leading-relaxed text-gh-ink-muted">
+          Charged only for addresses actually found — a miss costs nothing, so it
+          is usually less than this.
+        </p>
+
+        <button
+          type="button"
           onClick={onCancel}
-          className="mt-3 min-h-11 w-full cursor-pointer rounded-lg px-3 py-2 text-xs font-medium text-gh-ink-muted transition-colors hover:text-gh-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+          className="mt-2 min-h-11 w-full cursor-pointer rounded-lg px-3 py-2 text-xs font-medium text-gh-ink-muted transition-colors hover:text-gh-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
         >
           Not now
         </button>

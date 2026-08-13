@@ -27,7 +27,7 @@ import { isWrongKindOfBusiness } from "./pipeline/recheck-policy";
  * lib/supabase/server.
  */
 export interface EnrichScope {
-  key: "pairs" | "fits" | "everything";
+  key: "pairs" | "fits" | "cut";
   label: string;
   hint: string;
   ids: string[];
@@ -46,26 +46,32 @@ export function enrichScopesFor(companies: Company[]): EnrichScope[] {
     (c) => c.status === "rejected" && !isWrongKindOfBusiness(c.rejectionReason)
   );
 
-  const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
-
   return [
+    // Names, not instructions. These are checklist rows now, so "Only the 7
+    // fits" read as a button that would do something on its own; the row says
+    // WHAT THE GROUP IS and the tick decides whether it is included. The count
+    // sits in its own column rather than inside the sentence.
     {
       key: "pairs",
-      label: `Only the ${pairs.length} ${plural(pairs.length, "pair", "pairs")}`,
-      hint: "Founder and successor both named and running it today",
+      label: "Founder + successor",
+      hint: "Both generations named and running it today",
       ids: pairs.map((c) => c.id),
     },
     {
       key: "fits",
-      label: `Only the ${fits.length} ${plural(fits.length, "fit", "fits")}`,
-      hint: "Fits the profile, but no successor is named yet",
+      label: "Good fit, no successor yet",
+      hint: "Right trade and area, family-run, nobody named to take over",
       ids: fits.map((c) => c.id),
     },
     {
-      key: "everything",
-      label: `Everything, including the ${cut.length} cut`,
-      hint: "Also the companies cut on a gate you might disagree with",
-      ids: [...pairs, ...fits, ...cut].map((c) => c.id),
+      // ONLY the cut. This used to be the union of all three, which was correct
+      // for a button labelled "Everything" and wrong the moment these became
+      // tickboxes — the row would have counted the leads a second time and the
+      // total would have been nonsense.
+      key: "cut",
+      label: "Cut, but arguable",
+      hint: "Rejected on a gate you might disagree with",
+      ids: cut.map((c) => c.id),
     },
   ];
 }

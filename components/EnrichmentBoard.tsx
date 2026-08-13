@@ -139,7 +139,12 @@ export function EnrichmentBoard() {
         />
       )}
 
+      {/* Keyed by folder so opening a different list starts fresh. A
+          useEffect resetting state on open is the other way to do this and
+          it is a synchronous setState inside an effect — lint rejects it,
+          and rightly: remounting is the React answer. */}
       <EnrichScopeDialog
+        key={pending?.id ?? "none"}
         open={pending !== null}
         folderLabel={pending?.label ?? ""}
         scopes={pending?.scopes ?? []}

@@ -23,6 +23,7 @@ import { CompanyDrawer } from "./CompanyDrawer";
 import { ArrowLeftIcon, RadarIcon, ZapIcon, InboxIcon, UsersIcon, DownloadIcon } from "./icons";
 import { ENRICH_CEILING_PER_COMPANY_USD } from "@/lib/pipeline/pricing";
 import { enrichScopesFor } from "@/lib/enrich-scopes";
+import { EnrichScopeDialog } from "./EnrichScopeDialog";
 import { SheetsButton } from "./SheetsButton";
 
 export function FolderView({ folder: folderProp, companies: companiesProp }: { folder: SearchFolder; companies: Company[] }) {
@@ -37,6 +38,7 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
   const [companies, setCompanies] = useState(companiesProp);
   const [enrichError, setEnrichError] = useState("");
   const [confirmEnrich, setConfirmEnrich] = useState(false);
+  const [choosingScope, setChoosingScope] = useState(false);
   /** Explicit company ids awaiting confirmation. null = the folder-wide button. */
   const [pendingPick, setPendingPick] = useState<string[] | null>(null);
   // Watch the run the way the search does. The Enrichment page has had this
@@ -160,6 +162,19 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
           onDismiss={() => setWatchingEnrich(false)}
         />
       )}
+
+      <EnrichScopeDialog
+        key={folder.id}
+        open={choosingScope}
+        folderLabel={folder.label}
+        scopes={enrichScopes}
+        onPick={(ids) => {
+          setChoosingScope(false);
+          setPendingPick(ids);
+          setConfirmEnrich(true);
+        }}
+        onCancel={() => setChoosingScope(false)}
+      />
 
       <ConfirmDialog
         open={confirmEnrich}
@@ -307,54 +322,26 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
           </p>
           {enrichError && <p className="mt-0.5 text-xs font-medium text-gh-critical">{enrichError}</p>}
         </div>
-        {/* THREE SCOPES, NOT ONE SILENT DEFAULT.
-            
-            This was a single "Enrich contacts" button that called
-            startEnrichment with no scope — and the API reads an absent scope as
-            "signals". So it looked up the pairs, said nothing about it, and left
-            no way to reach the rest of the list. On a folder of 24 leads with 2
-            pairs, pressing it bought 2 addresses and looked finished.
-            
-            The three groups are the three the page already shows as tabs, which
-            is the point: the thing you can enrich matches the thing you are
-            looking at. Each carries its own count and its own price, because
-            they differ by an order of magnitude. */}
+        {/* The same checklist as everywhere else. This screen had three inline
+            buttons, which is three of the seven combinations — and the folder
+            page is exactly where you would want pairs AND fits without the
+            rejected ones. One button, one dialog, one definition. */}
         {folder.enrichmentStatus === "running" ? (
           <span className="shrink-0 rounded-lg bg-gh-navy px-4 py-2 text-xs font-semibold text-white opacity-50">
             Enriching…
           </span>
         ) : (
-          <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-            {enrichScopes.map((sc) => (
-              <button
-                key={sc.key}
-                type="button"
-                onClick={() => {
-                  // "pairs" is the server's own default, so it needs no pick.
-                  // The other two are explicit id lists, which is also the only
-                  // path that can reach a company the pipeline rejected.
-                  setPendingPick(sc.key === "pairs" ? null : sc.ids);
-                  setConfirmEnrich(true);
-                }}
-                disabled={sc.ids.length === 0}
-                title={sc.hint}
-                className={`shrink-0 cursor-pointer rounded-lg px-3 py-2 text-xs font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 disabled:cursor-not-allowed disabled:opacity-40 ${
-                  sc.key === "pairs"
-                    ? "bg-gh-navy text-white hover:bg-gh-navy-2"
-                    : "border border-gh-border bg-gh-surface text-gh-ink-secondary hover:border-gh-sky/40 hover:text-gh-ink"
-                }`}
-              >
-                {sc.label}
-                <span
-                  className={`tabular ml-1.5 font-normal ${
-                    sc.key === "pairs" ? "text-white/60" : "text-gh-ink-muted"
-                  }`}
-                >
-                  ~${(sc.ids.length * ENRICH_CEILING_PER_COMPANY_USD).toFixed(2)}
-                </span>
-              </button>
-            ))}
-          </div>
+          <button
+            type="button"
+            onClick={() => setChoosingScope(true)}
+            className="shrink-0 cursor-pointer rounded-lg bg-gh-navy px-4 py-2 text-xs font-semibold text-white transition-colors duration-200 hover:bg-gh-navy-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+          >
+            {folder.enrichmentStatus === "complete"
+              ? "Find more emails"
+              : folder.enrichmentStatus === "failed"
+                ? "Retry finding emails"
+                : "Find emails"}
+          </button>
         )}
       </div>
 
