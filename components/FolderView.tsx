@@ -115,6 +115,35 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
   // of business, so an export cannot contain what the UI refuses to show.
 
 
+  // The three enrichable groups, matching the three tabs exactly. Derived here
+  // rather than in the buttons so the counts on the buttons and the rows in the
+  // list can never disagree.
+  const pairIds = companies.filter((c) => c.status === "qualified" && c.hasSignal === true).map((c) => c.id);
+  const leadIds = companies.filter((c) => c.status === "qualified").map((c) => c.id);
+  const cutWorthArguingIds = companies
+    .filter((c) => c.status === "rejected" && !isWrongKindOfBusiness(c.rejectionReason))
+    .map((c) => c.id);
+  const enrichScopes = [
+    {
+      key: "pairs" as const,
+      label: `Just the ${pairIds.length} pair${pairIds.length === 1 ? "" : "s"}`,
+      hint: "Founder and successor both named and currently running it",
+      ids: pairIds,
+    },
+    {
+      key: "leads" as const,
+      label: `All ${leadIds.length} leads`,
+      hint: "Every company that fits the profile, pairs included",
+      ids: leadIds,
+    },
+    {
+      key: "everything" as const,
+      label: `Plus the ${cutWorthArguingIds.length} cut`,
+      hint: "Also looks up the companies cut on a gate you might disagree with",
+      ids: [...leadIds, ...cutWorthArguingIds],
+    },
+  ];
+
   const exportable = companies.filter(
 
 
@@ -302,24 +331,55 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
           </p>
           {enrichError && <p className="mt-0.5 text-xs font-medium text-gh-critical">{enrichError}</p>}
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            // Folder-wide: explicitly NOT a pick, so any stale one is dropped.
-            setPendingPick(null);
-            setConfirmEnrich(true);
-          }}
-          disabled={folder.enrichmentStatus === "running"}
-          className="shrink-0 rounded-lg bg-gh-navy px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-gh-navy-2 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {folder.enrichmentStatus === "running"
-            ? "Enriching…"
-            : folder.enrichmentStatus === "complete"
-              ? "Re-run enrichment"
-              : folder.enrichmentStatus === "failed"
-                ? "Retry enrichment"
-                : "Enrich contacts"}
-        </button>
+        {/* THREE SCOPES, NOT ONE SILENT DEFAULT.
+            
+            This was a single "Enrich contacts" button that called
+            startEnrichment with no scope — and the API reads an absent scope as
+            "signals". So it looked up the pairs, said nothing about it, and left
+            no way to reach the rest of the list. On a folder of 24 leads with 2
+            pairs, pressing it bought 2 addresses and looked finished.
+            
+            The three groups are the three the page already shows as tabs, which
+            is the point: the thing you can enrich matches the thing you are
+            looking at. Each carries its own count and its own price, because
+            they differ by an order of magnitude. */}
+        {folder.enrichmentStatus === "running" ? (
+          <span className="shrink-0 rounded-lg bg-gh-navy px-4 py-2 text-xs font-semibold text-white opacity-50">
+            Enriching…
+          </span>
+        ) : (
+          <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+            {enrichScopes.map((sc) => (
+              <button
+                key={sc.key}
+                type="button"
+                onClick={() => {
+                  // "pairs" is the server's own default, so it needs no pick.
+                  // The other two are explicit id lists, which is also the only
+                  // path that can reach a company the pipeline rejected.
+                  setPendingPick(sc.key === "pairs" ? null : sc.ids);
+                  setConfirmEnrich(true);
+                }}
+                disabled={sc.ids.length === 0}
+                title={sc.hint}
+                className={`shrink-0 cursor-pointer rounded-lg px-3 py-2 text-xs font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 disabled:cursor-not-allowed disabled:opacity-40 ${
+                  sc.key === "pairs"
+                    ? "bg-gh-navy text-white hover:bg-gh-navy-2"
+                    : "border border-gh-border bg-gh-surface text-gh-ink-secondary hover:border-gh-sky/40 hover:text-gh-ink"
+                }`}
+              >
+                {sc.label}
+                <span
+                  className={`tabular ml-1.5 font-normal ${
+                    sc.key === "pairs" ? "text-white/60" : "text-gh-ink-muted"
+                  }`}
+                >
+                  ~${(sc.ids.length * ENRICH_CEILING_PER_COMPANY_USD).toFixed(2)}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Two numbers about the result, then two about the work behind it.
