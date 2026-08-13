@@ -113,6 +113,111 @@ export function IdealClient({ initial }: { initial: Icp }) {
         </div>
       </div>
 
+      {/* THE REST OF HIS WRITTEN PROFILE, and every one of them optional.
+          
+          These were hardcoded gates read off the document he sent — 25-150
+          employees, 15+ years, no lifestyle businesses. Wrong shape: his own
+          wording is "GENERALLY 25-150" and "USUALLY 15+ years", a description
+          of his typical client rather than a specification, and a threshold
+          buried in a gate is one he cannot see or argue with.
+          
+          Blank means the check is off, not zero. And nothing here rejects on
+          missing information — a page that never states its headcount is never
+          assumed to be small. */}
+      <div className="mt-5 border-t border-gh-border pt-5">
+        <span className="mb-1 block text-xs font-semibold text-gh-ink-secondary">
+          Company size <span className="font-normal text-gh-ink-muted">(leave blank to ignore)</span>
+        </span>
+        <p className="mb-2.5 text-[11px] leading-relaxed text-gh-ink-muted">
+          Only used when a page actually states these. A company that says
+          nothing about its size is never cut for it.
+        </p>
+        <div className="flex flex-wrap items-end gap-4">
+          <label className="text-[11px] font-medium text-gh-ink-muted">
+            Employees, from
+            <input
+              type="number"
+              min={0}
+              inputMode="numeric"
+              value={icp.employeeMin ?? ""}
+              onChange={(e) =>
+                setIcp({ ...icp, employeeMin: e.target.value === "" ? null : Number(e.target.value) })
+              }
+              className="mt-1 block w-24 rounded-lg border border-gh-border bg-gh-surface-sunken px-2.5 py-2 text-sm text-gh-ink focus:border-gh-sky focus:outline-none focus:ring-2 focus:ring-gh-sky/20"
+            />
+          </label>
+          <label className="text-[11px] font-medium text-gh-ink-muted">
+            to
+            <input
+              type="number"
+              min={0}
+              inputMode="numeric"
+              value={icp.employeeMax ?? ""}
+              onChange={(e) =>
+                setIcp({ ...icp, employeeMax: e.target.value === "" ? null : Number(e.target.value) })
+              }
+              className="mt-1 block w-24 rounded-lg border border-gh-border bg-gh-surface-sunken px-2.5 py-2 text-sm text-gh-ink focus:border-gh-sky focus:outline-none focus:ring-2 focus:ring-gh-sky/20"
+            />
+          </label>
+          <label className="text-[11px] font-medium text-gh-ink-muted">
+            Trading at least (years)
+            <input
+              type="number"
+              min={0}
+              inputMode="numeric"
+              value={icp.minYearsInBusiness ?? ""}
+              onChange={(e) =>
+                setIcp({
+                  ...icp,
+                  minYearsInBusiness: e.target.value === "" ? null : Number(e.target.value),
+                })
+              }
+              className="mt-1 block w-28 rounded-lg border border-gh-border bg-gh-surface-sunken px-2.5 py-2 text-sm text-gh-ink focus:border-gh-sky focus:outline-none focus:ring-2 focus:ring-gh-sky/20"
+            />
+          </label>
+        </div>
+
+        <div className="mt-4 space-y-2.5">
+          <label className="flex cursor-pointer items-start gap-2.5">
+            <input
+              type="checkbox"
+              checked={icp.excludeLifestyleBusinesses}
+              onChange={(e) => setIcp({ ...icp, excludeLifestyleBusinesses: e.target.checked })}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-gh-sky"
+            />
+            <span className="text-[11px] leading-relaxed">
+              <span className="font-semibold text-gh-ink-secondary">
+                Skip one and two person operations
+              </span>
+              <span className="mt-0.5 block text-gh-ink-muted">
+                Your profile says these are &ldquo;not lifestyle businesses or solo
+                professional practices&rdquo;. Only refuses companies whose own page
+                describes one or two people — there is nothing to hand over but a truck.
+              </span>
+            </span>
+          </label>
+
+          <label className="flex cursor-pointer items-start gap-2.5">
+            <input
+              type="checkbox"
+              checked={icp.professionalServicesNeedFamily}
+              onChange={(e) => setIcp({ ...icp, professionalServicesNeedFamily: e.target.checked })}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-gh-sky"
+            />
+            <span className="text-[11px] leading-relaxed">
+              <span className="font-semibold text-gh-ink-secondary">
+                Professional-services firms need several family members
+              </span>
+              <span className="mt-0.5 block text-gh-ink-muted">
+                Your words: &ldquo;select professional-services firms with multiple
+                family members involved&rdquo;. Switch this off and the vertical also
+                returns single-principal architecture, engineering and accounting firms.
+              </span>
+            </span>
+          </label>
+        </div>
+      </div>
+
       <div className="mt-5 flex items-center gap-3">
         <button
           type="button"

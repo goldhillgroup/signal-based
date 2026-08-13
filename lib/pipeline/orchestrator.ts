@@ -6,10 +6,11 @@ import { verifyEmail } from "./millionverifier";
 import type { Industry, SearchMode, SearchRow } from "../supabase/types";
 import { recheckAfterFor, rejectionScope, sizeVerdictStillBinds, parseRevenueBand } from "./recheck-policy";
 import { extractEmails, bestEmailFor, type FoundEmail, bestPhoneFor, isSharedInbox } from "./page-email";
-import { callableName, cleanPersonName, cleanRevenueBand, cleanTitle, earnedConfidence, fitOnlyIsLeadWorthy, professionalServicesQualifies, realCompanyName } from "../lead-signal";
+import { callableName, cleanPersonName, cleanRevenueBand, cleanTitle, earnedConfidence, fitOnlyIsLeadWorthy, isLifestyleBusiness, professionalServicesQualifies, realCompanyName } from "../lead-signal";
 import { buildWarningLine } from "./channel-health";
 import { INDUSTRY_META } from "../signal-meta";
 import { channelEvidence, explorationFor, orderByYield } from "./channel-priors";
+import { getIcp } from "./icp";
 import { runWithCounters, estimateUsd, describeCost, type CostCounters } from "./cost-tracker";
 
 // Contact enrichment (Anymailfinder + MillionVerifier) lives in
@@ -720,6 +721,17 @@ export async function runSearchPipeline(
     // spending a quarter of itself re-establishing that the directory channel
     // has produced zero pairs in 106 companies. See explorationFor.
     const { rates, observations } = await channelEvidence();
+
+    // HIS PROFILE, NOT MY CONSTANTS.
+    //
+    // The employee range, the minimum trading history, the lifestyle-business
+    // exclusion and the professional-services family rule all arrived as
+    // hardcoded gates, read off the document he sent. Wrong shape: every one is
+    // a judgement he is entitled to change, and a threshold buried in a gate is
+    // one he cannot see, cannot argue with, and has to ask a developer to move.
+    // Read once per run, so editing Settings takes effect on the next search
+    // with no redeploy. Falls back to the written defaults if unreadable.
+    const icp = await getIcp();
     const explore = explorationFor(observations);
 
     let discoveryCalls = rotationSeed; // drives metro/state rotation, NOT the same as classify rounds
@@ -1034,6 +1046,9 @@ export async function runSearchPipeline(
             ? searchedVertical
             : classification.industry) as Industry,
           city: base.city ?? cleanCity(classification.city),
+          // Written ICP criteria that were never stored. employee_band has had
+          // a column all along and sat at 0% across 359 leads.
+          employee_band: cleanRevenueBand(classification.employeeBand),
         };
 
         // OUT OF THE SELECTED VERTICALS, though a real business in a real ICP
@@ -1248,6 +1263,7 @@ export async function runSearchPipeline(
         } else if (
           finalQualifies &&
           classification.industry === "professional_services" &&
+          icp.professionalServicesNeedFamily &&
           !professionalServicesQualifies(
             classification.founderName,
             classification.nextGenName,
@@ -1261,6 +1277,20 @@ export async function runSearchPipeline(
           finalQualifies = false;
           rejectionReason =
             "A professional-services firm is only in the profile when several family members are involved — this one shows a single principal, so it reads as a solo practice.";
+        } else if (
+          finalQualifies &&
+          icp.excludeLifestyleBusinesses &&
+          isLifestyleBusiness(classification.employeeBand, classifyText)
+        ) {
+          // "They are not lifestyle businesses or solo professional practices"
+          // — his words, and until now enforced only for professional services
+          // because that is where it bit first. A two-man landscaping outfit is
+          // as far outside the profile as a sole architect: there is no
+          // succession to coach when there is nothing to hand over but a truck.
+          // See isLifestyleBusiness — only the unambiguous end is refused.
+          finalQualifies = false;
+          rejectionReason =
+            "Reads as a one or two person operation — the profile is businesses with employees, managers and equipment, not owner-operator trades.";
         } else if (finalQualifies && belowBand) {
           finalQualifies = false;
           rejectionReason = `Too small, reads below the $${band!.min}M lower bound set for this search.`;

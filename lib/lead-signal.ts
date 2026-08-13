@@ -246,6 +246,54 @@ export function fitOnlyIsLeadWorthy(
 }
 
 /**
+ * How many people work there, as a number, from whatever the page said.
+ *
+ * "crew of 12" -> 12, "25-30" -> 25 (the low end, so a borderline company is
+ * never flattered upward into the profile), "over 100" -> 100.
+ */
+export function employeeCountFrom(band: string | null | undefined): number | null {
+  if (!band) return null;
+  const nums = String(band).match(/\d+/g);
+  if (!nums?.length) return null;
+  const n = Number(nums[0]);
+  return Number.isFinite(n) && n > 0 && n < 100_000 ? n : null;
+}
+
+/**
+ * Is this a real operating business, or somebody's own trade?
+ *
+ * The client's profile says it in one line — "These companies typically have
+ * employees, managers, equipment, projects, customers, and operating
+ * complexity. They are not lifestyle businesses or solo professional
+ * practices." That exclusion was enforced for professional services only,
+ * because that is where it bit first (five design studios with one principal).
+ * It applies to all eight verticals: a two-man landscaping outfit is as far
+ * outside the profile as a sole architect, and there is no succession to coach
+ * when there is nothing to hand over but a truck.
+ *
+ * Only the UNAMBIGUOUS end is refused. The ICP's own words are "generally
+ * 25-150", which is guidance rather than a boundary, so a company at 15 people
+ * is kept and shown; a company the page itself describes as one or two people
+ * is not. Silence is never treated as smallness — most pages say nothing, and
+ * cutting on missing information would empty the product.
+ */
+const LIFESTYLE_RE =
+  /\b(one[- ]man (band|show|operation)|owner[- ]operator only|just me|i'?m the only|sole (proprietor|practitioner|trader)|solo (operation|practice|practitioner)|husband[- ]and[- ]wife team only|two[- ]man (operation|crew|band))\b/i;
+
+export function isLifestyleBusiness(
+  employeeBand: string | null | undefined,
+  pageText: string
+): boolean {
+  const n = employeeCountFrom(employeeBand);
+  // Stated headcount is the strongest evidence there is, in either direction.
+  if (n !== null) return n <= 2;
+  // The band can be prose rather than a number — the classifier is asked for a
+  // short string and "just me" is a legitimate answer to how many people work
+  // here. Checking only pageText missed it.
+  return LIFESTYLE_RE.test(employeeBand ?? "") || LIFESTYLE_RE.test(pageText);
+}
+
+/**
  * The ICP's own qualifier on professional services, enforced in code.
  *
  * The client's profile admits "SELECT professional-services firms WITH MULTIPLE

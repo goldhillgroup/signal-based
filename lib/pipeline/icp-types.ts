@@ -37,6 +37,40 @@ export interface Icp {
   /** Revenue band in $M. Either end may be null for "no limit". */
   revenueMinMusd: number | null;
   revenueMaxMusd: number | null;
+  /**
+   * The rest of his written profile, and NULL EVERYWHERE MEANS "I don't care".
+   *
+   * These arrived as hardcoded rules read straight off the document he sent —
+   * 25-150 employees, 15+ years, no lifestyle businesses. That was the wrong
+   * shape for them. Every one is a judgement he is entitled to change, and a
+   * threshold buried in a gate is a threshold he cannot see, cannot argue with,
+   * and has to ask a developer to move.
+   *
+   * His own wording is "GENERALLY 25-150 employees" and "USUALLY 15+ years",
+   * which is a description of his typical client rather than a specification.
+   * Encoding "generally" as a hard filter would refuse companies he would
+   * happily take. So: seeded from what he wrote, null-able to switch off
+   * entirely, and nothing here rejects on missing information — a page that
+   * does not state its headcount is never assumed to be small.
+   */
+  employeeMin: number | null;
+  employeeMax: number | null;
+  minYearsInBusiness: number | null;
+  /**
+   * "They are not lifestyle businesses or solo professional practices." The one
+   * criterion he stated as an exclusion rather than a range, so it is a switch
+   * rather than a number — and it only ever refuses the unambiguous end, a
+   * company the page itself describes as one or two people.
+   */
+  excludeLifestyleBusinesses: boolean;
+  /**
+   * "SELECT professional-services firms WITH MULTIPLE FAMILY MEMBERS INVOLVED."
+   * The admission criterion for that vertical, in his words. On by default
+   * because without it the vertical returns solo architecture studios, which
+   * the same sentence excludes — but still his call, because he may decide a
+   * single-principal firm is worth a conversation.
+   */
+  professionalServicesNeedFamily: boolean;
 }
 
 /**
@@ -57,6 +91,17 @@ export const DEFAULT_ICP: Icp = {
   // so it can prefer the middle without rejecting the edges.
   revenueMinMusd: 5,
   revenueMaxMusd: 30,
+  // "Generally 25-150 employees, 3-10 in the office in management roles."
+  // Seeded from his document, and every one of these can be cleared to null,
+  // which switches the check off rather than setting it to zero.
+  employeeMin: 25,
+  employeeMax: 150,
+  // "Established operating history, usually 15+ years."
+  minYearsInBusiness: 15,
+  // "They are not lifestyle businesses or solo professional practices."
+  excludeLifestyleBusinesses: true,
+  // "SELECT professional-services firms WITH MULTIPLE FAMILY MEMBERS INVOLVED."
+  professionalServicesNeedFamily: true,
 };
 
 /** Clamp anything read from storage or posted by a form into a usable Icp. */
@@ -75,5 +120,31 @@ export function normalizeIcp(raw: unknown): Icp {
   let max = num(o.revenueMaxMusd);
   // A band entered backwards would silently match nothing.
   if (min !== null && max !== null && min > max) [min, max] = [max, min];
-  return { signalFocus: focus, revenueMinMusd: min, revenueMaxMusd: max };
+
+  let empMin = num(o.employeeMin);
+  let empMax = num(o.employeeMax);
+  if (empMin !== null && empMax !== null && empMin > empMax) [empMin, empMax] = [empMax, empMin];
+
+  // A missing boolean means "keep the default", not "off". These arrive from a
+  // form that may predate the field, and silently switching off the exclusion
+  // his profile states in writing would be the wrong way to be permissive.
+  const bool = (v: unknown, fallback: boolean): boolean =>
+    typeof v === "boolean" ? v : fallback;
+
+  return {
+    signalFocus: focus,
+    revenueMinMusd: min,
+    revenueMaxMusd: max,
+    employeeMin: empMin,
+    employeeMax: empMax,
+    minYearsInBusiness: num(o.minYearsInBusiness),
+    excludeLifestyleBusinesses: bool(
+      o.excludeLifestyleBusinesses,
+      DEFAULT_ICP.excludeLifestyleBusinesses
+    ),
+    professionalServicesNeedFamily: bool(
+      o.professionalServicesNeedFamily,
+      DEFAULT_ICP.professionalServicesNeedFamily
+    ),
+  };
 }

@@ -399,6 +399,23 @@ export interface ClassificationResult {
    */
   otherSignals: string[];
   /**
+   * Roughly how many people work there, and how long it has traded.
+   *
+   * Both are written ICP criteria — "generally 25-150 employees, 3-10 in the
+   * office in management roles" and "established operating history, usually
+   * 15+ years" — and neither was captured. The employee_band COLUMN existed and
+   * the prompt already mentioned the range; the classifier simply never
+   * returned it, so it sat at 0% populated across 359 leads while revenue, the
+   * criterion pages state least often, carried the whole size judgement at 25%.
+   *
+   * Recorded, not gated. The client's own wording is "generally" and "usually",
+   * so these inform the picture rather than reject on their own — the one
+   * exception is a visibly one or two person operation, which his profile rules
+   * out in every vertical ("not lifestyle businesses").
+   */
+  employeeBand: string | null;
+  yearsInBusiness: number | null;
+  /**
    * The town or city the business operates from, read off the page.
    *
    * Only Google Maps candidates arrive with a location; web search — the
@@ -457,6 +474,10 @@ What unites all eight, in the client's own words: "operationally complex, owner-
 "other" is for things genuinely outside all eight — a lead-gen marketplace or directory platform, a real-estate brokerage, a newspaper or trade magazine, a funeral home, a software or SaaS company, a retailer or e-commerce store, a trade association, a nonprofit, a political campaign, a franchise-sales body. If "other", this can never qualify — set qualifies: false and say so in rejectionReason.
 
 Size is a separate gate from family: the ICP expects roughly 25-150 employees and 15+ years of operating history. Do not use those to reject on their own — record what the page shows and let sizeFit carry it.
+
+RECORD BOTH EXPLICITLY, because they are the criteria the client actually wrote down and a page states them far more often than it states revenue:
+- "employeeBand": what the page says about how many people work there, as a short string — "40 employees", "crew of 12", "25-30", "over 100", "3 crews". Read "our team of 24", "we employ 60 people", a staff/team page you can count, fleet or crew counts, or number of locations. null if the page gives nothing. Never infer a number from revenue; if it is not stated or countable, it is null.
+- "yearsInBusiness": a whole number of years, worked out from what the page claims — "serving families since 1985" in 2026 is 41, "over 30 years of experience" is 30, "founded in 1998" is 28. Use the FOUNDING of the business, not an individual's career length, and null when the page gives neither. Do not guess from how established the site looks.
 
 When a company sits near the edge of an umbrella but clearly does hands-on work with its own people, include it rather than excluding it — an over-narrow read is the more expensive error here, and it is the specific error this prompt has already made once.
 
@@ -537,6 +558,8 @@ Respond with ONLY a JSON object (no markdown fences, no prose) matching this sha
   "qualifies": boolean,
   "industry": "landscaping" | "home_builder" | "construction" | "trades" | "manufacturing" | "distribution" | "property_services" | "professional_services" | "other",
   "otherSignals": string[],
+  "employeeBand": string | null,
+  "yearsInBusiness": number | null,
   "confidence": "high" | "medium" | "verify" | null,
   "pageType": "about" | "leadership" | "team" | "home" | "other",
   "nextGenName": string | null,
