@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { countsTowardTarget, targetUnit } from "@/lib/pipeline/target-count";
 import { useSearches, SearchFolder } from "@/lib/searches-store";
 import { RUN_CEILING_MS, REAP_GRACE_MS } from "@/lib/pipeline/reap";
 import { RadarIcon } from "./icons";
@@ -34,9 +35,20 @@ interface Props {
  */
 const MAX_AUTO_PASSES = 6;
 
+// ONE definition, shared with the pipeline. See lib/pipeline/target-count.
+//
+// This function used to have its own copy of the rule, and it drifted: the
+// pipeline was corrected so hybrid counts PAIRS, this kept adding fit-only rows
+// in, and on a live run they read 2 of 8 and 15 of 8 for the same folder. The
+// dialog showed "8 / 8, 100%, done" while the run had four passes left — and
+// because the auto-continuation below is gated on THIS number, those passes
+// never ran.
 function foundCount(folder: SearchFolder): number {
-  const signalFound = folder.qualifiedCount + folder.verifyCount;
-  return folder.mode === "signal" ? signalFound : signalFound + folder.fitOnlyCount;
+  return countsTowardTarget(folder.mode, {
+    qualified: folder.qualifiedCount,
+    verify: folder.verifyCount,
+    fitOnly: folder.fitOnlyCount,
+  });
 }
 
 /**
@@ -89,6 +101,8 @@ function currentActivity(folder: SearchFolder): string {
 
 export function SearchProgress({ searchId, query, onComplete, onError, onDismiss }: Props) {
   const { fetchFolder } = useSearches();
+  // Guards the reap call so a long stale row is settled once, not every 900ms.
+  const reapedRef = useRef(false);
   const [folder, setFolder] = useState<SearchFolder | null>(null);
   const stopRef = useRef(false);
   /**
@@ -186,6 +200,28 @@ export function SearchProgress({ searchId, query, onComplete, onError, onDismiss
         // measuring from createdAt would abandon the dialog mid-way through
         // pass two of five.
         if (Date.now() - passStartedRef.current > RUN_CEILING_MS + REAP_GRACE_MS) {
+          // SETTLE THE ROW BEFORE LETTING GO OF IT.
+          //
+          // This used to just close the dialog, which left the row saying
+          // 'running' forever. fetchFolder reads Supabase straight from the
+          // browser, so no server code runs on a poll, so the reaper — which
+          // lives on the dashboard layout render — never fires while somebody
+          // is sitting here watching.
+          //
+          // Observed live: the platform killed a run at the 300-second limit,
+          // this dialog gave up, and the dashboard went on showing "running
+          // now" for TEN MINUTES. The 44 companies were saved and complete the
+          // whole time and nothing said so. Rendering the dashboard fixed it
+          // instantly, which is not something anyone should have to know.
+          //
+          // Awaited, so the row is honest by the time the folder opens.
+          if (!reapedRef.current) {
+            reapedRef.current = true;
+            await fetch("/api/reap", { method: "POST" }).catch(() => {
+              // Non-fatal: the dashboard render still reaps, and a failed
+              // settle must not break a dialog that is otherwise working.
+            });
+          }
           onComplete(f);
           return;
         }
@@ -220,7 +256,10 @@ export function SearchProgress({ searchId, query, onComplete, onError, onDismiss
 
   const found = foundCount(folder);
   const pct = Math.min(100, Math.round((found / Math.max(folder.targetSignals, 1)) * 100));
-  const unit = folder.mode === "signal" ? "signals" : "companies";
+  // The label has to name what is actually being counted. Hybrid counts PAIRS
+  // now, so "8 companies" beside a number that only moves on pairs was telling
+  // you the wrong thing about why it was not moving.
+  const unit = targetUnit(folder.mode, folder.targetSignals);
   const stage = currentStage(folder);
 
   return (

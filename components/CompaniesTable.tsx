@@ -10,7 +10,7 @@ import { isWrongKindOfBusiness } from "@/lib/pipeline/recheck-policy";
 import { LeadCard } from "./LeadCard";
 import { LeadTable } from "./LeadTable";
 
-type Tab = "all" | "signal" | "not_a_fit";
+type Tab = "signal" | "fit" | "not_a_fit";
 
 // FOUR TABS BECAME TWO, and they now say what the cards say.
 //
@@ -43,9 +43,30 @@ type Tab = "all" | "signal" | "not_a_fit";
 // The collapsed evidence panel at the bottom of the folder stays. It answers a
 // different question: the DISTRIBUTION of reasons is the argument that a real
 // test ran, and no individual row makes that point.
+// THREE BUCKETS THAT DO NOT OVERLAP, and that is the change.
+//
+// It was All leads / Founder + successor / Not a fit, where "All leads" was a
+// SUPERSET of the second — so a confirmed pair appeared under two tabs at once
+// and neither count told you how many of the other kind there were. Reading
+// "All leads 24, Founder + successor 0" left you working out that all 24 were
+// the weaker tier, which is exactly the fact the tabs should have stated.
+//
+// Now each company sits in exactly one, the numbers add up, and the labels are
+// the SAME WORDS the cards use (SIGNAL_TYPE_META) rather than a second
+// vocabulary three inches away — the mistake that got the previous set
+// relabelled. "ICP fit" was the obvious name for the middle one and is jargon
+// nobody outside the build would read; the card already calls it what it is.
 const TABS: { key: Tab; label: string; hint: string }[] = [
-  { key: "all", label: "All leads", hint: "Everything that fits the profile" },
-  { key: "signal", label: "Founder + successor", hint: "Both named and running it today" },
+  {
+    key: "signal",
+    label: "Founder + successor",
+    hint: "Both generations named and running it today — the receipt is on the card",
+  },
+  {
+    key: "fit",
+    label: "Good fit, no successor yet",
+    hint: "Right trade, right area, family-run, nobody named to take over",
+  },
   { key: "not_a_fit", label: "Not a fit", hint: "Cut by one of your gates, with the reason" },
 ];
 
@@ -57,7 +78,9 @@ function matchesTab(c: Company, tab: Tab) {
   // "All" means every LEAD, not every row the pipeline touched. It used to
   // return true for everything, so the default view of a folder was mostly
   // rejects and the real count was buried.
-  if (tab === "all") return c.status === "qualified";
+  // The fit tier is qualified WITHOUT a pair — the complement of "signal",
+  // not a superset of it.
+  if (tab === "fit") return c.status === "qualified" && c.hasSignal !== true;
   // Cut companies, MINUS the ones that were simply a different kind of
   // business. The point of this tab is that a cut might be wrong and worth
   // arguing with — true of "no longer family-owned" or "only one generation
@@ -175,11 +198,25 @@ export function CompaniesTable({
    */
   defaultView?: "cards" | "table";
 }) {
-  // ALWAYS "All leads". It used to open on the first tab with results, which
-  // sounds helpful and meant the opening view changed shape between folders —
-  // and on one real run landed on a tab holding ONE company out of sixteen.
-  // A list that opens on everything is a list you can trust to be everything.
-  const [tab, setTab] = useState<Tab>("all");
+  // OPENS ON THE PAIRS WHEN THERE ARE ANY, otherwise on the fit tier.
+  //
+  // This reverses an earlier decision and the reason it reverses is worth
+  // keeping. The default was "All leads", chosen because opening on the first
+  // tab with results made the view change shape between folders — on one run it
+  // landed on a tab holding ONE company out of sixteen.
+  //
+  // That argument depended on there BEING an everything tab. The three buckets
+  // are disjoint now, so the choice is no longer "everything vs a subset", it is
+  // "which subset" — and landing on an empty list is strictly worse than a view
+  // whose shape varies. The old complaint also reads differently in hindsight:
+  // one confirmed pair out of sixteen companies IS the find, and opening on it
+  // is right rather than unhelpful.
+  //
+  // Grouping covers what the removed tab did anyway — "By signal" is still the
+  // default and puts pairs above the fit rows under their own headings.
+  const [tab, setTab] = useState<Tab>(() =>
+    companies.some((c) => c.status === "qualified" && c.hasSignal === true) ? "signal" : "fit"
+  );
   const [q, setQ] = useState("");
   const [industry, setIndustry] = useState<Industry | "all">("all");
   // Grouping, because a flat list of 80 leads is a list you scroll rather than

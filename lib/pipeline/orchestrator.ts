@@ -11,6 +11,7 @@ import { buildWarningLine } from "./channel-health";
 import { INDUSTRY_META } from "../signal-meta";
 import { channelEvidence, explorationFor, orderByYield } from "./channel-priors";
 import { getIcp } from "./icp";
+import { countsTowardTarget } from "./target-count";
 import { runWithCounters, estimateUsd, describeCost, type CostCounters } from "./cost-tracker";
 
 // Contact enrichment (Anymailfinder + MillionVerifier) lives in
@@ -605,8 +606,10 @@ export async function runSearchPipeline(
     //    the one thing the product exists to find. Hybrid asks for pairs and
     //    keeps the fits it passes on the way, so pairs are what the target
     //    counts. 'filter' is unchanged: it never claimed to look for a signal.
-    const countsTowardTarget = () =>
-      mode === "filter" ? accepted : qualified + verify;
+    // Shared with the progress dialog — see lib/pipeline/target-count. Keeping
+    // a second copy here is what let the two disagree in the first place.
+    const reachedSoFar = () =>
+      countsTowardTarget(mode, { qualified, verify, fitOnly: accepted - qualified - verify });
     let round = 0;
     let stoppedEarlyReason: string | null = null;
     // Accumulates across EVERY round, unlike roundChannelErrors which resets
@@ -760,7 +763,7 @@ export async function runSearchPipeline(
     const EMPTY_DISCOVERIES_BEFORE_DRY = 4;
     let consecutiveEmpty = 0;
 
-    roundLoop: while (countsTowardTarget() < targetSignals && totalScanned < scanCeiling) {
+    roundLoop: while (reachedSoFar() < targetSignals && totalScanned < scanCeiling) {
       if (outOfTime()) {
         stoppedEarlyReason = timeUpMessage(totalScanned, accepted, qualified + verify);
         break roundLoop;
@@ -1492,7 +1495,7 @@ export async function runSearchPipeline(
 
         // Target hit mid-round — the rest of this batch was already
         // discovered/fetched (sunk cost), but skip further classify spend.
-        if (countsTowardTarget() >= targetSignals) targetHit = true;
+        if (reachedSoFar() >= targetSignals) targetHit = true;
       }, outOfTime);
 
       if (targetHit) break roundLoop;
