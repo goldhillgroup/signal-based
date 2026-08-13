@@ -1234,8 +1234,30 @@ export async function discoverCandidates(params: {
 
   const settled = await Promise.allSettled(
     groups.flatMap((group, g) => [
-      discoverViaDirectories(industries[0] ?? null, group, floorLimit, round),
-      discoverViaLicensing(industries[0] ?? null, group, floorLimit, round),
+      // DIRECTORIES AND LICENSING ROTATE STATES, exactly as Maps does below
+      // and for a sharper version of the same reason.
+      //
+      // `groups` is one group PER STATE, so these two ran for all twelve every
+      // round. Each directory call is 3-4 angles, and each angle is a Tavily
+      // search plus up to four page reads with an extraction call on each. On
+      // a twelve-state search that is ~36 searches and up to ~144 extractions
+      // per round — measured on one live run at 96 searches and 244
+      // extractions, $2.19 for 60 companies, $0.037 each against $0.019 for a
+      // single-state run.
+      //
+      // Spent on the channel with the worst measured yield in the file: 106
+      // reads, ZERO pairs. The floor above keeps it alive deliberately (a
+      // channel with no candidates generates no evidence and can never
+      // recover) but a floor is not a licence to run twelvefold.
+      //
+      // Rotating covers every state across rounds instead of every state every
+      // round, which is all a multi-state search actually needs.
+      ...(g === (round - 1) % groups.length
+        ? [
+            discoverViaDirectories(industries[0] ?? null, group, floorLimit, round),
+            discoverViaLicensing(industries[0] ?? null, group, floorLimit, round),
+          ]
+        : [Promise.resolve([] as Candidate[]), Promise.resolve([] as Candidate[])]),
       discoverViaWebSearch(industries, group, deepLimit, round, share, refinement),
       // MAPS RUNS FOR ONE STATE PER ROUND, rotating — the other channels run
       // for all of them. Splitting the maps budget four ways instead would

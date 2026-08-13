@@ -6,7 +6,7 @@ import { verifyEmail } from "./millionverifier";
 import type { Industry, SearchMode, SearchRow } from "../supabase/types";
 import { recheckAfterFor, rejectionScope, sizeVerdictStillBinds, parseRevenueBand } from "./recheck-policy";
 import { extractEmails, bestEmailFor, type FoundEmail, bestPhoneFor, isSharedInbox } from "./page-email";
-import { callableName, cleanPersonName, cleanRevenueBand, cleanTitle, earnedConfidence, fitOnlyIsLeadWorthy, realCompanyName } from "../lead-signal";
+import { callableName, cleanPersonName, cleanRevenueBand, cleanTitle, earnedConfidence, fitOnlyIsLeadWorthy, professionalServicesQualifies, realCompanyName } from "../lead-signal";
 import { buildWarningLine } from "./channel-health";
 import { INDUSTRY_META } from "../signal-meta";
 import { channelEvidence, explorationFor, orderByYield } from "./channel-priors";
@@ -1245,6 +1245,22 @@ export async function runSearchPipeline(
           finalQualifies = false;
           rejectionReason =
             "Right trade and location, but the page shows no owner by name and no family or generational language — nothing to act on yet.";
+        } else if (
+          finalQualifies &&
+          classification.industry === "professional_services" &&
+          !professionalServicesQualifies(
+            classification.founderName,
+            classification.nextGenName,
+            classification.otherSignals
+          )
+        ) {
+          // The one vertical whose admission criterion IS the family. See
+          // professionalServicesQualifies — the prompt asks for this twice and
+          // was ignored twice, which is what makes it a gate rather than a
+          // request.
+          finalQualifies = false;
+          rejectionReason =
+            "A professional-services firm is only in the profile when several family members are involved — this one shows a single principal, so it reads as a solo practice.";
         } else if (finalQualifies && belowBand) {
           finalQualifies = false;
           rejectionReason = `Too small, reads below the $${band!.min}M lower bound set for this search.`;

@@ -246,6 +246,41 @@ export function fitOnlyIsLeadWorthy(
 }
 
 /**
+ * The ICP's own qualifier on professional services, enforced in code.
+ *
+ * The client's profile admits "SELECT professional-services firms WITH MULTIPLE
+ * FAMILY MEMBERS INVOLVED", and excludes "solo professional practices" in the
+ * same breath. The classifier prompt states both, in those words, twice.
+ *
+ * The model ignored it. One live run returned five professional_services
+ * leads — Anders Lasater Architects, McClean Design, Studio Maven, Vantage
+ * Design Group and one more — every one a design studio with a single named
+ * principal or nobody at all. Correct trade label, wrong side of the qualifier
+ * that puts the trade on the list in the first place.
+ *
+ * A prompt that has already been ignored is not a gate. This is: for this one
+ * vertical, the family involvement is not a bonus signal, it is the admission
+ * criterion, so it is checked deterministically rather than requested politely.
+ *
+ * Two people from one family is enough — a pair, siblings, in-laws, anything.
+ * What fails is a firm where only one person is visible, or none.
+ */
+export function professionalServicesQualifies(
+  founderName: string | null | undefined,
+  nextGenName: string | null | undefined,
+  supportingSignals: string[] | null | undefined
+): boolean {
+  // A real succession pair obviously satisfies "multiple family members".
+  if (callableName(founderName) && callableName(nextGenName)) return true;
+  // Same-generation relatives count here, and are common in these firms.
+  const signals = supportingSignals ?? [];
+  return (
+    signals.includes("multiple_relatives_executive") ||
+    signals.includes("founder_and_children_in_leadership")
+  );
+}
+
+/**
  * Is the family link actually STATED, or merely implied by a shared surname?
  *
  * 39 of 44 signal leads share a surname between the two named people — which is
