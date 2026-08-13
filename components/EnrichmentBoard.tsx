@@ -173,7 +173,7 @@ export function EnrichmentBoard() {
 
       <Group
         title="Ready to enrich"
-        hint="Billed per address found. Nothing runs until you press it."
+        hint="Billed per address found, and nothing runs until you press it. Each list offers up to two choices — just the pairs, where a founder and a successor are both named, or all of its leads. A list with no confirmed pair shows only the second."
       >
         {ready.length === 0 ? (
           <Empty>Nothing waiting. Every finished search has been through enrichment.</Empty>
@@ -193,7 +193,7 @@ export function EnrichmentBoard() {
                     <ScopeButton
                       busy={busy === f.id}
                       onClick={() => askEnrich(f.id, "signals", sig, f.label)}
-                      label={`${sig} signal${sig === 1 ? "" : "s"}`}
+                      label={`Just the ${sig} pair${sig === 1 ? "" : "s"}`}
                       cost={sig * PER_EMAIL_USD}
                       primary
                     />
@@ -202,7 +202,7 @@ export function EnrichmentBoard() {
                     <ScopeButton
                       busy={busy === f.id}
                       onClick={() => askEnrich(f.id, "all", all, f.label)}
-                      label={`all ${all} leads`}
+                      label={sig > 0 ? `All ${all}` : `All ${all} lead${all === 1 ? "" : "s"}`}
                       cost={all * PER_EMAIL_USD}
                     />
                   )}
@@ -349,7 +349,9 @@ function Row({
           {folder.label}
         </Link>
         <p className="tabular mt-0.5 text-[11px] text-gh-ink-muted">
-          {leadCount(folder)} leads · {folder.contactsFound} emails · {folder.contactsVerified} verified
+          {leadCount(folder)} lead{leadCount(folder) === 1 ? "" : "s"} ·{" "}
+          {folder.contactsFound} email{folder.contactsFound === 1 ? "" : "s"} ·{" "}
+          {folder.contactsVerified} verified
         </p>
         {note && <p className="mt-1 text-[11px] text-gh-critical">{note}</p>}
       </div>
