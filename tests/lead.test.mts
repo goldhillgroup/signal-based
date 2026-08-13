@@ -172,3 +172,16 @@ ok("but the ranking still orders leads",
 console.log(`${pass}/${pass + fails.length} lead-format assertions passed (incl. parked + shared)`);
 for (const f of fails) console.log("  ✗ " + f);
 process.exit(fails.length ? 1 : 0);
+
+// ── An initial is not a surname ────────────────────────────────────────────
+//
+// A live run returned "Erik A" as the owner of E.A Irrigation and callableName
+// passed it, because two tokens were present. You cannot look up or ring
+// "Erik A" — it is a first name with the surname withheld, the same failure as
+// "Francisco Sr." which was already ruled out for pairs.
+ok("a bare initial as the surname is not callable", !callableName("Erik A"));
+ok("nor with a full stop", !callableName("Erik A."));
+ok("nor a leading initial alone", !callableName("E Troth") === false);
+ok("a real surname still passes", callableName("Jason Troth"));
+ok("and a middle initial does not break a real name", callableName("Rich J Cording"));
+ok("suffixes are still ignored, not counted as the surname", callableName("James Hornung Jr."));

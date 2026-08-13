@@ -46,7 +46,13 @@ const APIFY_BASE = "https://api.apify.com/v2";
 // card; getApifyToken tries it FIRST for exactly that reason. In production
 // APIFY_TOKEN_4 should simply be absent, so the chain falls through to his own
 // $29 plan at CLIENT_PLAN_USD.
-export const DEV_CAP_USD = 14;
+//
+// 17, raised from 14 on 13 Aug 2026 at Daniel's explicit instruction. The
+// account hit $14.01 mid-test and stopped discovery dead — correct behaviour,
+// and it left the end-to-end run with one company read. Raised by $3 rather
+// than removed: it is somebody else's account, and a cap that gets lifted
+// whenever it fires is not a cap.
+export const DEV_CAP_USD = 17;
 
 // The client's own plan. $29/mo of Apify is a line item in the signed scope,
 // so the ceiling is the plan, not an arbitrary fraction of it.

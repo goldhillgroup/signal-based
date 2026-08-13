@@ -190,7 +190,14 @@ export function callableName(v: string | null | undefined): boolean {
     .split(/\s+/)
     .filter(Boolean)
     .filter((t) => !GENERATIONAL_SUFFIX.test(t));
-  return tokens.length >= 2;
+  if (tokens.length < 2) return false;
+  // AN INITIAL IS NOT A SURNAME. A live run returned "Erik A" as the owner of
+  // E.A Irrigation and this passed it, because two tokens were present. You
+  // cannot look up or ring "Erik A" — it is a first name with the surname
+  // withheld, which is the same failure as "Francisco Sr." and was already
+  // ruled out for pairs. The LAST token has to be a real word.
+  const last = tokens[tokens.length - 1];
+  return last.replace(/[^A-Za-z]/g, "").length >= 2;
 }
 
 /**

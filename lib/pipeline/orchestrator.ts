@@ -350,12 +350,51 @@ export function bindsThisSearch(
  * page that says "serving the tri-state area" invites a phrase rather than a
  * place, and a blank cell is more honest on a call list than a wrong one.
  */
-function cleanCity(v: string | null | undefined): string | null {
+/**
+ * Metros that name a state, used only to catch a CONTRADICTION.
+ *
+ * A live run produced "Bland Landscaping — state FL, city Raleigh-Durham".
+ * Raleigh-Durham is North Carolina. The state comes from the search that found
+ * the company and the city comes from the classifier reading the page, and
+ * nothing checked that they agreed — so the folder offered a Florida lead in a
+ * different state, which is worse than offering no city at all, because the
+ * client would ring a company outside the area he asked about.
+ *
+ * Deliberately a short list of unambiguous metros rather than a gazetteer.
+ * The job is not to validate every city in America — it is to refuse the ones
+ * that are provably somewhere else. Anything unrecognised is left alone.
+ */
+const METRO_STATE: Record<string, string> = {
+  "raleigh": "NC", "durham": "NC", "charlotte": "NC", "greensboro": "NC",
+  "atlanta": "GA", "savannah": "GA", "nashville": "TN", "memphis": "TN",
+  "phoenix": "AZ", "tucson": "AZ", "denver": "CO", "las vegas": "NV",
+  "portland": "OR", "seattle": "WA", "chicago": "IL", "detroit": "MI",
+  "minneapolis": "MN", "milwaukee": "WI", "st. louis": "MO", "kansas city": "MO",
+  "new orleans": "LA", "oklahoma city": "OK", "salt lake city": "UT",
+  "indianapolis": "IN", "columbus": "OH", "cleveland": "OH", "cincinnati": "OH",
+  "louisville": "KY", "birmingham": "AL", "richmond": "VA", "baltimore": "MD",
+  "philadelphia": "PA", "pittsburgh": "PA", "boston": "MA", "providence": "RI",
+  "hartford": "CT", "newark": "NJ", "houston": "TX", "dallas": "TX",
+  "austin": "TX", "san antonio": "TX", "miami": "FL", "orlando": "FL",
+  "tampa": "FL", "jacksonville": "FL", "los angeles": "CA", "san diego": "CA",
+  "san francisco": "CA", "sacramento": "CA", "new york": "NY", "buffalo": "NY",
+};
+
+function cleanCity(v: string | null | undefined, state?: string | null): string | null {
   if (!v) return null;
   const t = v.trim().replace(/[.,;]+$/, "");
   if (t.length < 2 || t.length > 40) return null;
   if (/\d/.test(t)) return null; // a street address, not a city
   if (/^(n\/?a|none|unknown|not stated|various|nationwide|usa|united states)$/i.test(t)) return null;
+  // A city that provably belongs to another state is a contradiction, and the
+  // honest resolution is no city rather than a wrong one. The state stays: it
+  // is the ground the search actually covered.
+  if (state) {
+    const low = t.toLowerCase();
+    for (const [metro, st] of Object.entries(METRO_STATE)) {
+      if (low.includes(metro) && st !== state) return null;
+    }
+  }
   return t;
 }
 
@@ -1090,7 +1129,7 @@ export async function runSearchPipeline(
           industry: (classification.industry === "other"
             ? searchedVertical
             : classification.industry) as Industry,
-          city: base.city ?? cleanCity(classification.city),
+          city: base.city ?? cleanCity(classification.city, base.state),
           // Written ICP criteria that were never stored. employee_band has had
           // a column all along and sat at 0% across 359 leads.
           employee_band: cleanRevenueBand(classification.employeeBand),
