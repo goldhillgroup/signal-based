@@ -12,6 +12,7 @@ import { INDUSTRY_META } from "../signal-meta";
 import { channelEvidence, explorationFor, orderByYield } from "./channel-priors";
 import { getIcp } from "./icp";
 import { countsTowardTarget } from "./target-count";
+import { auditRow } from "./row-audit";
 import { runWithCounters, estimateUsd, describeCost, type CostCounters } from "./cost-tracker";
 
 // Contact enrichment (Anymailfinder + MillionVerifier) lives in
@@ -1121,6 +1122,29 @@ export async function runSearchPipeline(
           rejected++;
           await bump(supabase, searchId, { rejected_count: rejected });
           return;
+        }
+
+        // SECOND CHECK, on every company rather than only the ones claiming a
+        // pair. The disprove pass already attacks a pair with a second model
+        // call; this attacks the ROW with no call at all, asking only whether
+        // its own fields agree with each other. Every bad lead of the last two
+        // days was that shape — a Florida company in Raleigh-Durham, an owner
+        // called "Erik A", a company called CURRENT_LIVE_SITE — and none of
+        // them needed a model to notice. See row-audit.
+        const findings = auditRow(classification, {
+          state: base.state,
+          pageText: classifyText,
+          domain: candidate.domain,
+        });
+        for (const f of findings) {
+          if (!f.drop) continue;
+          if (f.field === "founderName") classification = { ...classification, founderName: null, founderTitle: null };
+          if (f.field === "nextGenName") classification = { ...classification, nextGenName: null, nextGenTitle: null };
+          if (f.field === "city") classification = { ...classification, city: null };
+        }
+        // A dropped next-gen is a dropped PAIR — the claim rested on it.
+        if (findings.some((f) => f.drop && f.field === "nextGenName")) {
+          classification = { ...classification, confidence: "verify" as const };
         }
 
         const withName = {
