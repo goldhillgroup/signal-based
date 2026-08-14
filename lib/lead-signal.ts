@@ -571,6 +571,40 @@ export function cleanRevenueBand(v: string | null | undefined): string | null {
 }
 
 /**
+ * A headcount, or nothing.
+ *
+ * SEPARATE FROM cleanRevenueBand, which is what this was wrongly using.
+ * That function requires a currency amount — `if (!/\$\s?\d/.test(t)) return
+ * null` — so it nulled every single employee string it was handed:
+ *
+ *   "40 employees" -> null     "crew of 12" -> null     "25-30" -> null
+ *
+ * The classifier had been asked for the field, was answering it, and the answer
+ * was thrown away at the last step before the database. employee_band read 0%
+ * across 393 leads and looked like the model refusing to answer.
+ *
+ * The client's ICP names "generally 25-150 employees" as a criterion in its own
+ * right, so this is one of the few numbers he asked for by name.
+ */
+export function cleanEmployeeBand(v: string | null | undefined): string | null {
+  if (!v) return null;
+  const t = String(v).replace(/\s+/g, " ").trim();
+  // A real answer is short. Longer is a sentence about uncertainty.
+  if (t.length > 32) return null;
+  // Must contain a number — this is a count, not a description.
+  if (!/\d/.test(t)) return null;
+  // A currency amount means the model answered the revenue question here.
+  if (/\$/.test(t)) return null;
+  // The same hedging words that turn a figure into a non-answer.
+  if (/\b(unconfirmed|plausible|unclear|unknown|not stated|uncertain|guess|maybe|likely|approx)\b/i.test(t)) {
+    return null;
+  }
+  // A bare year is a founding date that wandered into the wrong field.
+  if (/^(19|20)\d{2}$/.test(t)) return null;
+  return t;
+}
+
+/**
  * A job title, or nothing.
  *
  * founderTitle/nextGenTitle sit beside a real name in the sheet, and the model

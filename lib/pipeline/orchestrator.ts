@@ -6,7 +6,7 @@ import { verifyEmail } from "./millionverifier";
 import type { Industry, SearchMode, SearchRow } from "../supabase/types";
 import { recheckAfterFor, rejectionScope, sizeVerdictStillBinds, parseRevenueBand } from "./recheck-policy";
 import { extractEmails, bestEmailFor, type FoundEmail, bestPhoneFor, isSharedInbox } from "./page-email";
-import { callableName, cleanPersonName, cleanRevenueBand, cleanTitle, earnedConfidence, fitOnlyIsLeadWorthy, isLifestyleBusiness, professionalServicesQualifies, realCompanyName } from "../lead-signal";
+import { callableName, cleanEmployeeBand, cleanPersonName, cleanRevenueBand, cleanTitle, earnedConfidence, fitOnlyIsLeadWorthy, isLifestyleBusiness, professionalServicesQualifies, realCompanyName } from "../lead-signal";
 import { buildWarningLine } from "./channel-health";
 import { INDUSTRY_META } from "../signal-meta";
 import { channelEvidence, explorationFor, orderByYield } from "./channel-priors";
@@ -1155,8 +1155,11 @@ export async function runSearchPipeline(
             : classification.industry) as Industry,
           city: base.city ?? cleanCity(classification.city, base.state),
           // Written ICP criteria that were never stored. employee_band has had
-          // a column all along and sat at 0% across 359 leads.
-          employee_band: cleanRevenueBand(classification.employeeBand),
+          // a column all along and sat at 0% across 393 leads — not because the
+          // classifier refused to answer, but because this line ran the answer
+          // through cleanRevenueBand, which requires a "$" and nulled every
+          // headcount it was given. See cleanEmployeeBand.
+          employee_band: cleanEmployeeBand(classification.employeeBand),
         };
 
         // OUT OF THE SELECTED VERTICALS, though a real business in a real ICP
