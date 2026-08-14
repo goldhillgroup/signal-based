@@ -1227,12 +1227,31 @@ export async function discoverCandidates(params: {
   //
   // So web search buys deeper and the other two buy a floor. NOT zero, for the
   // reason channel-priors gives: a channel with no candidates generates no
-  // evidence and can never recover from a bad run. Maps also earns its floor
-  // twice over — it is the only channel that returns a phone number and an
-  // address with the listing, and it finds companies that FIT even when they
-  // show no pair.
-  const deepLimit = Math.max(1, Math.ceil(perGroupLimit * 1.5));
-  const floorLimit = Math.max(1, Math.floor(perGroupLimit * 0.5));
+  // evidence and can never recover from a bad run.
+  //
+  // WIDENED, ON EVIDENCE THAT HAS SINCE CHANGED. The split was 1.5x against
+  // 0.5x — a 3:1 ratio for what is now a 5:1 difference in yield:
+  //
+  //   web_search   496 read ->  15 pairs   1 in 33
+  //   maps         343 read ->   2 pairs   1 in 172
+  //   directory    159 read ->   0 pairs   never
+  //
+  // Maps used to earn its share twice over, because it was the ONLY channel
+  // returning a phone number and a city with the listing, and a lead nobody
+  // can ring is not a lead. That is no longer true. Since page contact details
+  // started being read out of the footer, measured on leads crawled since:
+  //
+  //   web_search   93% have a phone, 78% a city
+  //   maps        100% have a phone, 100% a city
+  //
+  // Seven points of phone coverage is what Maps' extra share now buys, against
+  // five times the pair rate on the other side of the trade. So web search goes
+  // to 2x and Maps drops to a floor it shares with the rest.
+  //
+  // Deliberately still a floor and not zero: the day a directory run finds a
+  // pair, that evidence only exists if the channel was allowed to run.
+  const deepLimit = Math.max(1, Math.ceil(perGroupLimit * 2));
+  const floorLimit = Math.max(1, Math.floor(perGroupLimit * 0.35));
 
   const settled = await Promise.allSettled(
     groups.flatMap((group, g) => [
