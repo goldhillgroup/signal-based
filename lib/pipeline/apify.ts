@@ -25,41 +25,37 @@ import { recordCost } from "./cost-tracker";
 //     today; measured against Apify's own cycle data that would have blocked
 //     his account on Aug 8 with no refill until Sep 2 — 25 days dark, on a
 //     plan with $20 still on it.)
+/**
+ * The client's Apify token. THERE IS NO LONGER A FALLBACK.
+ *
+ * This used to try APIFY_TOKEN_4 first — a developer's own account, capped at
+ * $17, whose entire purpose was keeping build-and-test spend off Jonathan's
+ * card. That was right while the thing was being built and is wrong now: the
+ * handover is done, and the account belongs to somebody who is no longer being
+ * paid to lend it.
+ *
+ * Deleted rather than merely unset. "Do not put APIFY_TOKEN_4 in production" is
+ * a rule that has to be remembered every time an environment is copied, and it
+ * had already survived several rounds of documentation warning about it. A code
+ * path that does not exist cannot be re-enabled by pasting an env file.
+ */
 async function getApifyToken(): Promise<{ token: string; capUsd: number }> {
-  const [active, clientOwn] = await Promise.all([
-    resolveSetting("APIFY_TOKEN_4", process.env.APIFY_TOKEN_4),
-    resolveSetting("APIFY_TOKEN", process.env.APIFY_TOKEN),
-  ]);
-  if (active) return { token: active, capUsd: DEV_CAP_USD };
-  if (clientOwn) return { token: clientOwn, capUsd: CLIENT_PLAN_USD };
-  throw new Error("No Apify token is set (APIFY_TOKEN_4 or APIFY_TOKEN)");
+  const token = await resolveSetting("APIFY_TOKEN", process.env.APIFY_TOKEN);
+  if (!token) throw new Error("No Apify token is set (APIFY_TOKEN)");
+  return { token, capUsd: CLIENT_PLAN_USD };
 }
 const APIFY_BASE = "https://api.apify.com/v2";
 
-// Developer account: a self-imposed ceiling, raised 10 -> 14 on 2026-08-09
-// because the old one was about to block testing with $20 still on the plan.
-// Apify's own API refuses to set a plan limit below $29 ("cannot be less than
-// 29"), so the real guard has to live here rather than on the account.
-//
-// This is deliberately NOT the client's cap. APIFY_TOKEN_4 is a developer
-// account whose whole purpose is keeping build-and-test spend off Jonathan's
-// card; getApifyToken tries it FIRST for exactly that reason. In production
-// APIFY_TOKEN_4 should simply be absent, so the chain falls through to his own
-// $29 plan at CLIENT_PLAN_USD.
-//
-// 17, raised from 14 on 13 Aug 2026 at Daniel's explicit instruction. The
-// account hit $14.01 mid-test and stopped discovery dead — correct behaviour,
-// and it left the end-to-end run with one company read. Raised by $3 rather
-// than removed: it is somebody else's account, and a cap that gets lifted
-// whenever it fires is not a cap.
-export const DEV_CAP_USD = 17;
-
 // The client's own plan. $29/mo of Apify is a line item in the signed scope,
 // so the ceiling is the plan, not an arbitrary fraction of it.
+//
+// The developer cap that used to sit beside this (DEV_CAP_USD, $17, on a
+// borrowed account) is gone with the fallback it guarded. Every search now
+// bills Jonathan's own STARTER plan and stops at $29.
 export const CLIENT_PLAN_USD = 29;
 
 // Kept as the name lib/vendor-usage.ts imports for its Apify card denominator.
-export const BUDGET_CAP_USD = DEV_CAP_USD;
+export const BUDGET_CAP_USD = CLIENT_PLAN_USD;
 
 const BUDGET_CHECK_TTL_MS = 15_000; // avoid hammering /limits on a burst of concurrent fetch calls
 

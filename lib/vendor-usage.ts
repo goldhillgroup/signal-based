@@ -1,5 +1,5 @@
 import { resolveSetting, getSetting } from "./settings";
-import { DEV_CAP_USD, CLIENT_PLAN_USD } from "./pipeline/apify";
+import { CLIENT_PLAN_USD } from "./pipeline/apify";
 import { OPENROUTER_2_CAP_USD, BASELINE_SETTING } from "./pipeline/openrouter";
 
 /**
@@ -607,22 +607,14 @@ export const VENDOR_FETCHERS: readonly VendorDescriptor[] = [
     dashboardUrl: "https://openrouter.ai/settings/credits",
     run: fetchOpenRouterFallback,
   },
-  // Two Apify cards, down from four (2026-08-07). Tokens 2 and 3 were $5/mo
-  // free-tier accounts that both ran dry; they are out of the token chain in
-  // lib/pipeline/apify.ts, so showing a card for them here would report a
-  // balance nothing can spend.
-  {
-    id: "apify-4",
-    vendor: "Apify, active account",
-    dashboardUrl: "https://console.apify.com/billing",
-    run: (meta) =>
-      fetchApify(meta, {
-        settingKey: "APIFY_TOKEN_4",
-        envValue: process.env.APIFY_TOKEN_4,
-        capUsd: DEV_CAP_USD,
-        role: "First choice, every Apify call uses this token when it is set.",
-      }),
-  },
+  // ONE Apify card, down from four. Tokens 2 and 3 were $5/mo free-tier
+  // accounts that ran dry. Token 4 was a developer's own account, tried FIRST
+  // so that build-and-test spend stayed off the client's card — that fallback
+  // is now deleted from lib/pipeline/apify.ts along with its $17 cap, because
+  // the handover is done and it was somebody else's money.
+  //
+  // A card for a token nothing can spend would report a balance that means
+  // nothing, so it goes with the code path.
   {
     id: "apify-1",
     vendor: "Apify, client's own account",
