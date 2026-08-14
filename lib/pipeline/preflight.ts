@@ -1,5 +1,4 @@
 import { resolveSetting, getSettingFresh, setSetting } from "../settings";
-import { OPENROUTER_2_CAP_USD, BASELINE_SETTING } from "./openrouter";
 
 /**
  * Can a run actually succeed right now — and if not, say so where a human
@@ -89,12 +88,10 @@ let keyCapBound = false;
 
 export async function openRouterRemaining(): Promise<number | null> {
   keyCapBound = false;
-  const [primary, fallback] = await Promise.all([
-    resolveSetting("OPENROUTER_API_KEY", process.env.OPENROUTER_API_KEY),
-    resolveSetting("OPENROUTER_API_KEY_2", process.env.OPENROUTER_API_KEY_2),
-  ]);
+  const key = await resolveSetting("OPENROUTER_API_KEY", process.env.OPENROUTER_API_KEY);
+  if (!key) return null;
 
-  const read = async (key: string, capped: boolean): Promise<number | null> => {
+  const read = async (key: string): Promise<number | null> => {
     try {
       // BOTH endpoints, because they answer different questions and the app
       // shipped for weeks reading only the first.
@@ -144,25 +141,19 @@ export async function openRouterRemaining(): Promise<number | null> {
           accountLeft = Math.min(accountLeft, remaining);
         }
       }
-      if (!capped) return accountLeft;
-      // Headroom under our own delta cap, which the pipeline enforces.
-      const baseline = Number(await getSettingFresh(BASELINE_SETTING));
-      if (!Number.isFinite(baseline) || baseline <= 0) return accountLeft;
-      const capLeft = OPENROUTER_2_CAP_USD - (used - baseline);
-      return Math.min(accountLeft, capLeft);
+      return accountLeft;
     } catch {
       return null;
     }
   };
 
-  const values = (
-    await Promise.all([
-      primary ? read(primary, false) : Promise.resolve(null),
-      fallback ? read(fallback, true) : Promise.resolve(null),
-    ])
-  ).filter((v): v is number => v !== null);
-
-  return values.length ? Math.max(...values) : null;
+  // ONE key, so one answer. This used to read two accounts and take the MAX —
+  // the primary and a friend's fallback — which meant a healthy fallback could
+  // wave through a search the primary could not pay for, and the delta cap on
+  // the fallback was a third ceiling to reconcile. With the fallback deleted
+  // there is exactly one account and exactly two ceilings on it, and the
+  // minimum of those is the answer.
+  return read(key);
 }
 
 /**
@@ -204,11 +195,8 @@ export async function creditBlockerFor(targetSignals: number): Promise<string | 
  * not the safety net itself.
  */
 export async function preflightBlocker(): Promise<string | null> {
-  const [primary, fallback] = await Promise.all([
-    resolveSetting("OPENROUTER_API_KEY", process.env.OPENROUTER_API_KEY),
-    resolveSetting("OPENROUTER_API_KEY_2", process.env.OPENROUTER_API_KEY_2),
-  ]);
-  if (!primary && !fallback) {
+  const primary = await resolveSetting("OPENROUTER_API_KEY", process.env.OPENROUTER_API_KEY);
+  if (!primary) {
     return "No OpenRouter key is configured, so nothing can be classified. Add one in Settings.";
   }
 

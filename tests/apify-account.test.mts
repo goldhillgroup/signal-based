@@ -55,3 +55,40 @@ test("the developer cap constant is gone entirely", async () => {
   const mod = (await import("../lib/pipeline/apify.js")) as Record<string, unknown>;
   assert.equal(mod.DEV_CAP_USD, undefined, "DEV_CAP_USD survived, so the fallback can be rebuilt around it");
 });
+
+// ── One key per vendor, everywhere ────────────────────────────────────────
+//
+// The Apify fallback was not the only borrowed account. OpenRouter had one too:
+// a second key belonging to a friend, used automatically on a 402, with a $5
+// self-imposed cap and a stored baseline to measure the delta against. Both are
+// gone, and so is the machinery that existed only to police them.
+test("no source file reads a second OpenRouter key", () => {
+  const offenders: string[] = [];
+  const walk = (dir: string) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        if (["node_modules", ".next", ".git"].includes(e.name)) continue;
+        walk(p);
+        continue;
+      }
+      if (!/\.(ts|tsx|mts)$/.test(e.name)) continue;
+      if (p.endsWith("apify-account.test.mts")) continue;
+      for (const line of fs.readFileSync(p, "utf8").split("\n")) {
+        if (/^\s*(\/\/|\*|\/\*)/.test(line)) continue;
+        if (/OPENROUTER_API_KEY_2|OPENROUTER_2_CAP_USD/.test(line)) {
+          offenders.push(`${path.relative(ROOT, p)}: ${line.trim()}`);
+        }
+      }
+    }
+  };
+  for (const d of ["lib", "app", "components", "scripts"]) walk(path.join(ROOT, d));
+  assert.deepEqual(offenders, [], `these still reach a second account:\n${offenders.join("\n")}`);
+});
+
+test("preflight reports one account, not the best of two", async () => {
+  // It used to read both keys and take the MAX, so a healthy fallback could
+  // wave through a search the primary could not pay for.
+  const src = fs.readFileSync(path.join(ROOT, "lib/pipeline/preflight.ts"), "utf8");
+  assert.ok(!/Math\.max\(\.\.\.values\)/.test(src), "preflight still takes the best of several keys");
+});

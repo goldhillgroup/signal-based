@@ -1,4 +1,4 @@
-import { resolveSetting, getSetting, setSetting } from "../settings";
+import { resolveSetting } from "../settings";
 import type { Industry } from "../supabase/types";
 
 /**
@@ -57,70 +57,18 @@ export async function getOpenRouterKey(): Promise<string> {
   return key;
 }
 
-// Fallback key. Belongs to a friend, so spend on it is capped in code.
-async function getOpenRouterKey2(): Promise<string | null> {
-  return resolveSetting("OPENROUTER_API_KEY_2", process.env.OPENROUTER_API_KEY_2);
-}
-
-// Both exported for lib/vendor-usage.ts — the Settings card reads the same cap
-// and the same baseline row this guard enforces against, so the number shown
-// and the number that throws can never drift apart.
-export const OPENROUTER_2_CAP_USD = 5;
-export const BASELINE_SETTING = "OPENROUTER_2_BASELINE_USD";
-
-async function usageFor(key: string): Promise<number | null> {
-  try {
-    const res = await fetch("https://openrouter.ai/api/v1/credits", {
-      headers: { Authorization: `Bearer ${key}` },
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!res.ok) return null;
-    const d = await res.json();
-    const u = d?.data?.total_usage;
-    return typeof u === "number" ? u : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Guards the friend's key against a self-imposed $5 ceiling.
- *
- * Measures our DELTA from a baseline captured on first use, NOT absolute
- * usage — OpenRouter reports total_usage per ACCOUNT, not per key, and the
- * owner had already spent $16.52 of $25 when this key was added. Capping on
- * the absolute number would have tripped instantly and been meaningless.
- *
- * The baseline is persisted in app_settings so a server restart can't quietly
- * reset the allowance and let the cap be exceeded a slice at a time.
- */
-async function assertUnderCap2(key: string): Promise<void> {
-  const current = await usageFor(key);
-  // A failed usage check must not silently grant unlimited spend on someone
-  // else's account, so refuse the FALLBACK key when its position can't be
-  // verified. The primary key is unaffected by this.
-  if (current === null) {
-    throw new Error(
-      "Could not verify fallback OpenRouter key usage — refusing to spend on it unchecked."
-    );
-  }
-
-  let baseline = Number(await getSetting(BASELINE_SETTING));
-  if (!Number.isFinite(baseline) || baseline <= 0) {
-    baseline = current;
-    await setSetting(BASELINE_SETTING, String(baseline));
-  }
-
-  const spent = current - baseline;
-  if (spent >= OPENROUTER_2_CAP_USD) {
-    throw new Error(
-      `Fallback OpenRouter key hit its self-imposed $${OPENROUTER_2_CAP_USD} cap ` +
-        `(spent $${spent.toFixed(2)} since baseline $${baseline.toFixed(2)}). ` +
-        `It belongs to someone else — top up the primary key rather than raising this.`
-    );
-  }
-}
-
+// ONE KEY. There was a fallback here — a second OpenRouter key belonging to a
+// friend, used automatically when the primary returned 402, with a $5
+// self-imposed cap and a stored baseline to measure the delta against.
+//
+// It is gone with the Apify one, for the same reason: the handover is done and
+// it was somebody else's money. Removing it also removes the machinery that
+// existed only to police it — the cap, the baseline row, the usage probe before
+// each fallback call, and a preflight that had to take the MINIMUM of two
+// different ceilings on two different accounts.
+//
+// A 402 now surfaces as what it is: this key is out of credit, said plainly,
+// before the run starts. See preflight.
 // 800 was enough for the original 8-field schema; the revenueEstimate/
 // sizeFit/stillFamilyOwned fields added on top of it pushed real responses
 // past that and truncated mid-JSON (a real failure seen live, not a
@@ -194,19 +142,7 @@ export async function chat(
   const primary = await getOpenRouterKey();
   if (!primary) throw new Error("OPENROUTER_API_KEY is not set");
 
-  let res = await callWithRetry(primary);
-
-  // Fail over to the fallback key ONLY on 402 (credits exhausted) — never on
-  // a transient 429/5xx, which would spend someone else's money to paper over
-  // a retryable blip. (callWithRetry above never retries a 402 for the same
-  // reason: a credit exhaustion doesn't heal in 3 seconds.)
-  if (res.status === 402) {
-    const secondary = await getOpenRouterKey2();
-    if (secondary) {
-      await assertUnderCap2(secondary); // throws if the $5 delta cap is hit
-      res = await callWithRetry(secondary);
-    }
-  }
+  const res = await callWithRetry(primary);
 
   if (!res.ok) {
     // A VENDOR-LEVEL FAILURE IS NOT A VERDICT ABOUT A COMPANY.

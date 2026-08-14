@@ -1,6 +1,5 @@
 import { resolveSetting, getSetting } from "./settings";
 import { CLIENT_PLAN_USD } from "./pipeline/apify";
-import { OPENROUTER_2_CAP_USD, BASELINE_SETTING } from "./pipeline/openrouter";
 
 /**
  * Every vendor's balance, in one shape, so the Settings page can show them
@@ -198,7 +197,7 @@ async function fetchOpenRouterPrimary(meta: VendorMeta): Promise<VendorUsage> {
     detail: [
       left > 0
         ? `${usd(left)} left.`
-        : `Over by ${usd(Math.abs(left))}, classify calls now come back 402 and fall through to the capped fallback key.`,
+        : `Over by ${usd(Math.abs(left))}. Classify calls now come back 402 and a search refuses to start — there is no fallback key any more, by design.`,
       "Every classify and disprove call in a search bills here.",
     ],
     percentUsed,
@@ -207,60 +206,6 @@ async function fetchOpenRouterPrimary(meta: VendorMeta): Promise<VendorUsage> {
     warnLevel: levelFor(percentUsed),
   };
 }
-
-async function fetchOpenRouterFallback(meta: VendorMeta): Promise<VendorUsage | null> {
-  const key = await resolveSetting("OPENROUTER_API_KEY_2", process.env.OPENROUTER_API_KEY_2);
-  // Genuinely optional — no card at all beats a permanently red "not
-  // configured" one for a key the pipeline is happy to run without.
-  if (!key) return null;
-
-  const res = await getJson<OpenRouterCredits>(OPENROUTER_CREDITS_URL, {
-    Authorization: `Bearer ${key}`,
-  });
-  if (!res.ok) return unreadable(meta, res.reason);
-
-  const granted = num(res.data.data?.total_credits);
-  const used = num(res.data.data?.total_usage);
-  if (granted === null || used === null) return unreadable(meta, "Balance missing from the response");
-
-  // The DELTA from a stored baseline is what the $5 cap measures, because
-  // OpenRouter reports usage per ACCOUNT and this account isn't ours — the
-  // owner had already spent most of it before the key was handed over. So the
-  // binding number on this card is "how much have WE spent", not the account
-  // total, and the cap is the denominator. Same baseline row that
-  // assertUnderCap2() in lib/pipeline/openrouter.ts throws on.
-  const baseline = Number(await getSetting(BASELINE_SETTING));
-  const haveBaseline = Number.isFinite(baseline) && baseline > 0;
-  const spent = haveBaseline ? Math.max(0, used - baseline) : 0;
-  const percentUsed = pctUsed(spent, OPENROUTER_2_CAP_USD);
-  const accountLeft = granted - used;
-
-  return {
-    ...meta,
-    ok: true,
-    headline: `${usd(spent)} of ${usd(OPENROUTER_2_CAP_USD)} cap used`,
-    detail: [
-      `The ${usd(OPENROUTER_2_CAP_USD)} ceiling is ours, not OpenRouter's, this key belongs to a friend, and lib/pipeline/openrouter.ts refuses to spend past it.`,
-      haveBaseline
-        ? `Measured as the delta from a ${usd(baseline)} baseline, because OpenRouter reports usage per account rather than per key.`
-        : "No baseline recorded yet, it's captured the first time the pipeline falls back to this key, so nothing has been spent through the app.",
-      `Owner's account overall: ${usd(used)} of ${usd(granted)}, ${usd(accountLeft)} left.`,
-      "Only reached when the primary key returns 402.",
-    ],
-    percentUsed,
-    resetsAt: null,
-    resetNote: "prepaid credits, no monthly reset",
-    // The owner's own balance is a second ceiling, and it can bite before our
-    // $5 delta does. A card tracking only the delta would promise headroom on
-    // a key that can no longer buy anything.
-    warnLevel: accountLeft <= 0 ? "exhausted" : levelFor(percentUsed),
-  };
-}
-
-// ── Apify ─────────────────────────────────────────────────────────────────
-// MONTHLY, and the reset date is the whole reason this section exists: three
-// of these four accounts are spent right now and each one comes back on a
-// different day.
 
 interface ApifyLimits {
   data?: {
@@ -597,15 +542,9 @@ interface VendorDescriptor extends VendorMeta {
 export const VENDOR_FETCHERS: readonly VendorDescriptor[] = [
   {
     id: "openrouter-1",
-    vendor: "OpenRouter, primary key",
+    vendor: "OpenRouter",
     dashboardUrl: "https://openrouter.ai/settings/credits",
     run: fetchOpenRouterPrimary,
-  },
-  {
-    id: "openrouter-2",
-    vendor: "OpenRouter, fallback key",
-    dashboardUrl: "https://openrouter.ai/settings/credits",
-    run: fetchOpenRouterFallback,
   },
   // ONE Apify card, down from four. Tokens 2 and 3 were $5/mo free-tier
   // accounts that ran dry. Token 4 was a developer's own account, tried FIRST
