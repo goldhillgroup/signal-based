@@ -77,6 +77,28 @@
 
   .rule { height: 1px; background: var(--border); border: 0; margin: 0 0 1.1rem; }
 
+  /* The three things somebody needs in front of them to get in, set apart from
+     the prose so they can be read off a printed page at arm's length. */
+  .creds {
+    display: grid; gap: 1px; background: var(--border);
+    border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+    break-inside: avoid;
+  }
+  .cred {
+    background: var(--surface); padding: 0.7rem 1.1rem;
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.3rem 1rem;
+  }
+  .cred .cl {
+    font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--ink-3); min-width: 5.5rem;
+  }
+  .cred .cv {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.9375rem; font-weight: 600; color: var(--navy);
+    word-break: break-all;
+  }
+  .tt { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+
   ol.steps { margin: 0; padding: 0; list-style: none; counter-reset: s; display: flex; flex-direction: column; gap: 0.7rem; }
   ol.steps li {
     counter-increment: s; position: relative; padding-left: 2.1rem;
@@ -177,23 +199,31 @@
   <section>
     <h2><span class="step">1</span>Signing in</h2>
     <hr class="rule" />
-    <div class="cards">
-      <div class="card">
-        <h4>Web address</h4>
-        <span class="mono">signal-based.vercel.app</span>
-        <p>Bookmark this one. Works on a laptop or a phone, nothing to install.</p>
+    <div class="creds">
+      <div class="cred">
+        <span class="cl">Go to</span>
+        <span class="cv">signal-based.vercel.app</span>
       </div>
-      <div class="card">
-        <h4>Your account</h4>
-        <span class="mono">jonathan@thegoldhillgroup.com</span>
-        <p>A second account, thegoldhillgroup@gmail.com, also works.</p>
+      <div class="cred">
+        <span class="cl">Email</span>
+        <span class="cv">jonathan@thegoldhillgroup.com</span>
+      </div>
+      <div class="cred">
+        <span class="cl">Password</span>
+        <span class="cv">Goldhill-Radar-2026</span>
       </div>
     </div>
+
+    <ol class="steps" style="margin-top:1.1rem;">
+      <li>Open <strong>signal-based.vercel.app</strong> in any browser, on a laptop or a phone. There is nothing to install.</li>
+      <li>Type the email and password above, then press <strong>Sign in</strong>.</li>
+      <li>You land on <strong>Overview</strong> — your numbers, and anything that finished while you were away.</li>
+      <li><strong>Change the password.</strong> Use "Forgot password?" on the sign-in page and follow the email it sends. The one above is a starting password and should not stay in a document.</li>
+      <li>Bookmark the page so you never have to find the address again.</li>
+    </ol>
+
     <div class="note">
-      <p><strong>If you ever see "You Need Access", you are on the wrong link.</strong> Long addresses containing a jumble of letters — <span style="font-family:ui-monospace,Menlo,monospace">signal-based-hky0ay13w-…</span> — are internal previews of individual updates, and they are locked on purpose. The address above is the real one and never asks for approval.</p>
-    </div>
-    <div class="note">
-      <p><strong>Forgotten the password?</strong> Use the "Forgot password?" link on the sign-in page. Passwords are deliberately not written down anywhere, including in this document.</p>
+      <p><strong>If you ever see "You Need Access", you are on the wrong link.</strong> Long addresses containing a jumble of letters — <span class="tt">signal-based-hky0ay13w-…</span> — are internal previews of individual updates, and they are locked on purpose. The short address above is the real one and never asks for approval.</p>
     </div>
   </section>
 
@@ -371,6 +401,65 @@
         </tbody>
       </table>
     </div>
+  </section>
+
+  <section>
+    <h2><span class="step">10</span>Questions you are likely to have</h2>
+    <hr class="rule" />
+
+    <h3>How many leads should I expect?</h3>
+    <p class="sub" style="margin-bottom:0.9rem;">
+      A search reads twenty to sixty companies and typically keeps five to ten.
+      Of those, a confirmed founder-and-successor pair turns up about once in
+      every thirty companies read — so a single search often finds none, and a
+      few searches find several. The good family-owned companies without a named
+      successor are kept either way, because they are still worth a call.
+    </p>
+
+    <h3>Why does it reject so many?</h3>
+    <p class="sub" style="margin-bottom:0.9rem;">
+      Because searching the web for "family landscaping business" also returns
+      funeral homes, trade magazines, associations and software companies. Those
+      are removed silently. What you see under "Not a fit" is only the arguable
+      ones — right sort of company, failed one of your tests — so you can
+      disagree with it.
+    </p>
+
+    <h3>Can I trust what it says about a company?</h3>
+    <p class="sub" style="margin-bottom:0.9rem;">
+      Every confirmed pair carries a sentence from the company's own website and
+      a link to the page. If the quote does not say what the lead claims, that is
+      a fault worth reporting. Nothing is included on the strength of a shared
+      surname or a guess.
+    </p>
+
+    <h3>Do I have to run it often?</h3>
+    <p class="sub" style="margin-bottom:0.9rem;">
+      No. Nothing runs on its own unless you switch on the monthly harvest, and
+      that is off. Costs only move when you press something.
+    </p>
+
+    <h3>What if I search the same thing twice?</h3>
+    <p class="sub" style="margin-bottom:0.9rem;">
+      It goes further rather than repeating itself. Every company already looked
+      at is remembered and skipped, so a second search of the same trade and
+      state finds new companies. Your existing leads stay exactly where they are.
+    </p>
+
+    <h3>Can I change what it looks for?</h3>
+    <p class="sub" style="margin-bottom:0.9rem;">
+      Yes, in Settings — the revenue band and the signal focus. Change them once
+      and every future search follows. You can also set them per search on the
+      form.
+    </p>
+
+    <h3>Something is wrong with a lead. What do I do?</h3>
+    <p class="sub" style="margin-bottom:0;">
+      Open it, read the quote, and check the source page. If the page supports it
+      and you still disagree, that is a judgement call worth telling Daniel about
+      — the rules that decide a lead were built from your own list of accepted
+      and rejected companies, and they can be adjusted the same way.
+    </p>
   </section>
 
   <footer>
