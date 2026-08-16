@@ -339,7 +339,7 @@ story += [
     Spacer(1, 3 * mm),
     Paragraph(
         "Finds family-owned businesses where the founder is still running "
-        "things and a son or daughter is stepping up beside them , and "
+        "things and a son or daughter is stepping up beside them, and "
         "shows you the company's own words as proof.", S["CoverSub"]),
     Spacer(1, 12 * mm),
     HRFlowable(width="42%", thickness=2, color=SKY, hAlign="LEFT"),
@@ -366,16 +366,9 @@ story += [credentials([
 story += steps([
     ("Open the address above", "in any browser, on a laptop or a phone. There is nothing to install."),
     ("Type the email and password,", "then press <b>Sign in</b>."),
-    ("You land on Overview", ": your numbers, and anything that finished while you were away."),
-    ("Change the password.", "The one above is a starting password and should not stay in a document. Message Daniel and he will set a new one; there is deliberately no self-service reset, because the email it depended on was unreliable and told you it had sent when it had not."),
+    ("You land on Overview:", "your numbers, and anything that finished while you were away."),
     ("Bookmark it", "so you never have to find the address again."),
 ])
-story += [note(
-    "If you ever see &ldquo;You Need Access&rdquo;, you are on the wrong link.",
-    "Long addresses containing a jumble of letters, like "
-    f'<font face="{MONO}" size="8">signal-based-hky0ay13w-&hellip;</font>, are internal '
-    "previews of individual updates, and they are locked on purpose. The short "
-    "address above is the real one and never asks for approval.", "amber")]
 
 # ── 2. The five screens ────────────────────────────────────────────────────
 story += section(2, "The five screens")
@@ -445,7 +438,7 @@ story += section(5, "Finding email addresses")
 story += [lede("Separate from searching, and never automatic. It costs money "
                "per address found.")]
 story += steps([
-    ("Press Find emails", ": on the Overview, inside a folder, or on the Enrichment screen. All three do the same thing."),
+    ("Press Find emails:", "on the Overview, inside a folder, or on the Enrichment screen. All three do the same thing."),
     ("Tick who you want:", "founder + successor, good fits, or cut but arguable. Pairs and fits are ticked for you."),
     ("The button shows", "the number of companies and the most it can cost. Press it to start."),
 ])
@@ -455,7 +448,7 @@ story += [note("You are only charged when an address is actually found.",
                "green")]
 story += [note("It looks for the successor first.",
                "Where a next-generation family member is named, that is who it tries to "
-               "reach , the founder is the fallback.")]
+               "reach. The founder is the fallback.")]
 
 # ── 6. Getting the list out ────────────────────────────────────────────────
 story += section(6, "Getting the list out")
@@ -465,8 +458,8 @@ story += bullets([
 ])
 story += [Spacer(1, 4)]
 story += [note("The file contains exactly what the screen shows.",
-               "Companies hidden as a different kind of business entirely , funeral "
-               "homes, newspapers, trade associations , are left out of both.", "gray")]
+               "Companies hidden as a different kind of business entirely, such as funeral "
+               "homes, newspapers, trade associations, are left out of both.", "gray")]
 
 # ── 7. Settings ────────────────────────────────────────────────────────────
 story += section(7, "Settings")
@@ -514,7 +507,7 @@ story += table(
     ["What you see", "What it means"],
     [
         ["&ldquo;Not enough credit&rdquo;", "A vendor needs topping up. Settings shows which one."],
-        ["&ldquo;Stopped at the time limit&rdquo;", "Normal. Everything found is saved , press Search again to carry on."],
+        ["&ldquo;Stopped at the time limit&rdquo;", "Normal. Everything found is saved. Press Search again to carry on."],
         ["A search finds very little", "Usually that ground is well covered already. Try another state, or widen the verticals."],
         ["No founder + successor pairs", "Expected on a small search. They occur about once in thirty companies read."],
         ["A lead looks wrong", "Open it and read the quote. If the quote does not support it, tell Daniel. That is a real fault."],
@@ -528,14 +521,14 @@ QA = [
     ("How many leads should I expect?",
      "A search reads twenty to sixty companies and typically keeps five to ten. Of "
      "those, a confirmed founder-and-successor pair turns up about once in every "
-     "thirty companies read , so a single search often finds none, and a few "
+     "thirty companies read, so a single search often finds none, and a few "
      "searches find several. The good family-owned companies without a named "
      "successor are kept either way, because they are still worth a call."),
     ("Why does it reject so many?",
      "Because searching the web for &ldquo;family landscaping business&rdquo; also "
      "returns funeral homes, trade magazines, associations and software companies. "
      "Those are removed silently. What you see under &ldquo;Not a fit&rdquo; is only "
-     "the arguable ones , right sort of company, failed one of your tests , "
+     "the arguable ones: the right sort of company that failed one of your tests, "
      "so you can disagree with it."),
     ("Can I trust what it says about a company?",
      "Every confirmed pair carries a sentence from the company's own website and a "
@@ -555,8 +548,8 @@ QA = [
      "the signal focus, all set per search so you can see exactly what this one will do."),
     ("Something is wrong with a lead. What do I do?",
      "Open it, read the quote, and check the source page. If the page supports it and "
-     "you still disagree, that is a judgement call worth telling Daniel about , "
-     "the rules that decide a lead were built from your own list of accepted and "
+     "you still disagree, that is a judgement call worth telling Daniel about. "
+     "The rules that decide a lead were built from your own list of accepted and "
      "rejected companies, and they can be adjusted the same way."),
 ]
 for q, a in QA:
