@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { scansFor } from "../lib/pipeline/scan-limits.ts";
-import { SEARCH_CEILING_PER_COMPANY_USD } from "../lib/pipeline/pricing.ts";
-import { estimateUsd, type CostCounters } from "../lib/pipeline/cost-tracker.ts";
+import { scansFor } from "../lib/pipeline/scan-limits.js";
+import { SEARCH_CEILING_PER_COMPANY_USD } from "../lib/pipeline/pricing.js";
+import { estimateUsd, type CostCounters } from "../lib/pipeline/cost-tracker.js";
 
 /**
  * The confirm dialog promises "up to $N". These pin the two halves of that
