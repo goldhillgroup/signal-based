@@ -331,7 +331,7 @@ export default function AllLeadsPage() {
           <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div className="min-w-0">
               <h1 className="font-display text-2xl font-semibold text-gh-ink">
-                {openFolder.label}
+                {folderTitle(openFolder.label)}
               </h1>
               <p className="mt-1 text-sm text-gh-ink-secondary">
                 {visibleLeads} lead{visibleLeads === 1 ? "" : "s"} · scraped{" "}
@@ -350,7 +350,7 @@ export default function AllLeadsPage() {
               </button>
               <button
                 type="button"
-                onClick={() => downloadCompaniesCsv(visible, slugify(openFolder.label))}
+                onClick={() => downloadCompaniesCsv(visible, slugify(folderTitle(openFolder.label)))}
                 disabled={visible.length === 0}
                 className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-gh-navy px-4 py-2.5 text-sm font-semibold text-white transition-colors duration-200 hover:bg-gh-navy-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 disabled:cursor-not-allowed disabled:opacity-40"
               >
@@ -693,7 +693,28 @@ function FolderTile({
       className="fade-up lift group relative rounded-xl border border-gh-border bg-gh-surface hover:border-gh-sky/50"
       style={{ animationDelay: `${Math.min(index, 12) * 50}ms` }}
     >
-      <div className="p-4">
+      {/* THE WHOLE CARD OPENS IT.
+          Only the title and the counts row were clickable, which is two thin
+          strips inside a tile that lifts on hover and lights its border --
+          every visual promise of a click target, kept by about a fifth of its
+          surface. The folder icon, the "scraped Today" line and all the
+          padding did nothing, so the natural place to aim, the middle of the
+          card, was dead.
+
+          An overlay rather than wrapping the card in a button, because the
+          rename and delete controls live inside it and a button cannot
+          legally contain buttons. Everything interactive sits above this on
+          z-10; this fills the gaps between them. Hidden while renaming so it
+          cannot swallow clicks meant for the text field. */}
+      {!renaming && (
+        <button
+          type="button"
+          onClick={onOpen}
+          aria-label={`Open ${folderTitle(folder.label)}`}
+          className="absolute inset-0 z-0 cursor-pointer rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+        />
+      )}
+      <div className="pointer-events-none relative z-10 p-4">
         <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gh-navy/[0.06] text-gh-navy">
           <FolderIcon className="h-4 w-4" />
         </span>
@@ -712,13 +733,13 @@ function FolderTile({
             maxLength={120}
             aria-label="Folder name"
             // 16px on mobile, or iOS zooms in on focus and will not zoom back.
-            className="mt-3 w-full rounded-lg border border-gh-sky bg-gh-surface-sunken px-2 py-1.5 text-base font-semibold text-gh-ink focus:outline-none focus:ring-2 focus:ring-gh-sky/30 sm:text-sm"
+            className="pointer-events-auto mt-3 w-full rounded-lg border border-gh-sky bg-gh-surface-sunken px-2 py-1.5 text-base font-semibold text-gh-ink focus:outline-none focus:ring-2 focus:ring-gh-sky/30 sm:text-sm"
           />
         ) : (
           <button
             type="button"
             onClick={onOpen}
-            className="mt-3 block w-full cursor-pointer pr-16 text-left text-sm font-semibold leading-snug text-gh-ink group-hover:text-gh-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+            className="pointer-events-auto mt-3 block w-full cursor-pointer pr-16 text-left text-sm font-semibold leading-snug text-gh-ink group-hover:text-gh-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
           >
             {folderTitle(folder.label)}
           </button>
@@ -731,7 +752,7 @@ function FolderTile({
         <button
           type="button"
           onClick={onOpen}
-          className="mt-3 flex w-full cursor-pointer items-end gap-4 border-t border-gh-border pt-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+          className="pointer-events-auto mt-3 flex w-full cursor-pointer items-end gap-4 border-t border-gh-border pt-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
         >
           <span>
             <span className="tabular block font-display text-xl font-semibold leading-none text-gh-ink">
@@ -754,7 +775,7 @@ function FolderTile({
           one anyone actually wants, and putting delete alone up here made the
           only per-folder action a destructive one. */}
       {!renaming && (
-        <div className="absolute right-2 top-2 flex items-center gap-0.5">
+        <div className="pointer-events-auto absolute right-2 top-2 z-20 flex items-center gap-0.5">
           <button
             type="button"
             onClick={onStartRename}
