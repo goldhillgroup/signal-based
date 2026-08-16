@@ -513,20 +513,20 @@ story += section(8, "What it costs")
 J = "jonathan@<br/>thegoldhillgroup.com"
 G = "thegoldhillgroup@<br/>gmail.com"
 story += table(
-    ["Service", "What it does", "Cost", "Left today", "Manage it at", "Account"],
+    ["Service", "What it does", "Cost", "Left today", "Account"],
     [
-        ["Apify", "Finds companies and fetches their pages", "$29<br/>per month", "$9.53 used<br/>this month", "console.apify.com/billing", J],
-        ["OpenRouter", "Reads each page and judges it", "Pay per use<br/>~45&cent; a search", "$49.50<br/>left", "openrouter.ai/settings/credits", J],
-        ["AnymailFinder", "Finds an email address", "$29 a month<br/>400 credits", "286 credits<br/>left", "app.anymailfinder.com", J],
-        ["MillionVerifier", "Checks it is deliverable", "Pay per use<br/>$0.006 a check", "10,408 left<br/>plenty", "app.millionverifier.com", J],
-        ["Firecrawl", "Reads pages that need a browser", "free", "693 pages<br/>left", "firecrawl.dev/app", J],
-        ["Tavily", "Finds trade directories", "free", "1,000 a month", "app.tavily.com", J],
-        ["Supabase", "The database and the login", "free", "", "supabase.com/dashboard", G],
-        ["Vercel", "Hosts the app", "free", "", "vercel.com/dashboard", G],
-        ["GitHub", "Holds the code", "free", "", "github.com/goldhillgroup/signal-based", G],
+        ["Apify", "Finds companies and fetches their pages", "$29<br/>per month", "$9.53 used<br/>this month", J],
+        ["OpenRouter", "Reads each page and judges it", "Pay per use<br/>~45&cent; a search", "$49.50<br/>left", J],
+        ["AnymailFinder", "Finds an email address", "$29 a month<br/>400 credits", "286 credits<br/>left", J],
+        ["MillionVerifier", "Checks it is deliverable", "Pay per use<br/>$0.006 a check", "10,408 left<br/>plenty", J],
+        ["Firecrawl", "Reads pages that need a browser", "free", "693 pages<br/>left", J],
+        ["Tavily", "Finds trade directories", "free", "1,000 a month", J],
+        ["Supabase", "The database and the login", "free", "", G],
+        ["Vercel", "Hosts the app", "free", "", G],
+        ["GitHub", "Holds the code", "free", "", G],
     ],
-    [31 * mm, 30 * mm, 23 * mm, 21 * mm, 33 * mm, W - 138 * mm],
-    mono_cols=(4, 5),
+    [31 * mm, 46 * mm, 24 * mm, 23 * mm, W - 124 * mm],
+    mono_cols=(4,),
 )
 
 story += [body(
