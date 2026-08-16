@@ -399,7 +399,7 @@ story += steps([
     ("Mode.", "Leave it on <i>Hybrid</i>. That looks for founder-and-successor pairs and keeps every other good family business it passes on the way."),
     ("Verticals.", "Eight are available: landscaping, home building, construction, specialty trades, manufacturing, distribution, property services, professional services. Pick any combination, or none to search all eight."),
     ("States.", "Your twelve are pre-selected: California, Florida, Texas, New York and the Northeast."),
-    ("Revenue band.", "Defaults to $5&ndash;15M, the sweet spot. $5&ndash;30M widens it to your full profile."),
+    ("Revenue band.", "Defaults to $5-15M, the sweet spot. $5-30M widens it to your full profile."),
     ("How many to find.", "Higher numbers read more companies and take longer. The form tells you how many it will read and roughly what it will cost."),
     ("Signal focus.", "Optional. Tick any of the twelve signals from your profile, or type your own words. This changes what the search looks for."),
     ("Press Search.", "It shows exactly what it will read and what it will cost, and waits for you to confirm."),
