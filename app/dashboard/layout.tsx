@@ -7,6 +7,7 @@ import { SearchesProvider } from "@/lib/searches-store";
 import { MobileNavProvider } from "@/lib/mobile-nav";
 import { Sidebar } from "@/components/Sidebar";
 import { Topbar } from "@/components/Topbar";
+import { DashboardTour } from "@/components/DashboardTour";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { reapStaleRuns, reapStaleEnrichment } from "@/lib/pipeline/reap";
 
@@ -78,6 +79,11 @@ export default async function DashboardLayout({ children }: { children: ReactNod
             <main className="flex-1 p-5 lg:p-8">{children}</main>
           </div>
         </div>
+
+        {/* In the LAYOUT rather than on a page, so it appears wherever somebody
+            lands after signing in — which is not always Overview. It shows
+            itself once and remembers, so this costs a returning user nothing. */}
+        <DashboardTour />
       </MobileNavProvider>
     </SearchesProvider>
   );

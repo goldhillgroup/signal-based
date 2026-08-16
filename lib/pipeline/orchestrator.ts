@@ -10,7 +10,7 @@ import { callableName, cleanEmployeeBand, cleanPersonName, cleanRevenueBand, cle
 import { buildWarningLine } from "./channel-health";
 import { INDUSTRY_META } from "../signal-meta";
 import { channelEvidence, explorationFor, orderByYield } from "./channel-priors";
-import { getIcp } from "./icp";
+import { DEFAULT_ICP } from "./icp-types";
 import { countsTowardTarget } from "./target-count";
 import { auditRow } from "./row-audit";
 import { runWithCounters, estimateUsd, describeCost, type CostCounters } from "./cost-tracker";
@@ -795,12 +795,15 @@ export async function runSearchPipeline(
     //
     // The employee range, the minimum trading history, the lifestyle-business
     // exclusion and the professional-services family rule all arrived as
-    // hardcoded gates, read off the document he sent. Wrong shape: every one is
-    // a judgement he is entitled to change, and a threshold buried in a gate is
-    // one he cannot see, cannot argue with, and has to ask a developer to move.
-    // Read once per run, so editing Settings takes effect on the next search
-    // with no redeploy. Falls back to the written defaults if unreadable.
-    const icp = await getIcp();
+    // hardcoded gates, read off the document he sent.
+    //
+    // It used to be a stored SETTING with its own screen, so the band and the
+    // focus could be changed without a developer. That screen is gone: the
+    // search form carries both controls already, and a second place to set the
+    // same two things meant a default nobody could see was quietly steering
+    // every search. The written profile is now the default, and the form is
+    // where it changes — visibly, per search.
+    const icp = DEFAULT_ICP;
     const explore = explorationFor(observations);
 
     let discoveryCalls = rotationSeed; // drives metro/state rotation, NOT the same as classify rounds

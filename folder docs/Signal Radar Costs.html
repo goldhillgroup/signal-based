@@ -1,0 +1,337 @@
+<title>Signal Radar Handover</title>
+<style>
+  /* Tokens lifted from the product's own stylesheet so this sheet belongs to
+     the same system as the thing it documents. */
+  :root {
+    --navy: #001a57;
+    --sky: #0fa5e1;
+    --ink: #0b1220;
+    --ink-2: #4b5768;
+    --ink-3: #8892a0;
+    --surface: #ffffff;
+    --sunken: #f1f3f6;
+    --border: #e3e7ee;
+    --border-2: #cdd4e0;
+    --shadow: 0 1px 2px rgba(11, 18, 32, 0.05), 0 8px 24px rgba(11, 18, 32, 0.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --navy: #2d5bd7;
+      --sky: #38bdf8;
+      --ink: #e8ecf3;
+      --ink-2: #a4b0c2;
+      --ink-3: #7a8699;
+      --surface: #161b22;
+      --sunken: #1c2230;
+      --border: #2a3140;
+      --border-2: #3b4455;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.3);
+    }
+  }
+  :root[data-theme="dark"] {
+    --navy: #2d5bd7;
+    --sky: #38bdf8;
+    --ink: #e8ecf3;
+    --ink-2: #a4b0c2;
+    --ink-3: #7a8699;
+    --surface: #161b22;
+    --sunken: #1c2230;
+    --border: #2a3140;
+    --border-2: #3b4455;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.3);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--sunken);
+    color: var(--ink);
+    font-family: ui-sans-serif, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .sheet {
+    max-width: 54rem;
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem 4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+  }
+
+  header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 0.75rem 2rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 2px solid var(--navy);
+  }
+  .eyebrow {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--sky);
+    margin: 0 0 0.3rem;
+  }
+  h1 {
+    font-size: clamp(1.625rem, 4vw, 2.125rem);
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    font-weight: 700;
+    color: var(--navy);
+    margin: 0;
+  }
+  /* Compact enough to sit beside the title rather than tower over it: the
+     labels are small caps, the addresses sit directly under them, and the
+     whole block bottom-aligns with the wordmark. */
+  header .acct {
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    text-align: right;
+    line-height: 1.35;
+  }
+  header .acct strong {
+    display: block;
+    margin: 0 0 0.4rem;
+    color: var(--ink-2);
+    font-weight: 600;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.75rem;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+  header .acct strong:last-child { margin-bottom: 0; }
+
+  section { break-inside: avoid; }
+  h2 {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 0 0 0.85rem;
+    padding-bottom: 0.45rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .scroll {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 0.875rem; min-width: 36rem; }
+  thead th {
+    text-align: left;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    padding: 0.65rem 1rem;
+    border-bottom: 1px solid var(--border-2);
+    background: var(--sunken);
+    white-space: nowrap;
+  }
+  tbody td { padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tbody tr:last-child td { border-bottom: 0; }
+  .svc { font-weight: 650; color: var(--ink); white-space: nowrap; }
+  .use { color: var(--ink-2); }
+  .cost {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .cost small { display: block; font-weight: 400; color: var(--ink-3); font-size: 0.75rem; }
+  .free { color: var(--ink-3); font-weight: 500; }
+  .acct {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.75rem; white-space: nowrap; color: var(--navy); font-weight: 600;
+  }
+  .acct.alt { color: var(--ink-3); font-weight: 500; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1rem; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.15rem;
+    box-shadow: var(--shadow);
+    break-inside: avoid;
+  }
+  .card h3 { margin: 0 0 0.3rem; font-size: 0.9375rem; font-weight: 650; color: var(--ink); }
+  .card .where {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.8125rem;
+    color: var(--navy);
+    word-break: break-all;
+    display: block;
+    margin-bottom: 0.4rem;
+  }
+  .card p { margin: 0; font-size: 0.8125rem; color: var(--ink-2); }
+
+  .total {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--sky);
+    border-radius: 8px;
+    padding: 0.9rem 1.15rem;
+    font-size: 0.9375rem;
+    color: var(--ink-2);
+  }
+  .total strong { color: var(--ink); }
+
+  footer {
+    border-top: 1px solid var(--border);
+    padding-top: 1rem;
+    font-size: 0.8125rem;
+    color: var(--ink-3);
+  }
+
+  @page { margin: 15mm; }
+  @media print {
+    /* Tuned so the whole sheet lands on ONE page. It spilled a second page for
+       nothing but the two sign-in cards, which is a worse handout than a
+       slightly denser single sheet. */
+    body { background: #fff; font-size: 10pt; }
+    .sheet { max-width: none; padding: 0; gap: 1rem; }
+    tbody td { padding: 0.5rem 0.9rem; }
+    .total { padding: 0.7rem 1rem; }
+    .card { padding: 0.8rem 1rem; }
+    footer { padding-top: 0.7rem; }
+    .scroll, .card, .total { box-shadow: none; }
+    table { min-width: 0; }
+    section, tr, .card { break-inside: avoid; }
+    h2 { break-after: avoid; }
+  }
+</style>
+
+<div class="sheet">
+
+  <header>
+    <div>
+      <p class="eyebrow">The Goldhill Group</p>
+      <h1>Signal Radar</h1>
+    </div>
+    <div class="acct">
+      Paid services <strong>jonathan@thegoldhillgroup.com</strong>
+      Free services <strong>thegoldhillgroup@gmail.com</strong>
+    </div>
+  </header>
+
+  <section>
+    <h2>What you pay for</h2>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Service</th>
+            <th>What it does</th>
+            <th>Cost</th>
+            <th>Account</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="svc">Apify</td>
+            <td class="use">Finds companies and fetches their pages</td>
+            <td class="cost">$29<small>per month</small></td>
+            <td class="acct">jonathan@</td>
+          </tr>
+          <tr>
+            <td class="svc">OpenRouter</td>
+            <td class="use">Reads each page and decides whether it is a real succession signal</td>
+            <td class="cost">pay as you go<small>~$0.02 a company</small></td>
+            <td class="acct">jonathan@</td>
+          </tr>
+          <tr>
+            <td class="svc">AnymailFinder</td>
+            <td class="use">Finds the email address for a named person</td>
+            <td class="cost">$0.05<small>only when found</small></td>
+            <td class="acct">jonathan@</td>
+          </tr>
+          <tr>
+            <td class="svc">MillionVerifier</td>
+            <td class="use">Checks an address is deliverable before you use it</td>
+            <td class="cost">$0.006<small>per check</small></td>
+            <td class="acct">jonathan@</td>
+          </tr>
+          <tr>
+            <td class="svc">Firecrawl</td>
+            <td class="use">Reads pages that need a browser to load</td>
+            <td class="cost free">free tier</td>
+            <td class="acct">jonathan@</td>
+          </tr>
+          <tr>
+            <td class="svc">Tavily</td>
+            <td class="use">Finds trade directories and member lists</td>
+            <td class="cost free">free tier</td>
+            <td class="acct">jonathan@</td>
+          </tr>
+          <tr>
+            <td class="svc">Supabase</td>
+            <td class="use">The database, and the login</td>
+            <td class="cost free">free tier</td>
+            <td class="acct alt">thegoldhillgroup@</td>
+          </tr>
+          <tr>
+            <td class="svc">Vercel</td>
+            <td class="use">Hosts the app</td>
+            <td class="cost free">free tier</td>
+            <td class="acct alt">thegoldhillgroup@</td>
+          </tr>
+          <tr>
+            <td class="svc">GitHub</td>
+            <td class="use">Holds the code</td>
+            <td class="cost free">free</td>
+            <td class="acct alt">thegoldhillgroup@</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="total" style="margin-top:1rem;">
+      <strong>$29 a month is the only fixed cost.</strong> Everything else is
+      pay-as-you-go and only moves when you run a search or look up an email —
+      a typical search is about <strong>45&cent;</strong>.
+    </p>
+    <p class="total" style="margin-top:0.75rem;">
+      <strong>Two accounts, split by who pays.</strong> Everything that costs
+      money sits under <span style="font-family:ui-monospace,Menlo,monospace">jonathan@thegoldhillgroup.com</span>.
+      The three free services that host the app sit under
+      <span style="font-family:ui-monospace,Menlo,monospace">thegoldhillgroup@gmail.com</span>.
+    </p>
+  </section>
+
+  <section>
+    <h2>Getting in</h2>
+    <div class="cards">
+      <div class="card">
+        <h3>The app</h3>
+        <span class="where">signal-based.vercel.app</span>
+        <p>Sign in with your Goldhill email. There is a "Forgot password?" link if you need it.</p>
+      </div>
+      <div class="card">
+        <h3>Keys and balances</h3>
+        <span class="where">Settings, inside the app</span>
+        <p>Every vendor key is edited here, and every balance is shown live. No developer needed.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Prepared for The Goldhill Group, 14 August 2026.
+  </footer>
+
+</div>

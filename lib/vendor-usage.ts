@@ -257,11 +257,13 @@ async function fetchApify(
   const percentUsed = pctUsed(used, limit);
 
   const detail: string[] = [opts.role];
-  if (opts.capUsd !== null) {
+  // The ceiling used to be a code constant BELOW the plan, guarding a borrowed
+  // developer account. That account is gone, so the cap and the plan are the
+  // same number and describing it as "self-imposed" was telling the reader
+  // about a limit that no longer exists.
+  if (opts.capUsd !== null && planMax !== null && opts.capUsd < planMax) {
     detail.push(
-      planMax !== null
-        ? `The ${usd(opts.capUsd)} ceiling is self-imposed in lib/pipeline/apify.ts. Apify itself would allow ${usd(planMax)}/mo on this account, the code cap is what stops a run first.`
-        : `The ${usd(opts.capUsd)} ceiling is self-imposed in lib/pipeline/apify.ts.`
+      `The ${usd(opts.capUsd)} ceiling is set in the code. Apify itself would allow ${usd(planMax)}/mo, so the code cap is what stops a run first.`
     );
   } else if (planMax !== null) {
     detail.push(`${usd(planMax)}/mo ceiling, enforced by Apify itself.`);
@@ -563,7 +565,7 @@ export const VENDOR_FETCHERS: readonly VendorDescriptor[] = [
         settingKey: "APIFY_TOKEN",
         envValue: process.env.APIFY_TOKEN,
         capUsd: CLIENT_PLAN_USD,
-        role: "Used when the active token is unset. Where this lands at handoff.",
+        role: "Every search bills here. There is no second Apify account.",
       }),
   },
   {

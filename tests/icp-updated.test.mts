@@ -16,8 +16,6 @@ import { VALID_INDUSTRIES } from "../lib/pipeline/intake-types.js";
 import { SUCCESSION_QUERY_SETS } from "../lib/pipeline/apify.js";
 import { recheckAfterFor, isWrongKindOfBusiness } from "../lib/pipeline/recheck-policy.js";
 import { BAND_OPTIONS, bandIndexFor, ICP_SIGNALS, ICP_SIGNAL_GROUPS } from "../lib/search-options.js";
-import { DEFAULT_SCHEDULE } from "../lib/pipeline/schedule.js";
-import { monthlyPageUse } from "../lib/pipeline/schedule-types.js";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Industry } from "../lib/supabase/types.js";
@@ -112,16 +110,6 @@ test("the form's revenue chips offer the ICP's bands, not the old brief's", () =
     BAND_OPTIONS.some((b) => b.min === 5 && b.max === 30),
     "the ICP's full band ($5-30M) must be one click"
   );
-});
-
-test("the scheduled harvest aims at the ICP too", () => {
-  // A job nobody watches must not be running the old profile.
-  assert.equal(DEFAULT_SCHEDULE.revenueMinMusd, 5);
-  assert.equal(DEFAULT_SCHEDULE.revenueMaxMusd, 15, "sweet spot, not the full band");
-  // And it must stay inside the Firecrawl quota — widening it silently
-  // multiplies a bill nobody is watching.
-  const use = monthlyPageUse(DEFAULT_SCHEDULE.targetPerRun, DEFAULT_SCHEDULE.industries.length);
-  assert.ok(use.fits, `${Math.round(use.pages)} pages vs ${use.quota}`);
 });
 
 test("no module keeps its own private list of verticals", () => {

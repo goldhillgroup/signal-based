@@ -1,11 +1,8 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { SignalFunnel } from "@/components/SignalFunnel";
-import { readHarvestHealth } from "@/lib/pipeline/preflight";
-import { getSchedule } from "@/lib/pipeline/schedule";
-import { DAY_NAMES } from "@/lib/pipeline/schedule-types";
 import { RecentFolders } from "@/components/RecentFolders";
-import { RadarIcon, SettingsIcon } from "@/components/icons";
+import { RadarIcon } from "@/components/icons";
 import { HeroStats } from "@/components/HeroStats";
 
 /**
@@ -102,11 +99,8 @@ async function getCounts() {
 
 
 export default async function OverviewPage() {
-  const [
-    { recent, searches, scanned, icpFit, signals, crawledRead, crawledSignals, contacts, spent },
-    health,
-    schedule,
-  ] = await Promise.all([getCounts(), readHarvestHealth(), getSchedule()]);
+  const { recent, searches, scanned, icpFit, signals, crawledRead, crawledSignals, contacts, spent } =
+    await getCounts();
   // The crawler's own rate. See getCounts for why the hand-audited list is out.
   const rate = crawledSignals > 0 ? Math.round(crawledRead / crawledSignals) : null;
 
@@ -185,21 +179,6 @@ export default async function OverviewPage() {
         ]}
       />
 
-      {/* A scheduled run that could not happen must SAY SO. Without this, a
-          harvest blocked on exhausted credit looks identical to a quiet week —
-          the system reporting "no leads" when the truth is "I never looked".
-          Only rendered when something went wrong; a healthy cron stays silent. */}
-      {health && !health.ok && (
-        <div className="rounded-xl border border-gh-warning/60 bg-gh-warning/10 p-4">
-          <p className="text-xs font-semibold text-gh-ink">Last scheduled run did not go ahead</p>
-          <p className="mt-1 text-xs leading-relaxed text-gh-ink-secondary">{health.reason}</p>
-          <p className="mt-1 text-[11px] text-gh-ink-muted">
-            {new Date(health.at).toLocaleString("en-US", {
-              month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
-            })}
-          </p>
-        </div>
-      )}
 
       <section className="fade-up">
         <SignalFunnel
@@ -226,34 +205,6 @@ export default async function OverviewPage() {
         <RecentFolders rows={recent} />
       </section>
 
-      {/* Whether anything runs on its own, answered without opening Settings. */}
-      <section>
-        <div className="fade-up flex items-center gap-3 rounded-xl border border-gh-border bg-gh-surface px-4 py-3.5" style={{ animationDelay: "240ms" }}>
-          <span
-            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
-              schedule.enabled ? "bg-gh-lime/20 text-[#5f8a00]" : "bg-gh-surface-sunken text-gh-ink-muted"
-            }`}
-          >
-            <SettingsIcon className="h-4 w-4" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-xs font-semibold text-gh-ink">
-              Weekly harvest is {schedule.enabled ? "on" : "off"}
-            </span>
-            <span className="mt-0.5 block text-[11px] text-gh-ink-muted">
-              {schedule.enabled
-                ? `Runs every ${DAY_NAMES[schedule.dayOfWeek]}, ${schedule.industries.length} vertical${schedule.industries.length === 1 ? "" : "s"} across ${schedule.states.length} state${schedule.states.length === 1 ? "" : "s"}.`
-                : "Nothing runs on its own. Searches happen when you ask."}
-            </span>
-          </span>
-          <Link
-            href="/dashboard/settings"
-            className="shrink-0 rounded-lg border border-gh-border px-3 py-1.5 text-[11px] font-semibold text-gh-ink-secondary transition-colors duration-200 hover:border-gh-sky/40 hover:text-gh-ink"
-          >
-            {schedule.enabled ? "Change" : "Turn on"}
-          </Link>
-        </div>
-      </section>
 
       {/* The three quick-link cards that sat here are gone. They were "Run a
           search", "All leads" and "Settings" — the sidebar, rendered a second

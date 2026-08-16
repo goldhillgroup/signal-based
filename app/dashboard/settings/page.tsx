@@ -1,9 +1,6 @@
 import { getSetting, SETTINGS_KEYS } from "@/lib/settings";
+import { ReplayTourButton } from "@/components/DashboardTour";
 import { SettingsForm } from "@/components/SettingsForm";
-import { WeeklySchedule } from "@/components/WeeklySchedule";
-import { getSchedule } from "@/lib/pipeline/schedule";
-import { getIcp } from "@/lib/pipeline/icp";
-import { IdealClient } from "@/components/IdealClient";
 
 // Server component on purpose — it's the only place allowed to see a real
 // key value (via getSetting, service-role only). Everything handed to the
@@ -22,8 +19,6 @@ function mask(value: string): string {
 }
 
 export default async function SettingsPage() {
-  const schedule = await getSchedule();
-  const icp = await getIcp();
 
   // The Apify row shows the client's own $29 plan, full stop.
   //
@@ -66,14 +61,7 @@ export default async function SettingsPage() {
         </p>
       </div>
 
-      {/* FIRST, above both the schedule and the keys. The keys keep the
-          product running; this decides what it goes looking for. */}
-      <IdealClient initial={icp} />
 
-      {/* Above the keys: switching the schedule on is the decision that
-          changes what this system spends, and it is the only control here
-          that acts on its own. */}
-      <WeeklySchedule initial={schedule} cronConfigured={Boolean(process.env.CRON_SECRET)} />
 
       {/* ONE list, not two. Balances and keys were separate sections on this
           page, so "Apify is empty, where do I paste the new token" meant
@@ -89,6 +77,18 @@ export default async function SettingsPage() {
         </p>
         <SettingsForm rows={rows} />
       </section>
+      {/* Somebody who skipped the tour, or a second person on the shared
+          login, needs a way back to it. The flag it clears is per-browser. */}
+      <div className="mt-8 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gh-border bg-gh-surface px-4 py-3.5">
+        <span className="min-w-0">
+          <span className="block text-xs font-semibold text-gh-ink">New to this?</span>
+          <span className="mt-0.5 block text-[11px] text-gh-ink-muted">
+            A ninety-second walk through the five screens and what each is for.
+          </span>
+        </span>
+        <ReplayTourButton />
+      </div>
+
     </div>
   );
 }

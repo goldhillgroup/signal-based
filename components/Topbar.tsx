@@ -45,7 +45,7 @@ export function Topbar() {
             not look.
             Everything it pretended to announce already has a real home:
             finished searches and "ready to enrich" appear on the dashboard via
-            ReturnOverview, and a failed scheduled harvest is reported on
+            ReturnOverview, and anything that went wrong is reported on
             Overview. Build a real one against those sources if it is wanted;
             do not put the shell back. */}
       </div>

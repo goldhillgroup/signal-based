@@ -1,4 +1,4 @@
-import { resolveSetting, getSettingFresh, setSetting } from "../settings";
+import { resolveSetting, setSetting } from "../settings";
 
 /**
  * Can a run actually succeed right now — and if not, say so where a human
@@ -22,18 +22,6 @@ import { resolveSetting, getSettingFresh, setSetting } from "../settings";
  * degrades to whatever still answers. Classification has exactly one provider,
  * so it is the single point where "no credit" means "no product".
  */
-
-export const HEALTH_KEY = "LAST_HARVEST_HEALTH";
-
-export interface HarvestHealth {
-  /** ISO instant of the last cron decision. */
-  at: string;
-  ok: boolean;
-  /** Human sentence — shown verbatim in the dashboard. */
-  reason: string;
-  /** What ran, when it did. */
-  started?: string[];
-}
 
 interface Credits {
   data?: { total_credits?: number; total_usage?: number };
@@ -282,23 +270,3 @@ export async function enrichmentBlockerFor(companyCount: number): Promise<string
   return null;
 }
 
-/** Records the cron's outcome where the dashboard can read it. */
-export async function recordHarvestHealth(h: HarvestHealth): Promise<void> {
-  try {
-    await setSetting(HEALTH_KEY, JSON.stringify(h));
-  } catch {
-    // Never let bookkeeping fail a run.
-  }
-}
-
-export async function readHarvestHealth(): Promise<HarvestHealth | null> {
-  try {
-    const raw = await getSettingFresh(HEALTH_KEY);
-    if (!raw) return null;
-    const h = JSON.parse(raw) as Partial<HarvestHealth>;
-    if (typeof h.at !== "string" || typeof h.reason !== "string") return null;
-    return { at: h.at, ok: h.ok === true, reason: h.reason, started: h.started };
-  } catch {
-    return null;
-  }
-}

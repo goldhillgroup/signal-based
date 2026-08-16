@@ -35,8 +35,8 @@ than the variables unset:
 reads either one, so they cannot come back by pasting an env file.
 
 **Keys live in the database** (Settings page), not in Vercel. `resolveSetting()`
-reads the database first. Only four variables belong in Vercel: the three
-Supabase ones and `CRON_SECRET`.
+reads the database first. Only three variables belong in Vercel: the
+Supabase ones.
 
 ---
 

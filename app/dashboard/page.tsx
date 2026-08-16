@@ -1,6 +1,6 @@
 import { SearchHome } from "@/components/SearchHome";
 import { getSuggestions } from "@/lib/pipeline/suggestions";
-import { getIcp } from "@/lib/pipeline/icp";
+import { DEFAULT_ICP } from "@/lib/pipeline/icp-types";
 
 // Computed on the server so the search form opens with real suggestions
 // already in it, rather than flashing hardcoded examples and replacing them.
@@ -12,6 +12,6 @@ export default async function DashboardPage() {
   const suggestions = await getSuggestions().catch(() => []);
   // The saved ideal client is what a blank Signal focus falls back to, so the
   // form has to be able to SAY that rather than leaving him to guess.
-  const icp = await getIcp();
+  const icp = DEFAULT_ICP;
   return <SearchHome suggestions={suggestions} icp={icp} />;
 }

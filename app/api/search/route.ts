@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { runSearchPipeline } from "@/lib/pipeline/orchestrator";
-import { getIcp } from "@/lib/pipeline/icp";
+import { DEFAULT_ICP } from "@/lib/pipeline/icp-types";
 import { industryLabel, VALID_INDUSTRIES } from "@/lib/pipeline/intake-types";
 import { stateNameFor, US_STATES, NATIONWIDE } from "@/lib/pipeline/us-states";
 import { creditBlockerFor } from "@/lib/pipeline/preflight";
@@ -126,7 +126,7 @@ export async function POST(req: Request) {
   // every path into a search — the form, a parsed intake, a re-run — starts
   // from the same definition of a good lead. An explicit focus always wins;
   // this only fills a blank.
-  const icp = await getIcp();
+  const icp = DEFAULT_ICP;
   const refinement = ((body.refinement ?? "").trim() || icp.signalFocus).trim();
 
   const mode = VALID_MODES.includes(body.mode as SearchMode) ? (body.mode as SearchMode) : "hybrid";
