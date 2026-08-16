@@ -165,8 +165,6 @@ export const ICP_SIGNALS = ICP_SIGNAL_GROUPS.flatMap((g) => g.signals);
  * Kept for the compact places that only want a taste rather than the full
  * twelve — the ideal-client summary and the harvest form.
  */
-export const REFINEMENT_EXAMPLES = ICP_SIGNALS.slice(0, 3).map((s) => s.phrase);
-
 /**
  * How many phrases actually steer DISCOVERY.
  *

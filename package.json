@@ -9,11 +9,8 @@
     "lint": "eslint",
     "test": "for f in tests/*.test.mts; do tsx \"$f\" || exit 1; done",
     "eval": "tsx --env-file=.env.local scripts/eval-labeled.mts A",
-    "harvest": "tsx scripts/harvest.mts",
-    "harvest:dry": "tsx scripts/harvest.mts --dry",
     "seed": "tsx scripts/seed-labeled.mts",
     "reset-leads": "tsx scripts/reset-leads.mts",
-    "backfill-recheck": "tsx scripts/backfill-recheck.mts",
     "e2e": "tsx scripts/e2e-run.mts"
   },
   "dependencies": {

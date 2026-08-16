@@ -51,7 +51,7 @@ const TARGET_REVENUE_BAND = "$5M-$30M, with $5M-$15M the sweet spot";
 
 // Editable from /dashboard/settings (DB value wins, falls through to the
 // env var) — see lib/settings.ts.
-export async function getOpenRouterKey(): Promise<string> {
+async function getOpenRouterKey(): Promise<string> {
   const key = await resolveSetting("OPENROUTER_API_KEY", process.env.OPENROUTER_API_KEY);
   if (!key) throw new Error("OPENROUTER_API_KEY is not set");
   return key;

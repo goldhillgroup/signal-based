@@ -23,24 +23,6 @@ export async function getSetting(key: string): Promise<string | null> {
   return value;
 }
 
-/**
- * Cache-bypassing read, for values where "correct right now" beats "cheap".
- *
- * The 30s cache above exists for API KEYS: a single search resolves them dozens
- * of times and they change maybe monthly. Config read once per page load is the
- * opposite trade, and the cache actively lied about it — toggling the weekly
- * harvest on, saving it (verified in the database), then reloading showed it
- * back OFF, because the page read a stale cached copy. A settings screen that
- * discards what you just saved is worse than a slow one.
- */
-export async function getSettingFresh(key: string): Promise<string | null> {
-  const supabase = createServiceRoleClient();
-  const { data } = await supabase.from("app_settings").select("value").eq("key", key).maybeSingle();
-  const value = data?.value ?? null;
-  cache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
-  return value;
-}
-
 export async function setSetting(key: string, value: string): Promise<void> {
   const supabase = createServiceRoleClient();
   const { error } = await supabase

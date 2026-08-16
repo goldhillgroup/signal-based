@@ -41,7 +41,7 @@ interface Credits {
 const OPENROUTER_PER_10_TARGET = 0.29; // worst observed, not the mean
 const FLOOR_MULTIPLIER = 2;
 
-export function requiredCreditFor(targetSignals: number): number {
+function requiredCreditFor(targetSignals: number): number {
   const projected = (Math.max(targetSignals, 1) / 10) * OPENROUTER_PER_10_TARGET;
   return Math.round(projected * FLOOR_MULTIPLIER * 100) / 100;
 }
@@ -171,37 +171,6 @@ export async function creditBlockerFor(targetSignals: number): Promise<string | 
     `about $${need.toFixed(2)} needed for ${targetSignals} results. ` +
     `Top up in Settings, or run a smaller search.`
   );
-}
-
-/**
- * Returns null when good to go, or a human sentence explaining why not.
- *
- * Fails OPEN on an unreadable balance: if OpenRouter's own API is down we do
- * not know that credit is exhausted, and refusing to run on "I could not
- * check" would turn their outage into our missed week. A real 402 mid-run is
- * still handled downstream — this is an optimisation to avoid pointless spend,
- * not the safety net itself.
- */
-export async function preflightBlocker(): Promise<string | null> {
-  const primary = await resolveSetting("OPENROUTER_API_KEY", process.env.OPENROUTER_API_KEY);
-  if (!primary) {
-    return "No OpenRouter key is configured, so nothing can be classified. Add one in Settings.";
-  }
-
-  // Uses the SPENDABLE figure — account balance AND our own delta cap, whichever
-  // binds first. See openRouterRemaining for why checking only the former let a
-  // whole run through to fail on the latter.
-  const left = await openRouterRemaining();
-  if (left === null) return null; // fail open, see above
-  if (left > 0.5) return null;
-  if (keyCapBound) {
-    return (
-      `This OpenRouter key has hit its own spend limit, so no company could be judged. ` +
-      `The ACCOUNT may still hold credit — the cap is on the key itself. ` +
-      `Raise that key's limit in the OpenRouter dashboard, or paste a different key into Settings.`
-    );
-  }
-  return "Skipped: no OpenRouter credit is available to classify with. Top it up and the next run will go ahead.";
 }
 
 /**

@@ -47,19 +47,6 @@ const SEED: Record<Channel, { reads: number; signals: number }> = {
   // so they are worth reading FIRST regardless of hit rate. Seeded high to
   // reflect the economics, not an observed rate.
   recheck: { reads: 10, signals: 3 },
-  // Press candidates arrive because a reporter WROTE that a handover is
-  // happening, so there is a real argument its rate should be the highest
-  // here. That argument is reasoning, not evidence, and this file's rule is
-  // that an unmeasured channel is seeded neutrally — the same call made for
-  // licensing above. Seeded at 20/4, level with web_search, the best MEASURED
-  // channel: high enough to be read early and earn observations quickly, not
-  // so high that a guess takes over the read order from run one and spends
-  // the scan ceiling before anyone has seen whether it works.
-  //
-  // If the reasoning is right, liveYields() will promote it within a couple
-  // of runs on Jonathan's own numbers. That is the correct way for it to get
-  // to the top.
-  press: { reads: 20, signals: 4 },
 };
 
 /**
@@ -74,17 +61,6 @@ function rate(r: { reads: number; signals: number }): number {
 
 /** Minimum observations before a channel's live rate is trusted over the seed. */
 const MIN_LIVE_READS = 40;
-
-/**
- * Live per-channel rates from this installation's own history, falling back to
- * the seed per channel until each has enough of its own data.
- *
- * Never throws: a failed read means "use the seeds", which is exactly the
- * behaviour on day one anyway.
- */
-export async function channelRates(): Promise<Record<Channel, number>> {
-  return (await channelEvidence()).rates;
-}
 
 /**
  * Rates AND how many observations stand behind them.

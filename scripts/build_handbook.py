@@ -376,7 +376,7 @@ story += table(
         ["Overview", "Your numbers at a glance, and anything finished while you were away."],
         ["Signal Radar", "Where you start a new search. This is the main screen."],
         ["Enrichment", "Finding email addresses for leads you already have."],
-        ["All Leads", "Every lead from every search in one place, with sorting and filters."],
+        ["Lead Lists", "Every search you have run, as cards or as a list. Open one to read its leads."],
         ["Settings", "The vendor keys, and what each service has left."],
     ],
     [38 * mm, W - 38 * mm],
@@ -429,21 +429,33 @@ story += [note("A big search runs in several passes.",
                "saved and the next pass starts on its own. You do not have to do anything.")]
 
 # ── 4. Reading the results ─────────────────────────────────────────────────
-story += section(4, "Folders, and All Leads")
-story += [lede("A folder is one search and everything it found. All Leads is "
-               "every folder at once, with sorting and filters.")]
+story += section(4, "Lead Lists")
+story += [lede("A list is one search and everything it found.")]
 story += [body(
-    "Open a folder to read the leads, check a quote, export the list, or look up "
-    "email addresses. Inside, they are split three ways.")]
+    "Lead Lists shows them all. Use Cards or List, top right, to switch how they "
+    "are drawn; List is easier once you have more than a few. Click anywhere on "
+    "a list to open it. The pencil renames it, the bin deletes it.")]
+story += [body(
+    "Open one to read the leads, check a quote, export them, or look up email "
+    "addresses. Inside, four tabs.")]
 story += table(
-    ["Group", "What it means"],
+    ["Tab", "What it means"],
     [
+        ["All leads", "Everything the search got you. This is where it opens."],
         ["Founder + successor", "Both generations named, both running it today. What the product is for, and the rarest: about one company in thirty."],
         ["Good fit, no successor", "Right trade, right area, family-run, but nobody named to take over. Worth a call."],
         ["Not a fit", "Cut, with the reason on the row. Shown so you can disagree with it."],
     ],
     [42 * mm, W - 42 * mm],
 )
+story += [body(
+    "The first three add up to the All leads number. Deleting a list removes it "
+    "from Recent searches on the Overview too.")]
+story += [subsection("Making room")]
+story += [body(
+    "Collapse at the foot of the dark menu narrows it to icons and remembers, "
+    "so it stays that way until you widen it again. Hover an icon to see its "
+    "name. On a phone the menu is behind the button at the top left.")]
 story += [subsection("The quote is the point")]
 story += [body(
     "Every confirmed pair carries a sentence from the company's own website, with "

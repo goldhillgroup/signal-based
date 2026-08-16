@@ -35,7 +35,7 @@ test("exploration shrinks as evidence accumulates, and never to zero", () => {
 });
 
 test("with real rates, most of a batch goes to the best channel", () => {
-  const rates = { web_search: 0.036, maps: 0.007, directory: 0.001, licensing: 0.01, recheck: 0.3, press: 0.05 };
+  const rates = { web_search: 0.036, maps: 0.007, directory: 0.001, licensing: 0.01, recheck: 0.3 };
   const batch = [
     ...Array.from({ length: 20 }, (_, i) => c("maps", i)),
     ...Array.from({ length: 20 }, (_, i) => c("web_search", 100 + i)),
@@ -46,7 +46,7 @@ test("with real rates, most of a batch goes to the best channel", () => {
 });
 
 test("the weakest channel still appears — a ranking, not a ratchet", () => {
-  const rates = { web_search: 0.036, maps: 0.007, directory: 0.0, licensing: 0.01, recheck: 0.3, press: 0.05 };
+  const rates = { web_search: 0.036, maps: 0.007, directory: 0.0, licensing: 0.01, recheck: 0.3 };
   const batch = [
     ...Array.from({ length: 30 }, (_, i) => c("web_search", i)),
     ...Array.from({ length: 6 }, (_, i) => c("directory", 100 + i)),
@@ -59,7 +59,7 @@ test("the weakest channel still appears — a ranking, not a ratchet", () => {
 });
 
 test("ordering never invents or loses a candidate", () => {
-  const rates = { web_search: 0.036, maps: 0.007, directory: 0.001, licensing: 0.01, recheck: 0.3, press: 0.05 };
+  const rates = { web_search: 0.036, maps: 0.007, directory: 0.001, licensing: 0.01, recheck: 0.3 };
   for (const n of [0, 1, 2, 15, 40]) {
     const batch = Array.from({ length: n }, (_, i) => c(i % 2 ? "maps" : "web_search", i));
     const ordered = orderByYield(batch, rates, explorationFor(500));

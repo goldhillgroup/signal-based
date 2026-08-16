@@ -6,7 +6,6 @@ import { resolveSetting } from "../settings";
 // only inside function bodies at call time, never at module-evaluation time,
 // so neither module needs the other to be fully initialized when it loads.
 import { discoverViaDirectories } from "./directory-discovery";
-import { discoverViaPress } from "./press-discovery";
 import { discoverViaLicensing } from "./licensing-discovery";
 import { firecrawlScrape } from "./firecrawl";
 import { recordCost } from "./cost-tracker";
@@ -229,7 +228,7 @@ export interface Candidate {
   // database whose recheck_after came due. Tracked as a channel anyway so the
   // per-channel yield table can measure it against the paid ones; it is the
   // only source whose discovery cost is zero.
-  channel: "maps" | "web_search" | "directory" | "licensing" | "recheck" | "press";
+  channel: "maps" | "web_search" | "directory" | "licensing" | "recheck";
   /**
    * Which requested state's search surfaced this candidate.
    *
@@ -1292,13 +1291,6 @@ export async function discoverCandidates(params: {
       g === mapsGroup
         ? discoverViaMaps(industries, group, floorLimit, round)
         : Promise.resolve([] as Candidate[]),
-      // PRESS ROTATES TOO, for the same reason as directories: one Tavily
-      // search plus up to eight free article reads per call is cheap, and
-      // twelvefold is still twelve times cheap. Rotating covers every state
-      // across rounds, which is what a discovery channel actually needs.
-      g === (round - 1) % groups.length
-        ? discoverViaPress(industries, group, floorLimit, excludeDomains ?? new Set())
-        : Promise.resolve([] as Candidate[]),
     ])
   );
 
@@ -1306,7 +1298,7 @@ export async function discoverCandidates(params: {
   // channel work" still has a single answer even though it now ran four
   // times. A channel counts as failed only when it failed for EVERY state —
   // one state's timeout must not condemn a channel that worked elsewhere.
-  const CHANNELS = ["Directory", "Licensing", "Web search", "Maps", "Press"] as const;
+  const CHANNELS = ["Directory", "Licensing", "Web search", "Maps"] as const;
   const channelErrors: string[] = [];
   const raw: Candidate[] = [];
   const failedEverywhere: boolean[] = [];
