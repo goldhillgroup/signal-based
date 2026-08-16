@@ -441,14 +441,33 @@ export function SearchesProvider({ children }: { children: ReactNode }) {
 
   const deleteSearch = useCallback(
     async (searchId: string) => {
-      const res = await fetch(`/api/search/${searchId}`, { method: "DELETE" });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body?.error ?? "Could not delete this search.");
-      }
-      // Drop it locally first so the list updates instantly, then re-read to
-      // stay honest about what the server actually holds.
+      // OPTIMISTIC, WHICH THE OLD COMMENT CLAIMED AND THE CODE DID NOT DO.
+      //
+      // It said "drop it locally first so the list updates instantly" and then
+      // dropped it AFTER awaiting the request, so pressing Delete left the
+      // folder sitting there for the whole round trip and a refresh after it —
+      // one to two seconds of the screen looking like nothing happened, which
+      // reads as a broken button and invites a second click.
+      //
+      // A progress bar would be worse: there is no progress to report, only a
+      // request in flight, and a bar that fills on a timer is a lie. Removing
+      // the row immediately is honest, because the delete is going to succeed;
+      // the rare failure puts it straight back.
       setFolders((prev) => prev.filter((f) => f.id !== searchId));
+      try {
+        const res = await fetch(`/api/search/${searchId}`, { method: "DELETE" });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body?.error ?? "Could not delete this search.");
+        }
+      } catch (e) {
+        // Restore from the SERVER rather than from a snapshot in memory. A
+        // snapshot taken inside the setState callback is not safe to rely on —
+        // React may invoke that callback twice — and the server is the truth
+        // about what still exists anyway.
+        await refreshFolders();
+        throw e;
+      }
       await refreshFolders();
     },
     [refreshFolders]

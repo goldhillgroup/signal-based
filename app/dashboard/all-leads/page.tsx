@@ -184,12 +184,15 @@ export default function AllLeadsPage() {
     const target = pendingDelete;
     setPendingDelete(null);
     setError("");
+    // Everything that belongs to the folder disappears with it, in the same
+    // frame. Waiting for the request to return before clearing these left the
+    // folder's rows on screen under a heading that had already gone.
+    if (openFolderId === target.id) setOpenFolderId(null);
+    setCompanies((prev) =>
+      prev === "loading" ? prev : prev.filter((c) => c.searchId !== target.id)
+    );
     try {
       await deleteSearch(target.id);
-      if (openFolderId === target.id) setOpenFolderId(null);
-      setCompanies((prev) =>
-        prev === "loading" ? prev : prev.filter((c) => c.searchId !== target.id)
-      );
     } catch (e) {
       setError((e as Error).message || "Could not delete that folder.");
     }

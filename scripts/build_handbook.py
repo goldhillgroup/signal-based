@@ -378,7 +378,7 @@ story += table(
         ["Overview", "Your numbers at a glance, and anything finished while you were away."],
         ["Signal Radar", "Where you start a new search. This is the main screen."],
         ["Enrichment", "Finding email addresses for leads you already have."],
-        ["All Leads", "Every lead ever found, across all searches."],
+        ["All Leads", "Every lead from every search in one place, with sorting and filters."],
         ["Settings", "The vendor keys, and what each service has left."],
     ],
     [38 * mm, W - 38 * mm],
@@ -405,8 +405,25 @@ story += [note("Searching the same thing twice is not wasted.",
                "search goes deeper into the same ground rather than handing back the same list.")]
 
 # ── 4. Reading the results ─────────────────────────────────────────────────
-story += section(4, "Reading the results")
-story += [lede("Each search creates a folder. Inside, leads are split three ways.")]
+story += section(4, "Folders, and All Leads")
+story += [lede("Every search you run creates a folder. All Leads is every folder "
+               "at once.")]
+story += [subsection("A folder")]
+story += [body(
+    "One search, and everything it found. The name is the search you asked for, "
+    "so \"Landscaping companies in New York\" is the folder holding that run. "
+    "Open it to see the leads, read a quote, export the list, or look up email "
+    "addresses for the companies in it. Delete it and its leads go with it.")]
+story += [subsection("All Leads")]
+story += [body(
+    "The same leads, from every search you have ever run, in one place. Use it "
+    "when you want the whole picture rather than one run: sort by newest, by "
+    "month, by state, by trade, or by outcome, and filter by vertical. You can "
+    "open any folder from here, and export from here too.")]
+story += [body(
+    "The short version: a folder answers \"what did that search find?\", and All "
+    "Leads answers \"what do I have?\".")]
+story += [subsection("Inside a folder, leads are split three ways")]
 story += table(
     ["Group", "What it means"],
     [
@@ -477,29 +494,21 @@ story += section(8, "What it costs")
 J = "jonathan@<br/>thegoldhillgroup.com"
 G = "thegoldhillgroup@<br/>gmail.com"
 story += table(
-    ["Service", "What it does", "Cost", "Account"],
+    ["Service", "What it does", "Cost", "Left today", "Account"],
     [
-        ["Apify", "Finds companies and fetches their pages", "$29<br/>per month", J],
-        ["OpenRouter", "Reads each page and judges it", "~$0.02<br/>a company", J],
-        ["AnymailFinder", "Finds an email address", "$0.05<br/>only when found", J],
-        ["MillionVerifier", "Checks it is deliverable", "$0.006<br/>per check", J],
-        ["Firecrawl", "Reads pages that need a browser", "free", J],
-        ["Tavily", "Finds trade directories", "free", J],
-        ["Supabase", "The database and the login", "free", G],
-        ["Vercel", "Hosts the app", "free", G],
-        ["GitHub", "Holds the code", "free", G],
+        ["Apify", "Finds companies and fetches their pages", "$29<br/>per month", "$9.53 used<br/>this month", J],
+        ["OpenRouter", "Reads each page and judges it", "~$0.02<br/>a company", "$49.50<br/>left", J],
+        ["AnymailFinder", "Finds an email address", "$0.05<br/>only when found", "286 credits<br/>left", J],
+        ["MillionVerifier", "Checks it is deliverable", "$0.006<br/>per check", "10,408 credits<br/>left", J],
+        ["Firecrawl", "Reads pages that need a browser", "free", "693 pages<br/>left", J],
+        ["Tavily", "Finds trade directories", "free", "1,000 a month", J],
+        ["Supabase", "The database and the login", "free", "", G],
+        ["Vercel", "Hosts the app", "free", "", G],
+        ["GitHub", "Holds the code", "free", "", G],
     ],
-    [33 * mm, 55 * mm, 24 * mm, W - 112 * mm],
-    mono_cols=(3,),
+    [30 * mm, 44 * mm, 24 * mm, 26 * mm, W - 124 * mm],
+    mono_cols=(4,),
 )
-story += [note("$29 a month is the only fixed cost.",
-               "Everything else moves only when you run a search or look up an email. "
-               "A typical search is about 45&cent;.", "green")]
-story += [note("Two accounts, split by who pays.",
-               "Everything that costs money sits under "
-               f'<font face="{MONO}" size="8">jonathan@thegoldhillgroup.com</font>. '
-               "The three free services that host the app, Supabase, Vercel and "
-               f'GitHub, sit under <font face="{MONO}" size="8">thegoldhillgroup@gmail.com</font>.')]
 
 # ── 9. If something looks wrong ────────────────────────────────────────────
 story += section(9, "If something looks wrong")
@@ -510,7 +519,6 @@ story += table(
         ["&ldquo;Stopped at the time limit&rdquo;", "Normal. Everything found is saved. Press Search again to carry on."],
         ["A search finds very little", "Usually that ground is well covered already. Try another state, or widen the verticals."],
         ["No founder + successor pairs", "Expected on a small search. They occur about once in thirty companies read."],
-        ["A lead looks wrong", "Open it and read the quote. If the quote does not support it, tell Daniel. That is a real fault."],
     ],
     [48 * mm, W - 48 * mm],
 )
