@@ -48,12 +48,18 @@ const SEED: Record<Channel, { reads: number; signals: number }> = {
   // reflect the economics, not an observed rate.
   recheck: { reads: 10, signals: 3 },
   // Press candidates arrive because a reporter WROTE that a handover is
-  // happening, so the prior is high by construction rather than by
-  // measurement. Seeded optimistically but not absurdly: it still has to
-  // survive the company's own page, the classifier and the disprove pass, and
-  // a 2019 story about a handover that never completed will be cut there.
-  // The real rate asserts itself as soon as it produces reads.
-  press: { reads: 10, signals: 4 },
+  // happening, so there is a real argument its rate should be the highest
+  // here. That argument is reasoning, not evidence, and this file's rule is
+  // that an unmeasured channel is seeded neutrally — the same call made for
+  // licensing above. Seeded at 20/4, level with web_search, the best MEASURED
+  // channel: high enough to be read early and earn observations quickly, not
+  // so high that a guess takes over the read order from run one and spends
+  // the scan ceiling before anyone has seen whether it works.
+  //
+  // If the reasoning is right, liveYields() will promote it within a couple
+  // of runs on Jonathan's own numbers. That is the correct way for it to get
+  // to the top.
+  press: { reads: 20, signals: 4 },
 };
 
 /**
