@@ -338,9 +338,7 @@ story += [
     Paragraph("Signal<br/>Radar", S["CoverTitle"]),
     Spacer(1, 3 * mm),
     Paragraph(
-        "Finds family-owned businesses where the founder is still running "
-        "things and a son or daughter is stepping up beside them, and "
-        "shows you the company's own words as proof.", S["CoverSub"]),
+        "Finds family firms where the founder still runs things and a son or daughter is stepping up beside them. Shows you the company's own words as proof.", S["CoverSub"]),
     Spacer(1, 12 * mm),
     HRFlowable(width="42%", thickness=2, color=SKY, hAlign="LEFT"),
     Spacer(1, 6 * mm),
@@ -422,15 +420,9 @@ story += table(
     [26 * mm, W - 84 * mm, 58 * mm],
 )
 story += [body(
-    "Every company it finds then gets read properly: it fetches the About, Team "
-    "or Leadership page, and a model reads that page and decides whether two "
-    "generations are really named and really there today. A second pass tries to "
-    "disprove what the first one found, and anything that survives both is quoted "
-    "back to you with a link.")]
+    "Each company it finds is then read. It opens the About or Team page and decides whether two generations are really named, and really there today. A second pass then tries to prove the first one wrong. What survives both is quoted back to you, with a link.")]
 story += [body(
-    "It also remembers. Every company it has ever judged is skipped next time, so "
-    "the same search run twice covers new ground rather than re-reading and "
-    "re-paying for the first list.")]
+    "It also remembers. Every company it has judged is skipped next time. Run the same search twice and it covers new ground instead of paying for the old list again.")]
 
 story += [note("A big search runs in several passes.",
                "The server stops any single run after five minutes. Everything found is "
@@ -446,8 +438,8 @@ story += [body(
 story += table(
     ["Group", "What it means"],
     [
-        ["Founder + successor", "Both generations named, both running it today. This is what the product is for, and the rarest, about one company in thirty."],
-        ["Good fit, no successor", "Right trade, right area, family-run, but nobody named to take over. Still worth a call."],
+        ["Founder + successor", "Both generations named, both running it today. What the product is for, and the rarest: about one company in thirty."],
+        ["Good fit, no successor", "Right trade, right area, family-run, but nobody named to take over. Worth a call."],
         ["Not a fit", "Cut, with the reason on the row. Shown so you can disagree with it."],
     ],
     [42 * mm, W - 42 * mm],
@@ -556,17 +548,12 @@ story += table(
 story += section(10, "Questions you are likely to have")
 QA = [
     ("How many leads should I expect?",
-     "A search reads twenty to sixty companies and typically keeps five to ten. Of "
-     "those, a confirmed founder-and-successor pair turns up about once in every "
-     "thirty companies read, so a single search often finds none, and a few "
-     "searches find several. The good family-owned companies without a named "
+     "A search reads twenty to sixty companies and typically keeps five to ten. Of those, a confirmed founder-and-successor pair turns up about once in every thirty companies read. So a single search often finds none, and a few searches find several. The good family-owned companies without a named "
      "successor are kept either way, because they are still worth a call."),
     ("Why does it reject so many?",
      "Because searching the web for &ldquo;family landscaping business&rdquo; also "
      "returns funeral homes, trade magazines, associations and software companies. "
-     "Those are removed silently. What you see under &ldquo;Not a fit&rdquo; is only "
-     "the arguable ones: the right sort of company that failed one of your tests, "
-     "so you can disagree with it."),
+     "Those are removed silently. What you see under &ldquo;Not a fit&rdquo; is only the arguable ones: the right sort of company that failed a test. Those you can disagree with."),
     ("Can I trust what it says about a company?",
      "Every confirmed pair carries a sentence from the company's own website and a "
      "link to the page. If the quote does not say what the lead claims, that is a "
@@ -581,8 +568,7 @@ QA = [
      "is remembered and skipped, so a second search of the same trade and state finds "
      "new companies. Your existing leads stay exactly where they are."),
     ("Can I change what it looks for?",
-     "Yes, on the search form: the verticals, the states, the revenue band and "
-     "the signal focus, all set per search so you can see exactly what this one will do."),
+     "Yes, on the search form. The verticals, states, revenue band and signal focus are all set per search, so you can see what this one will do."),
     ("Something is wrong with a lead. What do I do?",
      "Open it, read the quote, and check the source page. If the page supports it and "
      "you still disagree, that is a judgement call worth telling Daniel about. "

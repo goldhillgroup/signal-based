@@ -405,7 +405,7 @@ export default function AllLeadsPage() {
           <p className="text-sm text-gh-ink-secondary">
             {contributing.length === 0
               ? "No leads yet."
-              : `${contributing.length} list${contributing.length === 1 ? "" : "s"}, ${leadCount} lead${leadCount === 1 ? "" : "s"} between them. Open one to see inside.`}
+              : `${contributing.length} list${contributing.length === 1 ? "" : "s"}, ${leadCount} lead${leadCount === 1 ? "" : "s"}. Open one to see inside.`}
           </p>
           {contributing.length > 1 && (
             <select

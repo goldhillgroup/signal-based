@@ -77,8 +77,15 @@ function SidebarBody({
   // how many lists there are to open. So the LABEL moved instead. "Lead Lists"
   // and "Enrichment" now both count lists, which is the same noun, and the
   // numbers finally sit beside each other meaning the same kind of thing.
+  // Lists WITH SOMETHING IN THEM, which is what the page itself shows. The
+  // badge counted every folder, including searches that finished having found
+  // nothing, so the rail said 3 and the page it opened said "1 list". A number
+  // that disagrees with the screen behind it is worse than no number.
+  const listsWithLeads = folders.filter(
+    (f) => f.qualifiedCount + f.verifyCount + f.fitOnlyCount > 0
+  ).length;
   const badges: Record<string, number> = {
-    "/dashboard/all-leads": folders.length,
+    "/dashboard/all-leads": listsWithLeads,
     "/dashboard/enrichment": readyToEnrich,
   };
 
