@@ -65,7 +65,18 @@ export function takeTavilyFailure(): TavilyFailure {
 
 export async function tavilySearch(
   query: string,
-  opts: { maxResults?: number; depth?: "basic" | "advanced"; includeRaw?: boolean } = {}
+  opts: {
+    maxResults?: number;
+    depth?: "basic" | "advanced";
+    includeRaw?: boolean;
+    /**
+     * "news" for the press channel, which wants articles rather than the
+     * companies' own sites. It costs the `country` nudge below, since Tavily
+     * only honours that under "general" — an acceptable trade there and not
+     * anywhere else, so every other caller keeps the default.
+     */
+    topic?: "general" | "news";
+  } = {}
 ): Promise<TavilyResult[]> {
   const key = await getTavilyKey();
   if (!key) {
@@ -90,7 +101,7 @@ export async function tavilySearch(
     // isForeignTld() in apify.ts. What this buys is that the 6 results an
     // angle actually pays to consider are more likely to be the US ones —
     // the difference between filtering foreign hits and not surfacing them.
-    topic: "general",
+    topic: opts.topic ?? "general",
     country: "united states",
   });
 

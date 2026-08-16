@@ -69,6 +69,37 @@ const STORY_ANGLES = [
   'founder "hands over" family business to son OR daughter',
 ];
 
+/**
+ * Hosts that are never a press article, measured rather than guessed.
+ *
+ * The first live run of this channel returned 8 results of which 5 were
+ * Facebook, Instagram and YouTube. They are worthless here twice over: a
+ * social post is not reporting, and every one of those hosts blocks the
+ * plain fetch below, so each cost an attempt to retrieve nothing. Forums and
+ * video are the same story from the other direction -- lawnsite.com is
+ * landscapers talking shop, not a paper reporting a handover.
+ */
+/**
+ * National business press, blocked for the OPPOSITE reason to the social
+ * hosts: these are real reporting, and that is the problem.
+ *
+ * The first run that worked returned exactly one company, from Fortune:
+ * Related Group, a billionaire's real-estate empire, whose founder spent
+ * twenty years handing it to his sons. A textbook succession story about a
+ * company two orders of magnitude outside the $5-30M band this product
+ * exists for. Fortune does not write about a landscaper in Waterbury, and
+ * a landscaper in Waterbury is the entire point.
+ *
+ * The gates downstream would cut it on size, so this is not about
+ * correctness -- it is about not paying a fetch and a classification call
+ * to be told a billionaire is not a small family business.
+ */
+const NATIONAL_PRESS_RE =
+  /^(www\.)?(fortune|forbes|bloomberg|wsj|cnbc|businessinsider|inc|entrepreneur|axios|reuters|ft|economist|fastcompany|techcrunch|barrons|marketwatch)\./i;
+
+const NOT_PRESS_RE =
+  /^(m\.|.*\.)?(facebook|instagram|youtube|linkedin|tiktok|twitter|x|pinterest|reddit|threads|vimeo|yelp|indeed|glassdoor|lawnsite|quora)\./i;
+
 function hostnameOf(url: string): string {
   try {
     return new URL(url.startsWith("http") ? url : `https://${url}`).hostname.replace(/^www\./, "");
@@ -192,7 +223,10 @@ async function readArticle(url: string, snippet?: string): Promise<PressFind[]> 
   const body = await freeFetchArticle(url);
   // Tavily's snippet is already paid for and often carries the key sentence,
   // so a paywall or a 403 does not have to end the attempt.
-  const text = body ?? (snippet && snippet.length > 400 ? snippet : null);
+  // 300, not 400. A news snippet routinely arrives at ~1150 characters and
+  // carries the whole lede, which is where the succession sentence lives; the
+  // threshold only exists to avoid spending an extract on a stub.
+  const text = body ?? (snippet && snippet.length > 300 ? snippet : null);
   if (!text) {
     articleMemo.set(url, { at: Date.now(), finds: [] });
     return [];
@@ -231,7 +265,17 @@ export async function discoverViaPress(
 
   let results: Awaited<ReturnType<typeof tavilySearch>>;
   try {
-    results = await tavilySearch(query, { maxResults: 8 });
+    // topic "news" rather than the default "general", and the difference is
+    // not marginal. Measured on the same query: "general" returned 8 results
+    // of which 5 were social, with 100-140 character snippets; "news"
+    // returned 3, none social, and the one real article's snippet went from
+    // 108 characters to 1154 -- enough to extract from WITHOUT fetching the
+    // page at all, which is what makes a paywall survivable.
+    //
+    // The cost is tavily.ts's `country` nudge, which Tavily only honours
+    // under "general". Worth it here and nowhere else: this channel wants
+    // reporting, and the state name is already in the query.
+    results = await tavilySearch(query, { maxResults: 8, topic: "news" });
   } catch {
     // A dark channel is not a failed run. The caller reports it and carries on
     // with the channels that did answer.
@@ -241,6 +285,10 @@ export async function discoverViaPress(
   const finds: PressFind[] = [];
   for (const r of results) {
     if (finds.length >= limit * 3) break;
+    // Skip before spending an extract. A social post is not reporting, and
+    // these hosts block the fetch anyway.
+    const h = hostnameOf(r.url);
+    if (NOT_PRESS_RE.test(h) || NATIONAL_PRESS_RE.test(h)) continue;
     finds.push(...(await readArticle(r.url, r.content)));
   }
   return toCandidates(finds, industries, states, excludeDomains, limit);
@@ -256,6 +304,12 @@ export async function discoverViaPress(
  * has already settled, or letting one article's three mentions of the same
  * business fill the whole round's budget.
  */
+/** Exported so the filters can be tested against real measured hosts. */
+export function isPressWorthy(host: string): boolean {
+  if (!host) return false;
+  return !NOT_PRESS_RE.test(host) && !NATIONAL_PRESS_RE.test(host);
+}
+
 export function toCandidates(
   finds: PressFind[],
   industries: Industry[],

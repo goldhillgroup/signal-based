@@ -75,3 +75,21 @@ test("state is stamped only when the search is one state", () => {
   // and a wrong state is worse than none.
   assert.equal(toCandidates([find({})], IND, ["CT", "NY"], new Set(), 5)[0].state, null);
 });
+
+test("the publisher filters catch what the live run actually returned", async () => {
+  const { isPressWorthy } = await import("../lib/pipeline/press-discovery.js");
+  // Measured, not imagined: these are the hosts the first two live runs
+  // returned. Social was 5 of 8 on the "general" topic; Fortune was the one
+  // company the first working run produced, a billionaire's real-estate
+  // empire two orders of magnitude outside the $5-30M band.
+  for (const bad of [
+    "facebook.com", "instagram.com", "youtube.com", "lawnsite.com",
+    "fortune.com", "forbes.com", "bloomberg.com", "cnbc.com",
+  ]) {
+    assert.equal(isPressWorthy(bad), false, `${bad} should be skipped`);
+  }
+  // Local and regional press is the whole point of the channel.
+  for (const good of ["we-ha.com", "patch.com", "gadsdentimes.com", "augustachronicle.com"]) {
+    assert.equal(isPressWorthy(good), true, `${good} should be read`);
+  }
+});
