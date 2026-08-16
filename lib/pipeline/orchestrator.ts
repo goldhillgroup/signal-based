@@ -38,6 +38,7 @@ const ROUND_SIZE = 15;
 // always part re-check, part fresh ground.
 const RECHECK_PER_RUN = 20;
 import { scansFor } from "./scan-limits";
+import { SEARCH_CEILING_PER_COMPANY_USD } from "./pricing";
 import { RUN_CEILING_MS } from "./reap";
 
 // How many companies are classified at once. Each one is 1-2 OpenRouter calls
@@ -489,6 +490,9 @@ export async function runSearchPipeline(
 
     const seekingSignals = mode !== "filter";
     const scanCeiling = scansFor(targetSignals, seekingSignals);
+    // What the confirm dialog quoted, recomputed rather than passed in, so
+    // the two cannot disagree. See the spend check in the round loop.
+    const spendCeilingUsd = scanCeiling * SEARCH_CEILING_PER_COMPANY_USD;
 
     // ── THE RUN'S OWN DEADLINE ───────────────────────────────────────────
     //
@@ -853,6 +857,30 @@ export async function runSearchPipeline(
       // cleanly, rather than starting a 120-second call with 40 seconds left.
       if (pending.length === 0 && !poolDry && !hasRoomFor(WORST_CASE_MS.discovery)) {
         stoppedEarlyReason = "ran out of time before it could look for more companies";
+        break roundLoop;
+      }
+      // THE SAME CHECK, FOR MONEY.
+      //
+      // The confirm dialog says "up to $N" before anything is bought. That
+      // sentence was not true: the figure was quoted to the user and then
+      // never looked at again, so nothing in the run knew the number existed,
+      // let alone stopped at it. Per-company costs are bounded (one fetch,
+      // one classify), but DISCOVERY is not — it keeps buying searches until
+      // it has candidates, and a wide, low-yield query can spend a great deal
+      // finding very little. The California/New York/Florida/Texas run is the
+      // proof: 23 searches and 60 extracts, $0.31, one company actually read.
+      // Quoted per-company that is 8x the ceiling the dialog had promised.
+      //
+      // spendCeilingUsd is computed from scansFor() — the identical call the
+      // dialog uses for `willRead` — so the promise and the limit are the same
+      // number by construction and cannot drift apart in a later edit.
+      //
+      // Checked HERE, at the top of the round before discovery is bought,
+      // because this is the only unbounded purchase. Work already paid for
+      // still gets drained and written: stopping is never a reason to throw
+      // away leads the money has already been spent on.
+      if (pending.length === 0 && !poolDry && estimateUsd(costCounters) >= spendCeilingUsd) {
+        stoppedEarlyReason = `stopped at the $${spendCeilingUsd.toFixed(2)} limit for this search`;
         break roundLoop;
       }
       if (pending.length === 0 && !poolDry) {
