@@ -68,8 +68,18 @@ function SidebarBody({
     (f) => f.status === "complete" && f.enrichmentStatus === "idle" &&
       f.qualifiedCount + f.verifyCount + f.fitOnlyCount > 0
   ).length;
+  // EACH BADGE COUNTS THE THING ITS LABEL NAMES.
+  //
+  // "All Leads" carried folders.length, so a screen holding 28 leads across 3
+  // searches showed a 3 next to the word "Leads". Beside "Enrichment 1" it read
+  // as a contradiction, because it was one: two badges counting different
+  // nouns, neither of them the noun on the row.
+  const totalLeads = folders.reduce(
+    (n, f) => n + f.qualifiedCount + f.verifyCount + f.fitOnlyCount,
+    0
+  );
   const badges: Record<string, number> = {
-    "/dashboard/all-leads": folders.length,
+    "/dashboard/all-leads": totalLeads,
     "/dashboard/enrichment": readyToEnrich,
   };
 

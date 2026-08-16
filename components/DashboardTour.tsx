@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import { RadarIcon, UsersIcon, FolderIcon, GridIcon, SettingsIcon } from "./icons";
+import { RadarIcon, UsersIcon, FolderIcon, GridIcon, SettingsIcon, HelpIcon } from "./icons";
 
 /**
  * A first-run tour of the five screens.
@@ -120,7 +120,12 @@ export function DashboardTour() {
   const seen = useSyncExternalStore(subscribe, hasSeen, seenOnServer);
   const [i, setI] = useState(0);
   const open = !seen;
-  const close = useCallback(() => markSeen(true), []);
+  const close = useCallback(() => {
+    markSeen(true);
+    // Next time it is opened it starts at the beginning, not wherever it was
+    // abandoned three weeks ago.
+    setI(0);
+  }, []);
 
   // WHERE THE THING BEING DESCRIBED ACTUALLY IS.
   //
@@ -287,6 +292,32 @@ export function DashboardTour() {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Starts the tour, from the top bar, on every page.
+ *
+ * The tour shows itself once and remembers, which is right — a welcome that
+ * reappears is an obstacle. But it left no way back except a button on the
+ * Settings page, which is the last place somebody looks when they cannot
+ * remember what a screen does. A help affordance nobody can find is the same
+ * as no help.
+ *
+ * Deliberately quiet: an outline button beside the one primary action, not
+ * competing with it.
+ */
+export function TourButton() {
+  return (
+    <button
+      type="button"
+      onClick={() => markSeen(false)}
+      title="A short walk through the five screens"
+      className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-lg border border-gh-border bg-gh-surface px-3 py-2 text-sm font-semibold text-gh-ink-secondary transition-colors duration-200 hover:border-gh-sky/40 hover:text-gh-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+    >
+      <HelpIcon className="h-4 w-4" />
+      <span className="hidden sm:inline">Tour</span>
+    </button>
   );
 }
 

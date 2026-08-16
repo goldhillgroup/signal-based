@@ -276,3 +276,19 @@ export function SheetIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+/** A question mark in a circle, for the tour button in the top bar. */
+export function HelpIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden>
+      <circle cx="10" cy="10" r="7.5" stroke="currentColor" strokeWidth={base} />
+      <path
+        d="M7.9 7.6a2.2 2.2 0 1 1 2.9 2.1c-.5.2-.8.6-.8 1.1v.5"
+        stroke="currentColor"
+        strokeWidth={base}
+        strokeLinecap="round"
+      />
+      <circle cx="10" cy="14" r=".85" fill="currentColor" />
+    </svg>
+  );
+}

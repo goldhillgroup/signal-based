@@ -103,10 +103,28 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: blocker }, { status: 402 });
   }
 
-  await service
+  // ATOMIC CLAIM, NOT A CHECK THEN A WRITE.
+  //
+  // The guard above reads enrichment_status and this line set it, with a
+  // credit check in between. Two presses close together both read "idle", both
+  // pass, and both start a run — and this is the one action that bills per
+  // person found, so a double press is a double invoice.
+  //
+  // The condition moves into the UPDATE so the database decides the winner.
+  // The loser gets nothing back and is turned away, exactly like the search
+  // continuation route.
+  const { data: claimed } = await service
     .from("searches")
     .update({ enrichment_status: "running", enrichment_error: null })
-    .eq("id", id);
+    .eq("id", id)
+    .neq("enrichment_status", "running")
+    .select("id");
+  if (!claimed?.length) {
+    return NextResponse.json(
+      { error: "Enrichment is already running for this search." },
+      { status: 409 }
+    );
+  }
 
   // Runs after this response is sent, within the extended function lifetime
   // (see maxDuration above) — the client polls the `searches` row for
