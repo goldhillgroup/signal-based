@@ -758,26 +758,28 @@ export function SearchHome({
       onCancel={() => setConfirmSearch(false)}
       body={
         <>
+          {/* TWO LINES. This was four sentences: the verticals and states
+              spelled out (both already chosen on the form directly behind this
+              dialog), a clause about re-reading companies, a clause about
+              email being separate, and a third paragraph about passes. All
+              true, none of it what you need in order to answer yes or no.
+              The two facts that decide it are how much reading and how much
+              money, so those are the two lines, and the passes count rides
+              along in the first because it is the same fact. */}
           <p>
             Reads up to{" "}
-            <strong className="font-semibold text-gh-ink">{willRead} companies</strong>{" "}
-            across {verticalSummary.toLowerCase()} in {stateSummary.toLowerCase()}, looking
-            for {target} {targetUnit(mode, target)}.
+            <strong className="font-semibold text-gh-ink">{willRead} companies</strong>
+            {passes > 1 ? ` over about ${passes} passes` : ""}, looking for {target}{" "}
+            {targetUnit(mode, target)}.
           </p>
           <p className="mt-2">
-            Costs up to{" "}
+            Up to{" "}
             <strong className="font-semibold text-gh-ink">
               ${(willRead * SEARCH_CEILING_PER_COMPANY_USD).toFixed(2)}
-            </strong>{" "}
-            — less if it finds what it needs early, or if it has already read some of
-            these companies before. Nothing is charged for finding an email address;
-            that is a separate step you approve on its own.
+            </strong>
+            , usually about half that. Email addresses are a separate step you
+            approve on its own.
           </p>
-          {passes > 1 && (
-            <p className="mt-2">
-              This takes about {passes} passes and carries on by itself between them.
-            </p>
-          )}
         </>
       }
     />
