@@ -339,7 +339,7 @@ story += [
     Spacer(1, 3 * mm),
     Paragraph(
         "Finds family-owned businesses where the founder is still running "
-        "things and a son or daughter is stepping up beside them &mdash; and "
+        "things and a son or daughter is stepping up beside them , and "
         "shows you the company's own words as proof.", S["CoverSub"]),
     Spacer(1, 12 * mm),
     HRFlowable(width="42%", thickness=2, color=SKY, hAlign="LEFT"),
@@ -366,14 +366,14 @@ story += [credentials([
 story += steps([
     ("Open the address above", "in any browser, on a laptop or a phone. There is nothing to install."),
     ("Type the email and password,", "then press <b>Sign in</b>."),
-    ("You land on Overview", "&mdash; your numbers, and anything that finished while you were away."),
-    ("Change the password.", "Use &ldquo;Forgot password?&rdquo; on the sign-in page and follow the email it sends. The one above is a starting password and should not stay in a document."),
+    ("You land on Overview", ": your numbers, and anything that finished while you were away."),
+    ("Change the password.", "The one above is a starting password and should not stay in a document. Message Daniel and he will set a new one; there is deliberately no self-service reset, because the email it depended on was unreliable and told you it had sent when it had not."),
     ("Bookmark it", "so you never have to find the address again."),
 ])
 story += [note(
     "If you ever see &ldquo;You Need Access&rdquo;, you are on the wrong link.",
-    "Long addresses containing a jumble of letters &mdash; "
-    f'<font face="{MONO}" size="8">signal-based-hky0ay13w-&hellip;</font> &mdash; are internal '
+    "Long addresses containing a jumble of letters, like "
+    f'<font face="{MONO}" size="8">signal-based-hky0ay13w-&hellip;</font>, are internal '
     "previews of individual updates, and they are locked on purpose. The short "
     "address above is the real one and never asks for approval.", "amber")]
 
@@ -397,7 +397,7 @@ story += [lede("Signal Radar &rarr; the form already carries sensible defaults, 
                "so most of the time you can simply press Search.")]
 story += steps([
     ("Mode.", "Leave it on <i>Hybrid</i>. That looks for founder-and-successor pairs and keeps every other good family business it passes on the way."),
-    ("Verticals.", "Eight are available &mdash; landscaping, home building, construction, specialty trades, manufacturing, distribution, property services, professional services. Pick any combination, or none to search all eight."),
+    ("Verticals.", "Eight are available: landscaping, home building, construction, specialty trades, manufacturing, distribution, property services, professional services. Pick any combination, or none to search all eight."),
     ("States.", "Your twelve are pre-selected: California, Florida, Texas, New York and the Northeast."),
     ("Revenue band.", "Defaults to $5&ndash;15M, the sweet spot. $5&ndash;30M widens it to your full profile."),
     ("How many to find.", "Higher numbers read more companies and take longer. The form tells you how many it will read and roughly what it will cost."),
@@ -406,7 +406,7 @@ story += steps([
 ])
 story += [note("A big search runs in several passes.",
                "The server stops any single run after five minutes. Everything found is "
-               "saved and the next pass starts on its own &mdash; you do not have to do anything.")]
+               "saved and the next pass starts on its own. You do not have to do anything.")]
 story += [note("Searching the same thing twice is not wasted.",
                "Every company already looked at is remembered and skipped, so a repeat "
                "search goes deeper into the same ground rather than handing back the same list.")]
@@ -417,8 +417,8 @@ story += [lede("Each search creates a folder. Inside, leads are split three ways
 story += table(
     ["Group", "What it means"],
     [
-        ["Founder + successor", "Both generations named, both running it today. This is what the product is for &mdash; and the rarest, about one company in thirty."],
-        ["Good fit, no successor", "Right trade, right area, family-run &mdash; but nobody named to take over. Still worth a call."],
+        ["Founder + successor", "Both generations named, both running it today. This is what the product is for, and the rarest, about one company in thirty."],
+        ["Good fit, no successor", "Right trade, right area, family-run, but nobody named to take over. Still worth a call."],
         ["Not a fit", "Cut, with the reason on the row. Shown so you can disagree with it."],
     ],
     [42 * mm, W - 42 * mm],
@@ -427,7 +427,7 @@ story += [subsection("The quote is the point")]
 story += [body(
     "Every confirmed pair carries a sentence from the company's own website, with "
     "a link to the page it came from. You can check any claim in one click. If a "
-    "lead has no quote, it has not earned the label &mdash; and the system lowers "
+    "lead has no quote, it has not earned the label, and the system lowers "
     "it rather than pretending.")]
 story += [subsection("Confidence")]
 story += table(
@@ -442,10 +442,10 @@ story += table(
 
 # ── 5. Finding email addresses ─────────────────────────────────────────────
 story += section(5, "Finding email addresses")
-story += [lede("Separate from searching, and never automatic &mdash; it costs money "
+story += [lede("Separate from searching, and never automatic. It costs money "
                "per address found.")]
 story += steps([
-    ("Press Find emails", "&mdash; on the Overview, inside a folder, or on the Enrichment screen. All three do the same thing."),
+    ("Press Find emails", ": on the Overview, inside a folder, or on the Enrichment screen. All three do the same thing."),
     ("Tick who you want:", "founder + successor, good fits, or cut but arguable. Pairs and fits are ticked for you."),
     ("The button shows", "the number of companies and the most it can cost. Press it to start."),
 ])
@@ -455,25 +455,25 @@ story += [note("You are only charged when an address is actually found.",
                "green")]
 story += [note("It looks for the successor first.",
                "Where a next-generation family member is named, that is who it tries to "
-               "reach &mdash; the founder is the fallback.")]
+               "reach , the founder is the fallback.")]
 
 # ── 6. Getting the list out ────────────────────────────────────────────────
 story += section(6, "Getting the list out")
 story += bullets([
-    "<b>Download CSV</b> &mdash; opens in Excel or Numbers.",
-    "<b>Copy for Google Sheets</b> &mdash; copies to your clipboard; paste straight into a sheet.",
+    "<b>Download CSV</b>, opens in Excel or Numbers.",
+    "<b>Copy for Google Sheets</b>, copies to your clipboard; paste straight into a sheet.",
 ])
 story += [Spacer(1, 4)]
 story += [note("The file contains exactly what the screen shows.",
-               "Companies hidden as a different kind of business entirely &mdash; funeral "
-               "homes, newspapers, trade associations &mdash; are left out of both.", "gray")]
+               "Companies hidden as a different kind of business entirely , funeral "
+               "homes, newspapers, trade associations , are left out of both.", "gray")]
 
 # ── 7. Settings ────────────────────────────────────────────────────────────
 story += section(7, "Settings")
 story += [body(
     "One thing lives here: the six vendor keys, each with its balance shown live "
     "beside it. If a service ever runs out, this is where you paste a new key, and "
-    "it takes effect immediately &mdash; no developer, no waiting.")]
+    "it takes effect immediately, with no developer and no waiting.")]
 story += [note("Everything about what a search looks for is on the search form itself.",
                "The verticals, the states, the revenue band and the signal focus. There is "
                "no second place to set them, so nothing can be quietly steering a search "
@@ -505,8 +505,8 @@ story += [note("$29 a month is the only fixed cost.",
 story += [note("Two accounts, split by who pays.",
                "Everything that costs money sits under "
                f'<font face="{MONO}" size="8">jonathan@thegoldhillgroup.com</font>. '
-               "The three free services that host the app &mdash; Supabase, Vercel and "
-               f'GitHub &mdash; sit under <font face="{MONO}" size="8">thegoldhillgroup@gmail.com</font>.')]
+               "The three free services that host the app, Supabase, Vercel and "
+               f'GitHub, sit under <font face="{MONO}" size="8">thegoldhillgroup@gmail.com</font>.')]
 
 # ── 9. If something looks wrong ────────────────────────────────────────────
 story += section(9, "If something looks wrong")
@@ -514,10 +514,10 @@ story += table(
     ["What you see", "What it means"],
     [
         ["&ldquo;Not enough credit&rdquo;", "A vendor needs topping up. Settings shows which one."],
-        ["&ldquo;Stopped at the time limit&rdquo;", "Normal. Everything found is saved &mdash; press Search again to carry on."],
+        ["&ldquo;Stopped at the time limit&rdquo;", "Normal. Everything found is saved , press Search again to carry on."],
         ["A search finds very little", "Usually that ground is well covered already. Try another state, or widen the verticals."],
         ["No founder + successor pairs", "Expected on a small search. They occur about once in thirty companies read."],
-        ["A lead looks wrong", "Open it and read the quote. If the quote does not support it, tell Daniel &mdash; that is a real fault."],
+        ["A lead looks wrong", "Open it and read the quote. If the quote does not support it, tell Daniel. That is a real fault."],
     ],
     [48 * mm, W - 48 * mm],
 )
@@ -528,14 +528,14 @@ QA = [
     ("How many leads should I expect?",
      "A search reads twenty to sixty companies and typically keeps five to ten. Of "
      "those, a confirmed founder-and-successor pair turns up about once in every "
-     "thirty companies read &mdash; so a single search often finds none, and a few "
+     "thirty companies read , so a single search often finds none, and a few "
      "searches find several. The good family-owned companies without a named "
      "successor are kept either way, because they are still worth a call."),
     ("Why does it reject so many?",
      "Because searching the web for &ldquo;family landscaping business&rdquo; also "
      "returns funeral homes, trade magazines, associations and software companies. "
      "Those are removed silently. What you see under &ldquo;Not a fit&rdquo; is only "
-     "the arguable ones &mdash; right sort of company, failed one of your tests &mdash; "
+     "the arguable ones , right sort of company, failed one of your tests , "
      "so you can disagree with it."),
     ("Can I trust what it says about a company?",
      "Every confirmed pair carries a sentence from the company's own website and a "
@@ -543,7 +543,7 @@ QA = [
      "fault worth reporting. Nothing is included on the strength of a shared surname "
      "or a guess."),
     ("Do I have to run it often?",
-     "No, and nothing runs on its own at all &mdash; there is no scheduled job and no "
+     "No, and nothing runs on its own at all. There is no scheduled job and no "
      "background activity. Every cost follows a button you pressed. Leave it a month "
      "and it costs you the $29 Apify subscription and nothing else."),
     ("What if I search the same thing twice?",
@@ -551,11 +551,11 @@ QA = [
      "is remembered and skipped, so a second search of the same trade and state finds "
      "new companies. Your existing leads stay exactly where they are."),
     ("Can I change what it looks for?",
-     "Yes, on the search form &mdash; the verticals, the states, the revenue band and "
+     "Yes, on the search form: the verticals, the states, the revenue band and "
      "the signal focus, all set per search so you can see exactly what this one will do."),
     ("Something is wrong with a lead. What do I do?",
      "Open it, read the quote, and check the source page. If the page supports it and "
-     "you still disagree, that is a judgement call worth telling Daniel about &mdash; "
+     "you still disagree, that is a judgement call worth telling Daniel about , "
      "the rules that decide a lead were built from your own list of accepted and "
      "rejected companies, and they can be adjusted the same way."),
 ]

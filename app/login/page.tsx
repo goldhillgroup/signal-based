@@ -16,8 +16,6 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [resetSent, setResetSent] = useState(false);
-  const [resetLoading, setResetLoading] = useState(false);
 
   // DERIVED, not synced. This was an effect that called setError when the URL
   // carried ?error=auth — a value copied out of one source of truth into
@@ -46,19 +44,6 @@ function LoginForm() {
     router.refresh();
   }
 
-  async function handleForgotPassword() {
-    if (!email) {
-      setError("Enter your email above first.");
-      return;
-    }
-    setResetLoading(true);
-    const supabase = createClient();
-    await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/reset-password`,
-    });
-    setResetLoading(false);
-    setResetSent(true);
-  }
 
   return (
     <div className="grid min-h-screen overflow-hidden bg-gh-page lg:grid-cols-2">
@@ -105,19 +90,18 @@ function LoginForm() {
             </div>
 
             <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label htmlFor="password" className="text-sm font-medium text-gh-ink-secondary">
-                  Password
-                </label>
-                <button
-                  type="button"
-                  onClick={handleForgotPassword}
-                  disabled={resetLoading}
-                  className="text-xs font-medium text-gh-ink-muted transition-colors hover:text-gh-sky disabled:opacity-50"
-                >
-                  {resetLoading ? "Sending…" : resetSent ? "Email sent ✓" : "Forgot password?"}
-                </button>
-              </div>
+              {/* NO "FORGOT PASSWORD". It called resetPasswordForEmail and
+                  never looked at the result, so it rendered "Email sent"
+                  whether or not one was — and Supabase's default mailer is
+                  rate-limited to a handful a day and frequently silent, so the
+                  usual outcome was a confident tick and no email.
+                  A control that always claims success is worse than no control:
+                  it costs somebody twenty minutes of waiting and checking spam
+                  before they think to ask. A forgotten password is now a
+                  message to Daniel, which is what it was in practice anyway. */}
+              <label htmlFor="password" className="text-sm font-medium text-gh-ink-secondary">
+                Password
+              </label>
               <input
                 id="password"
                 type="password"
