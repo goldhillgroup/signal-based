@@ -9,7 +9,13 @@ interface TrendPoint {
 
 const W = 640;
 const H = 180;
-const PAD_TOP = 12;
+// ROOM FOR THE VALUE LABEL, which is why this is not 12.
+//
+// The tallest bar is drawn to exactly y = PAD_TOP, and its count is printed at
+// y - 6 in a 10px font. At 12 the glyphs started around y = -1, so the number
+// over the tallest bar -- the one bar whose value is always worth reading --
+// was sliced in half by the top of the viewBox. 22 clears the ascender.
+const PAD_TOP = 22;
 const PAD_BOTTOM = 24;
 const PAD_X = 4;
 

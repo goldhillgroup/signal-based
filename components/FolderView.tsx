@@ -231,10 +231,87 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
           <ArrowLeftIcon className="h-3.5 w-3.5" />
           Your lists
         </Link>
-        <div className="mt-2 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+        <div className="mt-2">
           <div>
-            <h1 className="font-display text-2xl font-semibold text-gh-ink">{folder.label}</h1>
-            <p className="mt-1 text-sm text-gh-ink-secondary">&ldquo;{folder.query}&rdquo;</p>
+            {/* THE SAME TWELVE STATES, TWICE.
+                The label IS the query for every search run from the form, so
+                printing the query underneath restated the heading word for
+                word: three lines of title, then the identical three lines in
+                quotes. Only the tail differs, the refinement the user typed,
+                and that is the one part worth reading.
+
+                So: heading clamped to two lines, and below it only whatever
+                the query adds. When the query is not an extension of the label
+                (older rows, renamed folders) the whole thing still shows. */}
+            <h1
+              className="font-display line-clamp-2 text-2xl font-semibold text-gh-ink"
+              title={folder.label}
+            >
+              {folder.label}
+            </h1>
+            {(() => {
+              const q = folder.query.trim();
+              const l = folder.label.trim();
+              const extra = q.toLowerCase().startsWith(l.toLowerCase())
+                ? q.slice(l.length).replace(/^[\s,;.]+/, "")
+                : q;
+              return extra ? (
+                <p className="mt-1 text-sm text-gh-ink-secondary">
+                  Looking for: {extra}
+                </p>
+              ) : null;
+            })()}
+            {/* ONE LINE, LEFT-ALIGNED, UNDER THE TITLE.
+                This was a right-aligned column opposite the heading, and at
+                any real width it set four ragged lines against the title's
+                two: "Completed Aug 16, 11:26" / "PM" / "ran out of time
+                before it could look for more" / "companies". Right-aligned
+                prose wraps to a ragged LEFT edge, so every line started in a
+                different place and the eye had nothing to follow. None of it
+                is more than a caption, so it reads as a caption: one row,
+                dot-separated, wrapping the way a sentence does. */}
+            <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gh-ink-muted">
+              <span>
+                Completed{" "}
+                {folder.finishedAt
+                  ? new Date(folder.finishedAt).toLocaleString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })
+                  : "-"}
+              </span>
+              {folder.costEstimateUsd !== null && folder.costEstimateUsd > 0 && (
+                <>
+                  <span aria-hidden>·</span>
+                  {/* "27 classify/disprove · 16 extract · 5 searches · 6 SERP
+                      pages · 5 renders · 5 map places" is vendor telemetry. It
+                      answers "why did this cost 9x the last one", asked rarely,
+                      so it moves to the hover and the line keeps the number. */}
+                  <span className="tabular cursor-help" title={folder.costBreakdown ?? undefined}>
+                    ~${folder.costEstimateUsd.toFixed(2)} est.
+                  </span>
+                </>
+              )}
+              {(folder.mode === "signal" ? stats.qualified + stats.verify : stats.accepted) <
+                folder.targetSignals && (
+                <>
+                  <span aria-hidden>·</span>
+                  <span>
+                    {folder.mode === "signal" ? stats.qualified + stats.verify : stats.accepted} of{" "}
+                    {folder.targetSignals} requested
+                    {folder.candidatesPoolExhausted ? ", pool exhausted" : ""}
+                  </span>
+                </>
+              )}
+              {folder.errorMessage && (
+                <>
+                  <span aria-hidden>·</span>
+                  <span>{folder.errorMessage}</span>
+                </>
+              )}
+            </p>
             {/* EXPORTS WHAT THE PAGE SHOWS.
                 It exported every row, including the ones deliberately hidden
                 from the "Not a fit" tab for being a different KIND of business
@@ -259,36 +336,6 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
             {/* Beside the CSV, not instead of it. The download is the archive;
                 this is the one you use when a sheet is already open. */}
             <SheetsButton companies={exportable} className="mt-2 ml-2" />
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-gh-ink-muted">
-              Completed{" "}
-              {folder.finishedAt
-                ? new Date(folder.finishedAt).toLocaleString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    hour: "numeric",
-                    minute: "2-digit",
-                  })
-                : "-"}
-            </p>
-            {(folder.mode === "signal" ? stats.qualified + stats.verify : stats.accepted) < folder.targetSignals && (
-              <p className="mt-0.5 text-xs text-gh-ink-muted">
-                {folder.mode === "signal" ? stats.qualified + stats.verify : stats.accepted} of {folder.targetSignals} requested
-                {folder.candidatesPoolExhausted ? ", pool exhausted" : ""}
-              </p>
-            )}
-            {folder.errorMessage && (
-              <p className="mt-0.5 max-w-xs text-xs text-gh-ink-muted">{folder.errorMessage}</p>
-            )}
-            {/* What this run actually cost, metered call by call, see
-                lib/pipeline/cost-tracker.ts. Estimates, and labeled as such. */}
-            {folder.costEstimateUsd !== null && folder.costEstimateUsd > 0 && (
-              <p className="tabular mt-0.5 text-xs text-gh-ink-muted">
-                ~${folder.costEstimateUsd.toFixed(2)} est.
-                {folder.costBreakdown ? ` (${folder.costBreakdown})` : ""}
-              </p>
-            )}
           </div>
         </div>
 
@@ -386,14 +433,34 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="rounded-xl border border-gh-border bg-gh-surface p-5 lg:col-span-2">
+        <div className="flex flex-col rounded-xl border border-gh-border bg-gh-surface p-5 lg:col-span-2">
           <div className="mb-4">
             <h2 className="font-display text-sm font-semibold text-gh-ink">
               New companies discovered
             </h2>
-            <p className="text-xs text-gh-ink-muted">Daily, last {trend.length || 0} days</p>
+            <p className="text-xs text-gh-ink-muted">
+              {trend.length === 1 ? "One day" : `Daily, last ${trend.length} days`}
+            </p>
           </div>
-          {trend.length > 0 ? (
+          {/* A TREND NEEDS TWO POINTS. With one day of data this drew a single
+              bar marooned in the middle of a wide empty plot, which says
+              nothing the number itself does not say more plainly. Most
+              searches finish inside a day, so one bar is the COMMON case
+              here, not the edge one. */}
+          {trend.length === 1 ? (
+            <p className="flex flex-1 flex-col items-center justify-center py-6 text-center">
+              <span className="font-display block text-4xl font-semibold text-gh-ink">
+                {trend[0].count}
+              </span>
+              <span className="mt-1 block text-xs text-gh-ink-muted">
+                all found on{" "}
+                {new Date(trend[0].date + "T00:00:00").toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                })}
+              </span>
+            </p>
+          ) : trend.length > 1 ? (
             <SignalTrendChart data={trend} />
           ) : (
             <p className="py-10 text-center text-xs text-gh-ink-muted">No data yet.</p>
@@ -405,7 +472,12 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
             <h2 className="font-display text-sm font-semibold text-gh-ink">
               Leads by industry
             </h2>
-            <p className="text-xs text-gh-ink-muted">Landscaping vs. home builders</p>
+            {/* Was hardcoded "Landscaping vs. home builders", written when those
+                were the only two verticals. There are eight now, so it named
+                the wrong ones on most searches. */}
+            <p className="text-xs text-gh-ink-muted">
+              {industryRows.length === 1 ? industryRows[0].label : `Across ${industryRows.length} trades`}
+            </p>
           </div>
           <BreakdownBars rows={industryRows} />
         </div>

@@ -10,7 +10,7 @@ import { isWrongKindOfBusiness } from "@/lib/pipeline/recheck-policy";
 import { LeadCard } from "./LeadCard";
 import { LeadTable } from "./LeadTable";
 
-type Tab = "signal" | "fit" | "not_a_fit";
+type Tab = "all" | "signal" | "fit" | "not_a_fit";
 
 // FOUR TABS BECAME TWO, and they now say what the cards say.
 //
@@ -57,6 +57,23 @@ type Tab = "signal" | "fit" | "not_a_fit";
 // relabelled. "ICP fit" was the obvious name for the middle one and is jargon
 // nobody outside the build would read; the card already calls it what it is.
 const TABS: { key: Tab; label: string; hint: string }[] = [
+  // LEADS THE SET, AND IS THE DEFAULT.
+  //
+  // An earlier "All leads" tab was removed because it was a SUPERSET of the
+  // next one, so a confirmed pair was counted under two tabs at once and the
+  // numbers did not add up. That reasoning was about overlap, and it is fixed
+  // by what this tab counts rather than by not having one: every LEAD, which
+  // is exactly signal + fit and nothing else. The three below still partition
+  // it, so every number on the row still adds up.
+  //
+  // Why it goes first: opening on "Founder + successor" showed 3 of 12 leads,
+  // so a folder looked nearly empty until you noticed the tabs. The first
+  // screen should be everything the search got you.
+  {
+    key: "all",
+    label: "All leads",
+    hint: "Everything this search got you, pairs and good fits together",
+  },
   {
     key: "signal",
     label: "Founder + successor",
@@ -75,6 +92,8 @@ const TABS: { key: Tab; label: string; hint: string }[] = [
 // null is what actually distinguishes it from a real qualified/verify
 // signal match. See orchestrator.ts's finalHasSignal.
 function matchesTab(c: Company, tab: Tab) {
+  // Every lead: the two accepted tiers together, never the cut pile.
+  if (tab === "all") return c.status === "qualified";
   // "All" means every LEAD, not every row the pipeline touched. It used to
   // return true for everything, so the default view of a folder was mostly
   // rejects and the real count was buried.
@@ -214,9 +233,10 @@ export function CompaniesTable({
   //
   // Grouping covers what the removed tab did anyway — "By signal" is still the
   // default and puts pairs above the fit rows under their own headings.
-  const [tab, setTab] = useState<Tab>(() =>
-    companies.some((c) => c.status === "qualified" && c.hasSignal === true) ? "signal" : "fit"
-  );
+  // Opens on everything. Grouping is "By signal" by default, so the pairs are
+  // still the first rows on the page, under their own heading -- the reason
+  // the old default existed -- without the other nine leads being a click away.
+  const [tab, setTab] = useState<Tab>("all");
   const [q, setQ] = useState("");
   const [industry, setIndustry] = useState<Industry | "all">("all");
   // Grouping, because a flat list of 80 leads is a list you scroll rather than
