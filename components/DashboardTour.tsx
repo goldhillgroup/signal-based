@@ -66,6 +66,8 @@ function markSeen(seen: boolean) {
 
 interface Stop {
   icon: (p: { className?: string }) => React.ReactNode;
+  /** The nav item this stop is about, matched on data-tour. */
+  target: string;
   screen: string;
   headline: string;
   body: string;
@@ -74,6 +76,7 @@ interface Stop {
 const STOPS: Stop[] = [
   {
     icon: RadarIcon,
+    target: "/dashboard",
     screen: "Signal Radar",
     headline: "Where you start",
     body:
@@ -81,6 +84,7 @@ const STOPS: Stop[] = [
   },
   {
     icon: GridIcon,
+    target: "/dashboard/overview",
     screen: "Overview",
     headline: "What you have so far",
     body:
@@ -88,6 +92,7 @@ const STOPS: Stop[] = [
   },
   {
     icon: FolderIcon,
+    target: "/dashboard/all-leads",
     screen: "All Leads",
     headline: "Everything ever found",
     body:
@@ -95,6 +100,7 @@ const STOPS: Stop[] = [
   },
   {
     icon: UsersIcon,
+    target: "/dashboard/enrichment",
     screen: "Enrichment",
     headline: "Getting an email address",
     body:
@@ -102,6 +108,7 @@ const STOPS: Stop[] = [
   },
   {
     icon: SettingsIcon,
+    target: "/dashboard/settings",
     screen: "Settings",
     headline: "The keys, and what is left",
     body:
@@ -113,8 +120,37 @@ export function DashboardTour() {
   const seen = useSyncExternalStore(subscribe, hasSeen, seenOnServer);
   const [i, setI] = useState(0);
   const open = !seen;
-
   const close = useCallback(() => markSeen(true), []);
+
+  // WHERE THE THING BEING DESCRIBED ACTUALLY IS.
+  //
+  // A centred box that names a screen is not a tour, it is a list of screens
+  // read aloud. Measuring the real nav item lets the spotlight sit on it and
+  // the card sit beside it, so "this one" has a referent.
+  //
+  // Re-measured on resize and scroll because a rect taken once is wrong the
+  // moment anything moves, and null on a narrow viewport where the sidebar is
+  // a closed drawer, which the render below falls back for rather than
+  // pointing at nothing.
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const target = STOPS[i]?.target;
+
+  useEffect(() => {
+    if (!open || !target) return;
+    const measure = () => {
+      const el = document.querySelector<HTMLElement>(`[data-tour="${target}"]`);
+      const r = el?.getBoundingClientRect();
+      // A drawer that is closed still has a rect, just a useless one.
+      setRect(r && r.width > 0 && r.height > 0 ? r : null);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    window.addEventListener("scroll", measure, true);
+    return () => {
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure, true);
+    };
+  }, [open, target]);
 
   // Escape closes it. A modal you cannot dismiss from the keyboard is a trap,
   // and this one is the very first thing a new person meets.
@@ -135,14 +171,58 @@ export function DashboardTour() {
   const Icon = stop.icon;
   const last = i === STOPS.length - 1;
 
+  // The card sits beside the highlighted item when there is one, and in the
+  // middle of the screen when there is not.
+  const PAD = 8;
+  const CARD_W = 380;
+  const anchored = rect
+    ? {
+        // Clamped so a card next to the last nav item cannot run off the
+        // bottom of the viewport.
+        top: Math.min(Math.max(rect.top - 12, 16), window.innerHeight - 300),
+        left: Math.min(rect.right + 20, window.innerWidth - CARD_W - 16),
+      }
+    : null;
+
   return (
-    <div
-      className="fixed inset-0 z-[60] grid place-items-center bg-gh-ink/50 p-4 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="tour-headline"
-    >
-      <div className="w-full max-w-lg rounded-2xl border border-gh-border bg-gh-surface p-6 shadow-xl">
+    <div className="fixed inset-0 z-[60]">
+      {/* THE SPOTLIGHT. A ring around the real element, with the dimming done
+          by an enormous outward shadow rather than a full-screen overlay, so
+          the item stays at its own natural brightness and everything else
+          darkens around it. No cloning, no z-index fight with the sidebar. */}
+      {rect ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute rounded-lg ring-2 ring-gh-sky transition-all duration-300 ease-out"
+          style={{
+            top: rect.top - PAD,
+            left: rect.left - PAD,
+            width: rect.width + PAD * 2,
+            height: rect.height + PAD * 2,
+            boxShadow: "0 0 0 9999px rgba(11, 18, 32, 0.55)",
+          }}
+        />
+      ) : (
+        <div aria-hidden="true" className="absolute inset-0 bg-gh-ink/55 backdrop-blur-sm" />
+      )}
+
+      {/* Clicking the dimmed area is a reasonable way to leave. */}
+      <button
+        type="button"
+        aria-label="Close the tour"
+        onClick={close}
+        className="absolute inset-0 h-full w-full cursor-default"
+      />
+
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="tour-headline"
+        className={`absolute rounded-2xl border border-gh-border bg-gh-surface p-6 shadow-xl transition-all duration-300 ease-out ${
+          anchored ? "" : "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+        }`}
+        style={anchored ? { top: anchored.top, left: anchored.left, width: CARD_W } : { width: CARD_W, maxWidth: "calc(100vw - 2rem)" }}
+      >
         <div className="flex items-start gap-3.5">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gh-navy text-white">
             <Icon className="h-5 w-5" />

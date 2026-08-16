@@ -130,6 +130,10 @@ function SidebarBody({
               href={href}
               onClick={onNavigate}
               aria-current={active ? "page" : undefined}
+              // The first-run tour points at these by href, so it highlights
+              // the real navigation rather than describing it from a box in
+              // the middle of the screen. See DashboardTour.
+              data-tour={href}
               className={`group relative flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-[color,background-color] duration-200 ${
                 active
                   ? "bg-white/10 text-white"
