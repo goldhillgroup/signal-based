@@ -100,12 +100,15 @@ export default function AllLeadsPage() {
   const [companies, setCompanies] = useState<Company[] | "loading">("loading");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [openFolderId, setOpenFolderId] = useState<string | null>(null);
-  // FOLDERS OR EVERYTHING. Renaming "All Leads" to "Lead Lists" made the page
-  // honest about what it showed, folders, but it also removed the only place
-  // that showed every lead at once. Both are real jobs: folders are "what did
-  // that search get me", this is "who have I got, everywhere". So it is a
-  // switch, not a replacement.
-  const [level1, setLevel1] = useState<"folders" | "all">("folders");
+  // HOW THE FOLDERS ARE DRAWN, not which rows are shown.
+  //
+  // This briefly switched between the folders and one table of every lead.
+  // Wrong level: a folder page whose main control swaps in a completely
+  // different subject makes "where am I" a question. The all-leads view lives
+  // INSIDE a folder, as its first tab, which is where a lead list belongs.
+  // Here the only real question is whether nine folders are easier to scan as
+  // tiles or as rows, and past about six the answer changes.
+  const [folderView, setFolderView] = useState<"cards" | "list">("cards");
   const [pendingDelete, setPendingDelete] = useState<SearchFolder | null>(null);
   /** Company ids picked for an email lookup, awaiting confirmation. */
   const [pendingPick, setPendingPick] = useState<string[] | null>(null);
@@ -417,29 +420,24 @@ export default function AllLeadsPage() {
           <div className="flex items-center gap-2">
             {contributing.length > 0 && (
               <div className="flex shrink-0 rounded-lg border border-gh-border bg-gh-surface-sunken p-0.5">
-                {(["folders", "all"] as const).map((k) => (
+                {(["cards", "list"] as const).map((k) => (
                   <button
                     key={k}
                     type="button"
-                    onClick={() => setLevel1(k)}
-                    aria-pressed={level1 === k}
+                    onClick={() => setFolderView(k)}
+                    aria-pressed={folderView === k}
                     className={`cursor-pointer rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
-                      level1 === k
+                      folderView === k
                         ? "bg-gh-surface text-gh-ink shadow-sm"
                         : "text-gh-ink-muted hover:text-gh-ink"
                     }`}
                   >
-                    {/* No count here. The table's own "All leads" tab sits
-                        directly below with the same number on it, so putting
-                        it in both places printed "All leads 40" twice, three
-                        inches apart. The switch picks the view; the tab
-                        counts. */}
-                    {k === "folders" ? "Folders" : "All leads"}
+                    {k === "cards" ? "Cards" : "List"}
                   </button>
                 ))}
               </div>
             )}
-          {contributing.length > 1 && level1 === "folders" && (
+          {contributing.length > 1 && (
             <select
               value={folderGroupBy}
               onChange={(e) => setFolderGroupBy(e.target.value as FolderGroupBy)}
@@ -467,18 +465,6 @@ export default function AllLeadsPage() {
           </Link>{" "}
           to start finding leads.
         </p>
-      ) : level1 === "all" ? (
-        /* Every lead from every folder, in one table. Same component the
-           folders use, so the tabs, grouping, search and card/table switch
-           are the ones already learned rather than a second set. Enrichment
-           is deliberately NOT wired here: it is billed per folder and picking
-           rows across folders would make the confirm dialog lie about which
-           search it is charging. */
-        <CompaniesTable
-          companies={leads}
-          onRowClick={(c) => setOpenFolderId(c.searchId ?? null)}
-          defaultView="table"
-        />
       ) : (
         <div className="space-y-6">
           {folderGroups.map((g) => (
@@ -494,12 +480,19 @@ export default function AllLeadsPage() {
                   </span>
                 </div>
               )}
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div
+                className={
+                  folderView === "cards"
+                    ? "grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+                    : "divide-y divide-gh-border overflow-hidden rounded-xl border border-gh-border bg-gh-surface"
+                }
+              >
                 {g.folders.map((f, i) => (
                   <FolderTile
                     key={f.id}
                     folder={f}
                     index={i}
+                    view={folderView}
                     leads={counts.get(f.id) ?? 0}
                     signals={signals.get(f.id) ?? 0}
                     renaming={renaming === f.id}
@@ -605,6 +598,7 @@ function FolderTile({
   onCommitRename,
   onCancelRename,
   onDelete,
+  view = "cards",
 }: {
   folder: SearchFolder;
   index: number;
@@ -618,7 +612,82 @@ function FolderTile({
   onCommitRename: () => void;
   onCancelRename: () => void;
   onDelete: () => void;
+  view?: "cards" | "list";
 }) {
+  // ONE ROW PER FOLDER. Same data, same actions, a third of the height, so
+  // nine folders fit on a screen instead of three. The tile earns its space
+  // while there are a few; past that it is mostly padding.
+  if (view === "list") {
+    return (
+      <div className="group relative flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-gh-surface-sunken">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gh-navy/[0.06] text-gh-navy">
+          <FolderIcon className="h-3.5 w-3.5" />
+        </span>
+        {renaming ? (
+          <input
+            autoFocus
+            autoComplete="off"
+            value={draftName}
+            onChange={(e) => onDraftChange(e.target.value)}
+            onBlur={onCommitRename}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") onCommitRename();
+              if (e.key === "Escape") onCancelRename();
+            }}
+            maxLength={120}
+            aria-label="Folder name"
+            className="min-w-0 flex-1 rounded-lg border border-gh-sky bg-gh-surface-sunken px-2 py-1 text-base font-semibold text-gh-ink focus:outline-none focus:ring-2 focus:ring-gh-sky/30 sm:text-sm"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={onOpen}
+            className="min-w-0 flex-1 cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+          >
+            <span className="block truncate text-sm font-semibold text-gh-ink group-hover:text-gh-navy">
+              {folderTitle(folder.label)}
+            </span>
+            <span className="block text-[11px] text-gh-ink-muted">
+              scraped {dayLabel(dayKey(folder.createdAt))}
+            </span>
+          </button>
+        )}
+        <span className="tabular shrink-0 text-right text-xs text-gh-ink-secondary">
+          <strong className="font-display text-sm font-semibold text-gh-ink">{leads}</strong> leads
+          {signals > 0 && (
+            <>
+              {" · "}
+              <strong className="font-display text-sm font-semibold text-gh-navy">{signals}</strong>{" "}
+              signals
+            </>
+          )}
+        </span>
+        {!renaming && (
+          <span className="flex shrink-0 items-center gap-0.5">
+            <button
+              type="button"
+              onClick={onStartRename}
+              aria-label={`Rename ${folder.label}`}
+              title="Rename"
+              className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-gh-ink-muted transition-colors hover:bg-gh-surface hover:text-gh-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+            >
+              <PencilIcon className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={onDelete}
+              aria-label={`Delete ${folder.label}`}
+              title="Delete this folder"
+              className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-gh-ink-muted transition-colors hover:bg-gh-critical/10 hover:text-gh-critical focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-critical/30"
+            >
+              <TrashIcon className="h-4 w-4" />
+            </button>
+          </span>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div
       className="fade-up lift group relative rounded-xl border border-gh-border bg-gh-surface hover:border-gh-sky/50"

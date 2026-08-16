@@ -11,7 +11,7 @@ const mk = (channel: Candidate["channel"], n: number): Candidate[] =>
   Array.from({ length: n }, (_, i) => ({ domain: `${channel}${i}.com`, url: "", title: "", channel }));
 
 // Rates roughly as measured: web_search best, maps worst.
-const rates = { recheck: 0.33, web_search: 0.22, directory: 0.08, licensing: 0.09, maps: 0.04 } as const;
+const rates = { recheck: 0.33, web_search: 0.22, directory: 0.08, licensing: 0.09, maps: 0.04, press: 0.4 } as const;
 
 let pass = 0; const fails: string[] = [];
 const ck = (n: string, c: boolean, d = "") => { if (c) pass++; else fails.push(`${n}${d ? " — " + d : ""}`); };

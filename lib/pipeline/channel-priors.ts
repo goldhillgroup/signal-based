@@ -47,6 +47,13 @@ const SEED: Record<Channel, { reads: number; signals: number }> = {
   // so they are worth reading FIRST regardless of hit rate. Seeded high to
   // reflect the economics, not an observed rate.
   recheck: { reads: 10, signals: 3 },
+  // Press candidates arrive because a reporter WROTE that a handover is
+  // happening, so the prior is high by construction rather than by
+  // measurement. Seeded optimistically but not absurdly: it still has to
+  // survive the company's own page, the classifier and the disprove pass, and
+  // a 2019 story about a handover that never completed will be cut there.
+  // The real rate asserts itself as soon as it produces reads.
+  press: { reads: 10, signals: 4 },
 };
 
 /**
