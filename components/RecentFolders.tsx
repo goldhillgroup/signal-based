@@ -21,11 +21,12 @@ export interface RecentRow {
   label: string;
   created_at: string;
   status: string;
-  qualified_count: number;
-  verify_count: number;
-  fit_only_count: number;
-  rejected_count: number;
   cost_estimate_usd: number | null;
+  /** Counted from the company rows by the page, NOT from the search row's
+   *  stored counters — see the comment in app/dashboard/overview/page.tsx for
+   *  why those two disagreed. */
+  leads: number;
+  signals: number;
 }
 
 function whenLabel(iso: string): string {
@@ -64,8 +65,8 @@ export function RecentFolders({ rows }: { rows: RecentRow[] }) {
   return (
     <div className="stagger space-y-2">
       {rows.map((r) => {
-        const accepted = r.qualified_count + r.verify_count + r.fit_only_count;
-        const signals = r.qualified_count + r.verify_count;
+        const accepted = r.leads;
+        const signals = r.signals;
         const running = r.status === "running";
         return (
           <Link

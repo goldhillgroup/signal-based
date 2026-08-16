@@ -78,11 +78,50 @@ async function getCounts() {
     0
   );
 
-  const { data: recent } = await supabase
+  // "Recent searches" and "Lead Lists" have to agree, and they used to be
+  // computed two different ways: this list read the stored counter columns on
+  // the search row, while Lead Lists counted the actual company rows. So a run
+  // that finished with nothing kept a row here reading "0 leads" while Lead
+  // Lists — which only shows folders that HAVE leads — didn't list it at all.
+  // The home screen said three, the page said one, and both were reporting
+  // honestly from different sources.
+  //
+  // One source now: the company rows themselves, filtered exactly as Lead
+  // Lists filters them. Take a wider slice first, because the empty ones are
+  // about to be dropped and a limit of 4 up front would leave fewer than 4.
+  const { data: candidates } = await supabase
     .from("searches")
-    .select("id, label, created_at, status, qualified_count, verify_count, fit_only_count, rejected_count, cost_estimate_usd")
+    .select("id, label, created_at, status, cost_estimate_usd")
     .order("created_at", { ascending: false })
-    .limit(4);
+    .limit(20);
+
+  const ids = (candidates ?? []).map((r) => r.id);
+  // Same rule as Lead Lists: status 'qualified' is a lead. The cut rows live
+  // in the same table and counting them here is the exact confusion above.
+  const { data: leadRows } = ids.length
+    ? await supabase
+        .from("companies")
+        .select("search_id, has_signal")
+        .in("search_id", ids)
+        .eq("status", "qualified")
+    : { data: [] };
+
+  const leadsBy = new Map<string, number>();
+  const signalsBy = new Map<string, number>();
+  for (const c of leadRows ?? []) {
+    if (!c.search_id) continue;
+    leadsBy.set(c.search_id, (leadsBy.get(c.search_id) ?? 0) + 1);
+    if (c.has_signal) signalsBy.set(c.search_id, (signalsBy.get(c.search_id) ?? 0) + 1);
+  }
+
+  const recent = (candidates ?? [])
+    .filter((r) => (leadsBy.get(r.id) ?? 0) > 0)
+    .slice(0, 4)
+    .map((r) => ({
+      ...r,
+      leads: leadsBy.get(r.id) ?? 0,
+      signals: signalsBy.get(r.id) ?? 0,
+    }));
 
   return {
     recent: recent ?? [],
