@@ -1,4 +1,4 @@
-<title>Signal Radar Manual</title>
+<title>Signal Radar Handbook</title>
 <style>
   :root {
     --navy: #001a57;
@@ -13,27 +13,13 @@
     --border-2: #cdd4e0;
     --shadow: 0 1px 2px rgba(11, 18, 32, 0.05), 0 8px 24px rgba(11, 18, 32, 0.04);
   }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --navy: #2d5bd7; --navy-2: #3f6ce8; --sky: #38bdf8;
-      --ink: #e8ecf3; --ink-2: #a4b0c2; --ink-3: #7a8699;
-      --surface: #161b22; --sunken: #1c2230;
-      --border: #2a3140; --border-2: #3b4455;
-      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
-    }
-  }
-  :root[data-theme="dark"] {
-    --navy: #2d5bd7; --navy-2: #3f6ce8; --sky: #38bdf8;
-    --ink: #e8ecf3; --ink-2: #a4b0c2; --ink-3: #7a8699;
-    --surface: #161b22; --sunken: #1c2230;
-    --border: #2a3140; --border-2: #3b4455;
-    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
-  }
 
   * { box-sizing: border-box; }
   body {
     margin: 0;
-    background: var(--sunken);
+    /* White, not the app's sunken grey. A handed-over PDF should read as a
+       document, and a tinted ground is a screen idea that costs toner. */
+    background: #ffffff;
     color: var(--ink);
     font-family: ui-sans-serif, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     font-size: 15px;
@@ -119,7 +105,7 @@
 
   .card {
     background: var(--surface); border: 1px solid var(--border);
-    border-radius: 10px; padding: 1rem 1.2rem; box-shadow: var(--shadow);
+    border-radius: 10px; padding: 1rem 1.2rem;
     break-inside: avoid;
   }
   .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 0.85rem; }
@@ -139,7 +125,7 @@
   .note p { margin: 0; font-size: 0.875rem; color: var(--ink-2); }
   .note strong { color: var(--ink); }
 
-  .scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); }
+  .scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
   table { width: 100%; border-collapse: collapse; font-size: 0.875rem; min-width: 30rem; }
   thead th {
     text-align: left; font-size: 0.6875rem; font-weight: 700;
@@ -158,7 +144,8 @@
   td.n small { display: block; font-weight: 400; color: var(--ink-3); font-size: 0.75rem; }
   td.acc {
     font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    font-size: 0.75rem; white-space: nowrap; color: var(--navy); font-weight: 600;
+    font-size: 0.6875rem; color: var(--navy); font-weight: 600;
+    line-height: 1.4; white-space: nowrap;
   }
   td.acc.alt { color: var(--ink-3); font-weight: 500; }
 
@@ -354,15 +341,15 @@
       <table>
         <thead><tr><th>Service</th><th>What it does</th><th>Cost</th><th>Account</th></tr></thead>
         <tbody>
-          <tr><td class="k">Apify</td><td>Finds companies and fetches their pages</td><td class="n">$29<small>per month</small></td><td class="acc">jonathan@</td></tr>
-          <tr><td class="k">OpenRouter</td><td>Reads each page and judges it</td><td class="n">~$0.02<small>a company</small></td><td class="acc">jonathan@</td></tr>
-          <tr><td class="k">AnymailFinder</td><td>Finds an email address</td><td class="n">$0.05<small>only when found</small></td><td class="acc">jonathan@</td></tr>
-          <tr><td class="k">MillionVerifier</td><td>Checks it is deliverable</td><td class="n">$0.006<small>per check</small></td><td class="acc">jonathan@</td></tr>
-          <tr><td class="k">Firecrawl</td><td>Reads pages that need a browser</td><td class="n">free</td><td class="acc">jonathan@</td></tr>
-          <tr><td class="k">Tavily</td><td>Finds trade directories</td><td class="n">free</td><td class="acc">jonathan@</td></tr>
-          <tr><td class="k">Supabase</td><td>The database and the login</td><td class="n">free</td><td class="acc alt">thegoldhillgroup@</td></tr>
-          <tr><td class="k">Vercel</td><td>Hosts the app</td><td class="n">free</td><td class="acc alt">thegoldhillgroup@</td></tr>
-          <tr><td class="k">GitHub</td><td>Holds the code</td><td class="n">free</td><td class="acc alt">thegoldhillgroup@</td></tr>
+          <tr><td class="k">Apify</td><td>Finds companies and fetches their pages</td><td class="n">$29<small>per month</small></td><td class="acc">jonathan@<br />thegoldhillgroup.com</td></tr>
+          <tr><td class="k">OpenRouter</td><td>Reads each page and judges it</td><td class="n">~$0.02<small>a company</small></td><td class="acc">jonathan@<br />thegoldhillgroup.com</td></tr>
+          <tr><td class="k">AnymailFinder</td><td>Finds an email address</td><td class="n">$0.05<small>only when found</small></td><td class="acc">jonathan@<br />thegoldhillgroup.com</td></tr>
+          <tr><td class="k">MillionVerifier</td><td>Checks it is deliverable</td><td class="n">$0.006<small>per check</small></td><td class="acc">jonathan@<br />thegoldhillgroup.com</td></tr>
+          <tr><td class="k">Firecrawl</td><td>Reads pages that need a browser</td><td class="n">free</td><td class="acc">jonathan@<br />thegoldhillgroup.com</td></tr>
+          <tr><td class="k">Tavily</td><td>Finds trade directories</td><td class="n">free</td><td class="acc">jonathan@<br />thegoldhillgroup.com</td></tr>
+          <tr><td class="k">Supabase</td><td>The database and the login</td><td class="n">free</td><td class="acc alt">thegoldhillgroup@<br />gmail.com</td></tr>
+          <tr><td class="k">Vercel</td><td>Hosts the app</td><td class="n">free</td><td class="acc alt">thegoldhillgroup@<br />gmail.com</td></tr>
+          <tr><td class="k">GitHub</td><td>Holds the code</td><td class="n">free</td><td class="acc alt">thegoldhillgroup@<br />gmail.com</td></tr>
         </tbody>
       </table>
     </div>
