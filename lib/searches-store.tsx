@@ -14,6 +14,7 @@ import {
   useState,
   ReactNode,
 } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "./supabase/client";
 import type {
   SearchRow,
@@ -259,6 +260,7 @@ interface SearchesContextValue {
 const SearchesContext = createContext<SearchesContextValue | null>(null);
 
 export function SearchesProvider({ children }: { children: ReactNode }) {
+  const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [folders, setFolders] = useState<SearchFolder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -396,8 +398,14 @@ export function SearchesProvider({ children }: { children: ReactNode }) {
       // as "I clicked and nothing happened" while the run was in fact already
       // finding contacts.
       await refreshFolders();
+      // The Overview is a SERVER component: it reads "Recent searches" straight
+      // from the database when the page renders. Dropping the folder from this
+      // client store therefore leaves it sitting on that page until a hard
+      // reload, so a list deleted from Lead Lists was still listed on the home
+      // screen. refresh() re-runs the server render.
+      router.refresh();
     },
-    [refreshFolders]
+    [refreshFolders, router]
   );
 
   // Loaded on demand, never with the leads. The lead views carry rejections in

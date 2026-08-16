@@ -74,14 +74,11 @@ interface Stop {
 }
 
 const STOPS: Stop[] = [
-  {
-    icon: RadarIcon,
-    target: "/dashboard",
-    screen: "Signal Radar",
-    headline: "Where you start",
-    body:
-      "Pick a trade and some states, press Search, and it reads company websites looking for a founder still running things with a son or daughter stepping up beside them. The form is already set to your profile, so most of the time you can just press Search.",
-  },
+  // IN RAIL ORDER, top to bottom. It used to open on Signal Radar because
+  // that is where the work starts, then jump up to Overview and back down,
+  // which is disorienting when the spotlight is walking a vertical list:
+  // the highlight moved up, down, up, down for no reason the reader could
+  // see. Following the rail means the light travels one way.
   {
     icon: GridIcon,
     target: "/dashboard/overview",
@@ -91,12 +88,12 @@ const STOPS: Stop[] = [
       "Your totals, how many companies were read to find them, and anything that finished while you were away. If a search is still running, it is here.",
   },
   {
-    icon: FolderIcon,
-    target: "/dashboard/all-leads",
-    screen: "Lead Lists",
-    headline: "Every search you have run",
+    icon: RadarIcon,
+    target: "/dashboard",
+    screen: "Signal Radar",
+    headline: "Where you start",
     body:
-      "One list per search, and every lead from all of them in one place. Open a list to read its leads, check a quote, or export it. Inside, they are split three ways: a confirmed founder-and-successor pair, a good family-owned fit with no successor named yet, and the ones that were cut, shown with the reason so you can disagree.",
+      "Pick a trade and some states, press Search, and it reads company websites looking for a founder still running things with a son or daughter stepping up beside them. The form is already set to your profile, so most of the time you can just press Search.",
   },
   {
     icon: UsersIcon,
@@ -105,6 +102,14 @@ const STOPS: Stop[] = [
     headline: "Getting an email address",
     body:
       "Separate from searching, and never automatic. Tick who you want — the pairs, the good fits, or the cut ones too — and it looks up an address for the successor first. You are only charged when one is actually found.",
+  },
+  {
+    icon: FolderIcon,
+    target: "/dashboard/all-leads",
+    screen: "Lead Lists",
+    headline: "Every search you have run",
+    body:
+      "One list per search, and every lead from all of them in one place. Open a list to read its leads, check a quote, or export it. Inside, they are split three ways: a confirmed founder-and-successor pair, a good family-owned fit with no successor named yet, and the ones that were cut, shown with the reason so you can disagree.",
   },
   {
     icon: SettingsIcon,
