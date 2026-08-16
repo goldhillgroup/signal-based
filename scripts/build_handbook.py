@@ -397,33 +397,52 @@ story += steps([
     ("Signal focus.", "Optional. Tick any of the twelve signals from your profile, or type your own words. This changes what the search looks for."),
     ("Press Search.", "It shows exactly what it will read and what it will cost, and waits for you to confirm."),
 ])
+story += [subsection("What happens after you press Search")]
+story += [body(
+    "It looks for companies in four different ways at once, then reads what it "
+    "finds. The four are not equal, and it spends accordingly.")]
+story += table(
+    ["How it looks", "What that means", "How well it works"],
+    [
+        ["Web search",
+         "Searches phrases a family firm uses about itself, like \"second generation\" "
+         "or \"joined the business\", so the results are already the right shape.",
+         "Best. About one pair in every 33 companies. Gets twice the budget."],
+        ["Google Maps",
+         "Asks for every landscaper in a town. No succession filter, but it returns "
+         "the phone number and address with the listing.",
+         "Weakest. One pair in 172. Kept small."],
+        ["Directories",
+         "Trade association member lists and similar, read for company names.",
+         "No pairs yet. Kept alive on a floor in case that changes."],
+        ["Licensing boards",
+         "State contractor registries, where they publish openly.",
+         "Occasional. Depends entirely on the state."],
+    ],
+    [26 * mm, W - 84 * mm, 58 * mm],
+)
+story += [body(
+    "Every company it finds then gets read properly: it fetches the About, Team "
+    "or Leadership page, and a model reads that page and decides whether two "
+    "generations are really named and really there today. A second pass tries to "
+    "disprove what the first one found, and anything that survives both is quoted "
+    "back to you with a link.")]
+story += [body(
+    "It also remembers. Every company it has ever judged is skipped next time, so "
+    "the same search run twice covers new ground rather than re-reading and "
+    "re-paying for the first list.")]
+
 story += [note("A big search runs in several passes.",
                "The server stops any single run after five minutes. Everything found is "
                "saved and the next pass starts on its own. You do not have to do anything.")]
-story += [note("Searching the same thing twice is not wasted.",
-               "Every company already looked at is remembered and skipped, so a repeat "
-               "search goes deeper into the same ground rather than handing back the same list.")]
 
 # ── 4. Reading the results ─────────────────────────────────────────────────
 story += section(4, "Folders, and All Leads")
-story += [lede("Every search you run creates a folder. All Leads is every folder "
-               "at once.")]
-story += [subsection("A folder")]
+story += [lede("A folder is one search and everything it found. All Leads is "
+               "every folder at once, with sorting and filters.")]
 story += [body(
-    "One search, and everything it found. The name is the search you asked for, "
-    "so \"Landscaping companies in New York\" is the folder holding that run. "
-    "Open it to see the leads, read a quote, export the list, or look up email "
-    "addresses for the companies in it. Delete it and its leads go with it.")]
-story += [subsection("All Leads")]
-story += [body(
-    "The same leads, from every search you have ever run, in one place. Use it "
-    "when you want the whole picture rather than one run: sort by newest, by "
-    "month, by state, by trade, or by outcome, and filter by vertical. You can "
-    "open any folder from here, and export from here too.")]
-story += [body(
-    "The short version: a folder answers \"what did that search find?\", and All "
-    "Leads answers \"what do I have?\".")]
-story += [subsection("Inside a folder, leads are split three ways")]
+    "Open a folder to read the leads, check a quote, export the list, or look up "
+    "email addresses. Inside, they are split three ways.")]
 story += table(
     ["Group", "What it means"],
     [
@@ -494,21 +513,31 @@ story += section(8, "What it costs")
 J = "jonathan@<br/>thegoldhillgroup.com"
 G = "thegoldhillgroup@<br/>gmail.com"
 story += table(
-    ["Service", "What it does", "Cost", "Left today", "Account"],
+    ["Service", "What it does", "Cost", "Left today", "Manage it at", "Account"],
     [
-        ["Apify", "Finds companies and fetches their pages", "$29<br/>per month", "$9.53 used<br/>this month", J],
-        ["OpenRouter", "Reads each page and judges it", "~$0.02<br/>a company", "$49.50<br/>left", J],
-        ["AnymailFinder", "Finds an email address", "$0.05<br/>only when found", "286 credits<br/>left", J],
-        ["MillionVerifier", "Checks it is deliverable", "$0.006<br/>per check", "10,408 credits<br/>left", J],
-        ["Firecrawl", "Reads pages that need a browser", "free", "693 pages<br/>left", J],
-        ["Tavily", "Finds trade directories", "free", "1,000 a month", J],
-        ["Supabase", "The database and the login", "free", "", G],
-        ["Vercel", "Hosts the app", "free", "", G],
-        ["GitHub", "Holds the code", "free", "", G],
+        ["Apify", "Finds companies and fetches their pages", "$29<br/>per month", "$9.53 used<br/>this month", "console.apify.com/billing", J],
+        ["OpenRouter", "Reads each page and judges it", "Pay per use<br/>~45&cent; a search", "$49.50<br/>left", "openrouter.ai/settings/credits", J],
+        ["AnymailFinder", "Finds an email address", "$29 a month<br/>400 credits", "286 credits<br/>left", "app.anymailfinder.com", J],
+        ["MillionVerifier", "Checks it is deliverable", "Pay per use<br/>$0.006 a check", "10,408 left<br/>plenty", "app.millionverifier.com", J],
+        ["Firecrawl", "Reads pages that need a browser", "free", "693 pages<br/>left", "firecrawl.dev/app", J],
+        ["Tavily", "Finds trade directories", "free", "1,000 a month", "app.tavily.com", J],
+        ["Supabase", "The database and the login", "free", "", "supabase.com/dashboard", G],
+        ["Vercel", "Hosts the app", "free", "", "vercel.com/dashboard", G],
+        ["GitHub", "Holds the code", "free", "", "github.com/goldhillgroup/signal-based", G],
     ],
-    [30 * mm, 44 * mm, 24 * mm, 26 * mm, W - 124 * mm],
-    mono_cols=(4,),
+    [31 * mm, 30 * mm, 23 * mm, 21 * mm, 33 * mm, W - 138 * mm],
+    mono_cols=(4, 5),
 )
+
+story += [body(
+    "<b>$58 a month is the fixed cost</b>, being Apify at $29 and AnymailFinder "
+    "at $29. Everything else moves only when you press something. OpenRouter is "
+    "the one that varies: about 45&cent; for a typical search, so twenty searches in "
+    "a month is roughly $9 on top.")]
+story += [body(
+    "MillionVerifier is pay-per-use at less than a cent a check, and with 10,408 "
+    "credits sitting there it is unlikely ever to need topping up. Firecrawl and "
+    "Tavily have not come close to their free allowances.")]
 
 # ── 9. If something looks wrong ────────────────────────────────────────────
 story += section(9, "If something looks wrong")

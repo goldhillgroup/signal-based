@@ -132,7 +132,7 @@ function LoginForm() {
           </form>
 
           <p className="mt-8 text-center text-[11px] text-gh-ink-muted">
-            Invite-only, reach out to your Deep Loom contact for access.
+            Invite-only. Accounts are created for you.
           </p>
         </div>
       </div>
