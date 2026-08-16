@@ -16,6 +16,7 @@ import {
 import { INDUSTRY_META } from "@/lib/signal-meta";
 import { downloadCompaniesCsv } from "@/lib/csv-export";
 import { StatCard } from "./StatCard";
+import { folderTitle } from "@/lib/folder-title";
 import { SignalTrendChart } from "./SignalTrendChart";
 import { BreakdownBars } from "./BreakdownBars";
 import { CompaniesTable } from "./CompaniesTable";
@@ -244,23 +245,17 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
                 the query adds. When the query is not an extension of the label
                 (older rows, renamed folders) the whole thing still shows. */}
             <h1
-              className="font-display line-clamp-2 text-2xl font-semibold text-gh-ink"
+              className="font-display text-2xl font-semibold text-gh-ink"
               title={folder.label}
             >
-              {folder.label}
+              {folderTitle(folder.label)}
             </h1>
-            {(() => {
-              const q = folder.query.trim();
-              const l = folder.label.trim();
-              const extra = q.toLowerCase().startsWith(l.toLowerCase())
-                ? q.slice(l.length).replace(/^[\s,;.]+/, "")
-                : q;
-              return extra ? (
-                <p className="mt-1 text-sm text-gh-ink-secondary">
-                  Looking for: {extra}
-                </p>
-              ) : null;
-            })()}
+            {/* THE FULL QUERY, under a heading that is now a name.
+                While the heading WAS the query this line repeated it word for
+                word, so it was cut back to just the tail. The heading is a
+                short title now, so the states belong here again: said once,
+                in the place where a caption belongs. */}
+            <p className="mt-1 text-sm text-gh-ink-secondary">&ldquo;{folder.query}&rdquo;</p>
             {/* ONE LINE, LEFT-ALIGNED, UNDER THE TITLE.
                 This was a right-aligned column opposite the heading, and at
                 any real width it set four ragged lines against the title's
@@ -322,7 +317,7 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
                 attention. A hidden row is hidden everywhere or nowhere. */}
             <button
               type="button"
-              onClick={() => downloadCompaniesCsv(exportable, folder.label)}
+              onClick={() => downloadCompaniesCsv(exportable, folderTitle(folder.label))}
               className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-gh-border bg-gh-surface px-3 py-1.5 text-xs font-semibold text-gh-ink-secondary transition-colors hover:border-gh-sky/40 hover:text-gh-ink"
             >
               <DownloadIcon className="h-3.5 w-3.5" />
@@ -433,7 +428,7 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="flex flex-col rounded-xl border border-gh-border bg-gh-surface p-5 lg:col-span-2">
+        <div className="rounded-xl border border-gh-border bg-gh-surface p-5 lg:col-span-2">
           <div className="mb-4">
             <h2 className="font-display text-sm font-semibold text-gh-ink">
               New companies discovered
@@ -442,25 +437,7 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
               {trend.length === 1 ? "One day" : `Daily, last ${trend.length} days`}
             </p>
           </div>
-          {/* A TREND NEEDS TWO POINTS. With one day of data this drew a single
-              bar marooned in the middle of a wide empty plot, which says
-              nothing the number itself does not say more plainly. Most
-              searches finish inside a day, so one bar is the COMMON case
-              here, not the edge one. */}
-          {trend.length === 1 ? (
-            <p className="flex flex-1 flex-col items-center justify-center py-6 text-center">
-              <span className="font-display block text-4xl font-semibold text-gh-ink">
-                {trend[0].count}
-              </span>
-              <span className="mt-1 block text-xs text-gh-ink-muted">
-                all found on{" "}
-                {new Date(trend[0].date + "T00:00:00").toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                })}
-              </span>
-            </p>
-          ) : trend.length > 1 ? (
+          {trend.length > 0 ? (
             <SignalTrendChart data={trend} />
           ) : (
             <p className="py-10 text-center text-xs text-gh-ink-muted">No data yet.</p>

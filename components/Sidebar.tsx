@@ -3,10 +3,10 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useCallback, useSyncExternalStore } from "react";
 import { useSearches } from "@/lib/searches-store";
 import { useMobileNav } from "@/lib/mobile-nav";
-import { RadarIcon, FolderIcon, SettingsIcon, GridIcon, UsersIcon, XIcon } from "./icons";
+import { RadarIcon, FolderIcon, SettingsIcon, GridIcon, UsersIcon, XIcon, ArrowLeftIcon } from "./icons";
 import { SignOutButton } from "./SignOutButton";
 import { TourButton } from "./DashboardTour";
 import { SidebarStatus } from "./SidebarStatus";
@@ -52,10 +52,13 @@ function SidebarBody({
   userEmail,
   onNavigate,
   onClose,
+  collapsed = false,
 }: {
   userEmail: string | null;
   onNavigate?: () => void;
   onClose?: () => void;
+  /** Icons only. Desktop rail only; the mobile drawer is never collapsed. */
+  collapsed?: boolean;
 }) {
   const pathname = usePathname();
   const { folders } = useSearches();
@@ -96,7 +99,11 @@ function SidebarBody({
           brand colour bleeding from the top corner and a slow halo on the mark
           give the top of the rail somewhere for the eye to start, without
           adding anything that has to be read. */}
-      <div className="relative flex h-16 shrink-0 items-center gap-2.5 overflow-hidden border-b border-white/10 px-5">
+      <div
+        className={`relative flex h-16 shrink-0 items-center gap-2.5 overflow-hidden border-b border-white/10 ${
+          collapsed ? "justify-center px-0" : "px-5"
+        }`}
+      >
         <span
           aria-hidden
           className="pointer-events-none absolute -left-10 -top-16 h-32 w-32 rounded-full opacity-25 blur-2xl"
@@ -109,14 +116,16 @@ function SidebarBody({
             className="pulse-ring absolute -inset-1 rounded-full border border-gh-sky/50"
           />
         </span>
-        <div className="relative leading-tight">
-          <p className="font-display text-[13px] font-semibold tracking-wide">
-            GOLDHILL GROUP
-          </p>
-          <p className="text-[10px] font-medium uppercase tracking-widest text-white/50">
-            Signal Radar
-          </p>
-        </div>
+        {!collapsed && (
+          <div className="relative leading-tight">
+            <p className="font-display text-[13px] font-semibold tracking-wide">
+              GOLDHILL GROUP
+            </p>
+            <p className="text-[10px] font-medium uppercase tracking-widest text-white/50">
+              Signal Radar
+            </p>
+          </div>
+        )}
 
         {/* Only present in the mobile drawer. The overlay and the nav links
             already close it, but a labelled control the thumb can find beats
@@ -133,7 +142,7 @@ function SidebarBody({
         )}
       </div>
 
-      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-5">
+      <nav className={`min-h-0 flex-1 space-y-1 overflow-y-auto py-5 ${collapsed ? "px-2" : "px-3"}`}>
         {NAV_ITEMS.map(({ label, icon: Icon, href }) => {
           // Exact match for the dashboard root so it doesn't also light up
           // while on /dashboard/lists/[id] — "All Leads" only lights up on
@@ -150,7 +159,12 @@ function SidebarBody({
               // the real navigation rather than describing it from a box in
               // the middle of the screen. See DashboardTour.
               data-tour={href}
-              className={`group relative flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-[color,background-color] duration-200 ${
+              // The label is gone when collapsed, so the icon has to carry
+              // the name some other way or the rail becomes five glyphs.
+              title={collapsed ? label : undefined}
+              className={`group relative flex w-full items-center gap-3 rounded-lg py-2.5 text-sm font-medium transition-[color,background-color] duration-200 ${
+                collapsed ? "justify-center px-0" : "px-3"
+              } ${
                 active
                   ? "bg-white/10 text-white"
                   : "text-white/55 hover:bg-white/5 hover:text-white"
@@ -171,16 +185,26 @@ function SidebarBody({
                   active ? "scale-110" : "group-hover:scale-110"
                 }`}
               />
-              <span className="flex-1">{label}</span>
-              {badge > 0 && (
-                <span
-                  className={`tabular rounded-full px-1.5 py-0.5 text-[10px] font-semibold transition-colors ${
-                    active ? "bg-white/20 text-white" : "bg-white/10 text-white/60"
-                  }`}
-                >
-                  {badge}
-                </span>
-              )}
+              {!collapsed && <span className="flex-1">{label}</span>}
+              {badge > 0 &&
+                (collapsed ? (
+                  /* No room for "12" at 64px wide, and a clipped number is
+                     worse than none. A dot keeps the one bit that matters at
+                     a glance, that there is something in there, and the count
+                     comes back the moment the rail is expanded. */
+                  <span
+                    aria-label={`${badge}`}
+                    className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-gh-sky"
+                  />
+                ) : (
+                  <span
+                    className={`tabular rounded-full px-1.5 py-0.5 text-[10px] font-semibold transition-colors ${
+                      active ? "bg-white/20 text-white" : "bg-white/10 text-white/60"
+                    }`}
+                  >
+                    {badge}
+                  </span>
+                ))}
             </Link>
           );
         })}
@@ -189,21 +213,71 @@ function SidebarBody({
       {/* The tour lives with the navigation it points AT, not in the top bar.
           Every stop highlights one of the five rows above it, so the way in
           belongs beside them. */}
-      <div className="px-3 pb-1">
-        <TourButton />
-      </div>
+      {!collapsed && (
+        <div className="px-3 pb-1">
+          <TourButton />
+        </div>
+      )}
 
       {/* Sits between the nav and the footer, so it fills the gap that opens up
           on a five-item menu rather than pushing anything off-screen. */}
-      <SidebarStatus />
+      {!collapsed && <SidebarStatus />}
 
-      <SignOutButton userEmail={userEmail} />
+      <SignOutButton userEmail={userEmail} collapsed={collapsed} />
     </>
   );
 }
 
+
+/**
+ * Collapse the desktop rail to icons.
+ *
+ * useSyncExternalStore, matching ThemeToggle, because the width has to be
+ * right on the FIRST paint. Read in an effect instead and every navigation
+ * starts with a 256px rail that snaps to 64px a frame later, which is worse
+ * than not having the feature.
+ *
+ * getServerSnapshot returns false: the server cannot read localStorage, and
+ * expanded is what the markup must say for hydration to match.
+ */
+const COLLAPSE_KEY = "gh-rail-collapsed";
+const railListeners = new Set<() => void>();
+
+function subscribeRail(cb: () => void) {
+  railListeners.add(cb);
+  window.addEventListener("storage", cb);
+  return () => {
+    railListeners.delete(cb);
+    window.removeEventListener("storage", cb);
+  };
+}
+
+function readCollapsed(): boolean {
+  try {
+    return localStorage.getItem(COLLAPSE_KEY) === "1";
+  } catch {
+    // Private modes throw. A rail width is never worth an error.
+    return false;
+  }
+}
+
+function useRailCollapsed(): [boolean, (v: boolean) => void] {
+  const collapsed = useSyncExternalStore(subscribeRail, readCollapsed, () => false);
+  const set = useCallback((v: boolean) => {
+    try {
+      localStorage.setItem(COLLAPSE_KEY, v ? "1" : "0");
+    } catch {
+      // Still apply it for this session even if it cannot be remembered.
+    }
+    // storage events do not fire in the tab that made the change.
+    railListeners.forEach((l) => l());
+  }, []);
+  return [collapsed, set];
+}
+
 export function Sidebar({ userEmail }: { userEmail: string | null }) {
   const pathname = usePathname();
+  const [collapsed, setCollapsed] = useRailCollapsed();
   const { open, setOpen } = useMobileNav();
 
   // Navigating is the whole point of the drawer, so the moment the route
@@ -228,8 +302,26 @@ export function Sidebar({ userEmail }: { userEmail: string | null }) {
   return (
     <>
       {/* Desktop rail: the permanent column, unchanged. Only exists at lg+. */}
-      <aside className="hidden h-full w-64 shrink-0 flex-col overflow-hidden bg-gh-sidebar text-white lg:flex">
-        <SidebarBody userEmail={userEmail} />
+      <aside
+        className={`relative hidden h-full shrink-0 flex-col overflow-hidden bg-gh-sidebar text-white transition-[width] duration-200 ease-out lg:flex ${
+          collapsed ? "w-16" : "w-64"
+        }`}
+      >
+        <SidebarBody userEmail={userEmail} collapsed={collapsed} />
+        {/* Pinned to the rail's own bottom edge rather than sitting in the
+            scrolling nav, so it stays reachable however long the nav gets. */}
+        <button
+          type="button"
+          onClick={() => setCollapsed(!collapsed)}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          className="flex h-10 shrink-0 cursor-pointer items-center justify-center gap-2 border-t border-white/10 text-xs font-medium text-white/50 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/30"
+        >
+          <ArrowLeftIcon
+            className={`h-4 w-4 transition-transform duration-200 ${collapsed ? "rotate-180" : ""}`}
+          />
+          {!collapsed && <span>Collapse</span>}
+        </button>
       </aside>
 
       {/* Mobile scrim. Dims the page behind the drawer and is itself the

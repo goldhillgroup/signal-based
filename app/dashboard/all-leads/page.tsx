@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { folderTitle } from "@/lib/folder-title";
 import Link from "next/link";
 import { useSearches, type SearchFolder } from "@/lib/searches-store";
 import { Company } from "@/lib/company";
@@ -99,6 +100,12 @@ export default function AllLeadsPage() {
   const [companies, setCompanies] = useState<Company[] | "loading">("loading");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [openFolderId, setOpenFolderId] = useState<string | null>(null);
+  // FOLDERS OR EVERYTHING. Renaming "All Leads" to "Lead Lists" made the page
+  // honest about what it showed, folders, but it also removed the only place
+  // that showed every lead at once. Both are real jobs: folders are "what did
+  // that search get me", this is "who have I got, everywhere". So it is a
+  // switch, not a replacement.
+  const [level1, setLevel1] = useState<"folders" | "all">("folders");
   const [pendingDelete, setPendingDelete] = useState<SearchFolder | null>(null);
   /** Company ids picked for an email lookup, awaiting confirmation. */
   const [pendingPick, setPendingPick] = useState<string[] | null>(null);
@@ -407,7 +414,32 @@ export default function AllLeadsPage() {
               ? "No leads yet."
               : `${contributing.length} list${contributing.length === 1 ? "" : "s"}, ${leadCount} lead${leadCount === 1 ? "" : "s"}. Open one to see inside.`}
           </p>
-          {contributing.length > 1 && (
+          <div className="flex items-center gap-2">
+            {contributing.length > 0 && (
+              <div className="flex shrink-0 rounded-lg border border-gh-border bg-gh-surface-sunken p-0.5">
+                {(["folders", "all"] as const).map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setLevel1(k)}
+                    aria-pressed={level1 === k}
+                    className={`cursor-pointer rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
+                      level1 === k
+                        ? "bg-gh-surface text-gh-ink shadow-sm"
+                        : "text-gh-ink-muted hover:text-gh-ink"
+                    }`}
+                  >
+                    {/* No count here. The table's own "All leads" tab sits
+                        directly below with the same number on it, so putting
+                        it in both places printed "All leads 40" twice, three
+                        inches apart. The switch picks the view; the tab
+                        counts. */}
+                    {k === "folders" ? "Folders" : "All leads"}
+                  </button>
+                ))}
+              </div>
+            )}
+          {contributing.length > 1 && level1 === "folders" && (
             <select
               value={folderGroupBy}
               onChange={(e) => setFolderGroupBy(e.target.value as FolderGroupBy)}
@@ -421,6 +453,7 @@ export default function AllLeadsPage() {
               ))}
             </select>
           )}
+          </div>
         </div>
       </div>
 
@@ -434,6 +467,18 @@ export default function AllLeadsPage() {
           </Link>{" "}
           to start finding leads.
         </p>
+      ) : level1 === "all" ? (
+        /* Every lead from every folder, in one table. Same component the
+           folders use, so the tabs, grouping, search and card/table switch
+           are the ones already learned rather than a second set. Enrichment
+           is deliberately NOT wired here: it is billed per folder and picking
+           rows across folders would make the confirm dialog lie about which
+           search it is charging. */
+        <CompaniesTable
+          companies={leads}
+          onRowClick={(c) => setOpenFolderId(c.searchId ?? null)}
+          defaultView="table"
+        />
       ) : (
         <div className="space-y-6">
           {folderGroups.map((g) => (
@@ -606,7 +651,7 @@ function FolderTile({
             onClick={onOpen}
             className="mt-3 block w-full cursor-pointer pr-16 text-left text-sm font-semibold leading-snug text-gh-ink group-hover:text-gh-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
           >
-            {folder.label}
+            {folderTitle(folder.label)}
           </button>
         )}
 

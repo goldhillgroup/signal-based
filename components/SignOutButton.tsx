@@ -22,7 +22,14 @@ import { LogOutIcon } from "./icons";
  * it is disruptive and completely invisible in advance, which is the same
  * problem from the user's side.
  */
-export function SignOutButton({ userEmail }: { userEmail: string | null }) {
+export function SignOutButton({
+  userEmail,
+  collapsed = false,
+}: {
+  userEmail: string | null;
+  /** Icons only, when the desktop rail is narrowed to 64px. */
+  collapsed?: boolean;
+}) {
   // userEmail still arrives from the server layout, and is still worth showing
   // — but as the confirmation's subject line, where it answers "which account
   // am I about to leave", rather than as a permanent nameplate.
@@ -40,7 +47,7 @@ export function SignOutButton({ userEmail }: { userEmail: string | null }) {
   }
 
   return (
-    <div className="border-t border-white/10 px-4 py-3">
+    <div className={`border-t border-white/10 py-3 ${collapsed ? "px-2" : "px-4"}`}>
       <ConfirmDialog
         open={confirming}
         title="Sign out of Signal Radar?"
@@ -70,16 +77,20 @@ export function SignOutButton({ userEmail }: { userEmail: string | null }) {
           something he already knows, and the block cost three lines of vertical
           space to say it. What belongs at the bottom of a rail is the way out
           and the way to change how it looks. */}
-      <ThemeToggle />
+      {!collapsed && <ThemeToggle />}
 
       <button
         type="button"
         onClick={() => setConfirming(true)}
         disabled={loading}
-        className="mt-2 flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] font-medium text-white/60 transition-colors duration-200 hover:bg-white/5 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 disabled:opacity-60"
+        title={collapsed ? "Sign out" : undefined}
+        aria-label={collapsed ? "Sign out" : undefined}
+        className={`mt-2 flex w-full cursor-pointer items-center gap-2.5 rounded-lg py-2 text-[13px] font-medium text-white/60 transition-colors duration-200 hover:bg-white/5 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 disabled:opacity-60 ${
+          collapsed ? "justify-center px-0" : "px-2.5 text-left"
+        }`}
       >
         <LogOutIcon className="h-4 w-4 shrink-0" />
-        {loading ? "Signing out…" : "Sign out"}
+        {!collapsed && (loading ? "Signing out…" : "Sign out")}
       </button>
     </div>
   );

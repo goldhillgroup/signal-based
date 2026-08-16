@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { folderTitle } from "@/lib/folder-title";
 import { CountUp } from "./CountUp";
 import { FolderIcon, SearchIcon } from "./icons";
 
@@ -80,7 +81,7 @@ export function RecentFolders({ rows }: { rows: RecentRow[] }) {
 
             <span className="min-w-0 flex-1">
               <span className="block truncate text-xs font-semibold text-gh-ink group-hover:text-gh-navy">
-                {r.label}
+                {folderTitle(r.label)}
               </span>
               <span className="mt-0.5 block text-[11px] text-gh-ink-muted">
                 {running ? "running now" : whenLabel(r.created_at)}
