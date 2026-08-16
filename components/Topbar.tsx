@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { TourButton } from "./DashboardTour";
 import { useMobileNav } from "@/lib/mobile-nav";
 import { SearchIcon, MenuIcon } from "./icons";
 
@@ -31,12 +30,6 @@ export function Topbar() {
           the user his genuine leads are fake. Removed when the pipeline went
           live rather than left to rot. */}
       <div className="ml-auto flex items-center gap-2.5">
-        {/* THE TOUR HAS TO BE REACHABLE. It shows itself once and then never
-            again, and the only way back was a button on the Settings page,
-            which is the last place somebody looks when they cannot remember
-            what a screen is for. Here it sits beside the one other thing in
-            the bar, on every page. */}
-        <TourButton />
         <Link
           href="/dashboard"
           className="inline-flex items-center gap-1.5 rounded-lg bg-gh-navy px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-gh-navy-2"

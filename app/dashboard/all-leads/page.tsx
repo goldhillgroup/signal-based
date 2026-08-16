@@ -399,13 +399,13 @@ export default function AllLeadsPage() {
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gh-navy/[0.06] text-gh-navy">
             <RadarIcon className="h-4 w-4" />
           </span>
-          <h1 className="font-display text-2xl font-semibold text-gh-ink">All leads</h1>
+          <h1 className="font-display text-2xl font-semibold text-gh-ink">Lead Lists</h1>
         </div>
         <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-gh-ink-secondary">
             {contributing.length === 0
               ? "No leads yet."
-              : `${leadCount} lead${leadCount === 1 ? "" : "s"} across ${contributing.length} folder${contributing.length === 1 ? "" : "s"}. Open one to see them.`}
+              : `${contributing.length} list${contributing.length === 1 ? "" : "s"}, ${leadCount} lead${leadCount === 1 ? "" : "s"} between them. Open one to see inside.`}
           </p>
           {contributing.length > 1 && (
             <select

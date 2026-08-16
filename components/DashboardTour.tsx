@@ -93,10 +93,10 @@ const STOPS: Stop[] = [
   {
     icon: FolderIcon,
     target: "/dashboard/all-leads",
-    screen: "All Leads",
-    headline: "Everything ever found",
+    screen: "Lead Lists",
+    headline: "Every search you have run",
     body:
-      "Every lead from every search, in one list. Each search also gets its own folder. Inside a folder, leads are split three ways: a confirmed founder-and-successor pair, a good family-owned fit with no successor named yet, and the ones that were cut — shown with the reason, so you can disagree.",
+      "One list per search, and every lead from all of them in one place. Open a list to read its leads, check a quote, or export it. Inside, they are split three ways: a confirmed founder-and-successor pair, a good family-owned fit with no successor named yet, and the ones that were cut, shown with the reason so you can disagree.",
   },
   {
     icon: UsersIcon,
@@ -313,10 +313,13 @@ export function TourButton() {
       type="button"
       onClick={() => markSeen(false)}
       title="A short walk through the five screens"
-      className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-lg border border-gh-border bg-gh-surface px-3 py-2 text-sm font-semibold text-gh-ink-secondary transition-colors duration-200 hover:border-gh-sky/40 hover:text-gh-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+      // Styled for the dark rail it now sits in, and shaped like the nav rows
+      // above it so it reads as part of the same list rather than a control
+      // dropped underneath them.
+      className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-white/45 transition-[color,background-color] duration-200 hover:bg-white/5 hover:text-white/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/50"
     >
-      <HelpIcon className="h-4 w-4" />
-      <span className="hidden sm:inline">Tour</span>
+      <HelpIcon className="h-[18px] w-[18px] shrink-0" />
+      Take the tour
     </button>
   );
 }

@@ -8,6 +8,7 @@ import { useSearches } from "@/lib/searches-store";
 import { useMobileNav } from "@/lib/mobile-nav";
 import { RadarIcon, FolderIcon, SettingsIcon, GridIcon, UsersIcon, XIcon } from "./icons";
 import { SignOutButton } from "./SignOutButton";
+import { TourButton } from "./DashboardTour";
 import { SidebarStatus } from "./SidebarStatus";
 
 // Two real destinations — "Crawl Runs" and "Reports" were placeholders from
@@ -37,7 +38,7 @@ const NAV_ITEMS = [
   { label: "Overview", icon: GridIcon, href: "/dashboard/overview" },
   { label: "Signal Radar", icon: RadarIcon, href: "/dashboard" },
   { label: "Enrichment", icon: UsersIcon, href: "/dashboard/enrichment" },
-  { label: "All Leads", icon: FolderIcon, href: "/dashboard/all-leads" },
+  { label: "Lead Lists", icon: FolderIcon, href: "/dashboard/all-leads" },
   { label: "Settings", icon: SettingsIcon, href: "/dashboard/settings" },
 ];
 
@@ -70,16 +71,14 @@ function SidebarBody({
   ).length;
   // EACH BADGE COUNTS THE THING ITS LABEL NAMES.
   //
-  // "All Leads" carried folders.length, so a screen holding 28 leads across 3
-  // searches showed a 3 next to the word "Leads". Beside "Enrichment 1" it read
-  // as a contradiction, because it was one: two badges counting different
-  // nouns, neither of them the noun on the row.
-  const totalLeads = folders.reduce(
-    (n, f) => n + f.qualifiedCount + f.verifyCount + f.fitOnlyCount,
-    0
-  );
+  // The row said "All Leads" and carried a count of FOLDERS, so a dashboard
+  // holding 28 leads across 3 searches showed a 3 beside the word "Leads".
+  // Making it count leads fixed the arithmetic and lost the more useful fact:
+  // how many lists there are to open. So the LABEL moved instead. "Lead Lists"
+  // and "Enrichment" now both count lists, which is the same noun, and the
+  // numbers finally sit beside each other meaning the same kind of thing.
   const badges: Record<string, number> = {
-    "/dashboard/all-leads": totalLeads,
+    "/dashboard/all-leads": folders.length,
     "/dashboard/enrichment": readyToEnrich,
   };
 
@@ -179,6 +178,13 @@ function SidebarBody({
           );
         })}
       </nav>
+
+      {/* The tour lives with the navigation it points AT, not in the top bar.
+          Every stop highlights one of the five rows above it, so the way in
+          belongs beside them. */}
+      <div className="px-3 pb-1">
+        <TourButton />
+      </div>
 
       {/* Sits between the nav and the footer, so it fills the gap that opens up
           on a five-item menu rather than pushing anything off-screen. */}
