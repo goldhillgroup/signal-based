@@ -85,7 +85,7 @@ const STOPS: Stop[] = [
     screen: "Overview",
     headline: "What you have so far",
     body:
-      "Your totals, how many companies were read to find them, and anything that finished while you were away. If a search is still running, it is here.",
+      "A list of leads within your ICP and a tally of how many businesses were scanned in order to build your lead list. You can also view the searches that are in progress.",
   },
   {
     icon: RadarIcon,
@@ -101,15 +101,15 @@ const STOPS: Stop[] = [
     screen: "Enrichment",
     headline: "Getting an email address",
     body:
-      "Separate from searching, and never automatic. Tick who you want — the pairs, the good fits, or the cut ones too — and it looks up an address for the successor first. You are only charged when one is actually found.",
+      "A separate feature from searching. Select the leads you would like to contact and it will find an email address for the successor. You are only charged when a real email is found.",
   },
   {
     icon: FolderIcon,
     target: "/dashboard/all-leads",
     screen: "Lead Lists",
-    headline: "Every search you have run",
+    headline: "Tracked and consolidated data",
     body:
-      "One list per search, and every lead from all of them in one place. Open a list to read its leads, check a quote, or export it. Inside, they are split three ways: a confirmed founder-and-successor pair, a good family-owned fit with no successor named yet, and the ones that were cut, shown with the reason so you can disagree.",
+      "The consolidated list of all the leads from each search within. There are three categories: a confirmed founder and successor pair, a within-ICP family-owned business with no publicly named successor, and the leads that were deemed outside ICP so you can make your own decision after seeing the data.",
   },
   {
     icon: SettingsIcon,
