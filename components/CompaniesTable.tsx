@@ -81,8 +81,8 @@ const TABS: { key: Tab; label: string; hint: string }[] = [
   },
   {
     key: "fit",
-    label: "Good fit, no successor yet",
-    hint: "Right trade, right area, family-run, nobody named to take over",
+    label: "Good fit, no successor named",
+    hint: "Right trade, right area, family-run, no successor named on the site",
   },
   { key: "not_a_fit", label: "Not a fit", hint: "Cut by one of your gates, with the reason" },
 ];

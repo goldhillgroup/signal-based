@@ -370,8 +370,8 @@ button:not(:disabled):not(.lift):not(.hover-spring):active,
    Unlayered rules beat layered ones no matter the specificity, and Tailwind's
    `transition-colors` lives in @layer utilities. Written bare, the `transition`
    SHORTHAND here reset transition-property to `transform` alone on every button
-   in the app — so 49 buttons plus the harvest switch lost the colour fade they
-   were explicitly given, and every hover snapped.
+   in the app — so every button lost the colour fade it was explicitly given,
+   and every hover snapped.
 
    In the base layer the precedence is right way round: a button carrying a
    Tailwind transition utility keeps it, and every other button still gets a

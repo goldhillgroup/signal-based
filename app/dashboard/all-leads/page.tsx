@@ -38,8 +38,8 @@ import { SheetsButton } from "@/components/SheetsButton";
  * 2. THE FOLDER IS NAMED FOR WHAT IS IN IT; the date is a specification, not a
  *    title. An interim version keyed on the day ("Today", "Yesterday") and that
  *    was wrong: a date cannot tell you whether a folder holds landscapers in
- *    Texas or home builders in Florida, and once the weekly harvest runs there
- *    are two folders sharing every date.
+ *    Texas or home builders in Florida, and two searches on one day share a
+ *    date while holding completely different things.
  *
  * 3. ONLY LEADS. Rejected companies are not shown here, or anywhere else in the
  *    dashboard. They are still stored and still drive the recheck schedule.
@@ -542,8 +542,8 @@ function slugify(s: string): string {
  * Local calendar day, not UTC. `created_at` is an ISO instant, and slicing
  * the first 10 characters off it buckets by UTC — which puts anything the
  * pipeline finds after 5pm Pacific into "tomorrow" for a user in California.
- * Jonathan is in LA, and a scheduled overnight harvest lands squarely in that
- * window, so this has to be the viewer's day.
+ * Jonathan is in LA, and an evening search lands squarely in that window, so
+ * this has to be the viewer's day.
  */
 function dayKey(iso: string | null | undefined): string | null {
   if (!iso) return null;

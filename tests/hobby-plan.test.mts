@@ -59,13 +59,14 @@ test("the reaper's ceiling matches the longest route, to the millisecond", () =>
 });
 
 test("vercel.json declares no cron", () => {
-  // The weekly harvest runs from GitHub Actions, where a job may run six hours.
-  // At 300s Vercel could only ever half-finish one — and because a run claims
-  // the month before crawling, a half-run would still consume it.
+  // NOTHING RUNS ON ITS OWN, which is what Jonathan has been told in writing
+  // and what he is charged on. A cron block is the one thing that could start
+  // spending without a person pressing anything, so its absence is asserted
+  // rather than assumed.
   const p = path.join(ROOT, "vercel.json");
   if (!fs.existsSync(p)) return;
   const cfg = JSON.parse(fs.readFileSync(p, "utf8"));
-  assert.ok(!cfg.crons, "vercel.json has a cron block; the harvest belongs on GitHub Actions");
+  assert.ok(!cfg.crons, "vercel.json has a cron block; nothing may run without a person starting it");
 });
 
 test("the pipeline stops itself before the platform kills it", async () => {

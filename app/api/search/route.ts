@@ -17,9 +17,9 @@ import type { Industry, SearchMode } from "@/lib/supabase/types";
 // everywhere.
 //
 // TO RAISE IT: confirm the project is on Pro with Fluid compute, then set this
-// to 800 in all three routes (this one, the enrich route, the weekly cron) and
-// RUN_CEILING_MS in lib/pipeline/reap.ts to match. All four move together or
-// the reaper starts closing out runs that are still writing.
+// to 800 in both routes (this one and the enrich route) and RUN_CEILING_MS in
+// lib/pipeline/reap.ts to match. All three move together or the reaper starts
+// closing out runs that are still writing.
 //
 // At 300s a run reads about 48 companies before the platform stops it — see
 // SECONDS_PER_COMPANY in lib/pipeline/scan-limits.ts. Nothing is lost when that

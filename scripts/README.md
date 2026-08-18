@@ -37,22 +37,6 @@ deleting them, so cross-search memory, the recheck schedule and the measured
 channel yields all survive. Keeps the "Hand-audited proof list", which is
 Jonathan's own vetted data rather than a test run.
 
-**`recover-orphans.mts`** — the inverse. Puts companies with no folder back
-into one, grouped by vertical and state. A company with `search_id = null` is
-invisible: folders are how leads are listed, and enrichment is folder-scoped,
-so an orphan cannot be viewed, exported or enriched.
-
-> **These two undo each other.** `reset-leads` detaches on purpose;
-> `recover-orphans` reattaches. Running recover after a reset puts the whole
-> dashboard back. Normal use never creates an orphan — `companies.search_id` is
-> `ON DELETE CASCADE`, so deleting a folder deletes its companies.
-
-**`harvest.mts`** — runs the monthly harvest from the command line, the same
-code path GitHub Actions uses. Dry-run by default.
-
----
-
-## Evaluation
 
 **`eval-labeled.mts`** — scores the classifier against `labeled72.json`, 72
 hand-labelled companies with a known verdict. **Run this before changing the

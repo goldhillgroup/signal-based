@@ -56,9 +56,18 @@ export const SIGNAL_TYPE_META: Record<
     bg: "#fbe4d7",
   },
   family_owned_fit: {
-    label: "Good fit, no successor yet",
-    short: "No successor",
-    blurb: "Right trade, right area, family-run, nobody named to take over",
+    // "NO SUCCESSOR" STATED SOMETHING WE DO NOT KNOW.
+    //
+    // Christian's catch, and it is the difference between a lead and a dead
+    // end: the only fact in evidence is that the SITE does not name anyone.
+    // There may well be a son or daughter already working in the business who
+    // simply is not on the About page, which is common in companies this size.
+    // Reading "No successor" as "this family has nobody to hand it to" turns a
+    // worth-calling lead into one worth skipping, on a fact nobody established.
+    // The word "named" is what carries that, so it is in all three strings.
+    label: "Good fit, no successor named",
+    short: "No successor named",
+    blurb: "Right trade, right area, family-run, no successor named on the site",
     color: "#3d5a80",
     bg: "#e1e9f2",
   },

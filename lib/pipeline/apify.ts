@@ -1365,7 +1365,7 @@ export async function discoverCandidates(params: {
   // call), and cutting used to throw the surplus away and re-bill a fresh
   // discovery for it next round. The orchestrator's candidate buffer now
   // consumes these at its own pace; `limit` only sizes the per-channel
-  // harvests above.
+  // buys above.
   return { candidates, channelErrors };
 }
 

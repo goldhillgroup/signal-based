@@ -79,8 +79,8 @@ export interface Icp {
  * describe the industry filter, which is already a separate control and would
  * waste the queries this generates on companies Maps can list for free.
  *
- * The $3-15M band is the baseline both the one-off form and the scheduled
- * harvest already default to, restated here so all three agree in one place.
+ * The $3-15M band is the baseline the search form already defaults to,
+ * restated here so both agree in one place.
  */
 export const DEFAULT_ICP: Icp = {
   signalFocus: "founder still leading with a son or daughter stepping up beside them",

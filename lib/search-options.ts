@@ -3,21 +3,14 @@ import type { SearchMode } from "./supabase/types";
 /**
  * The choices a search is made of, defined ONCE.
  *
- * A one-off search and the weekly harvest are the same decision made at two
- * different times: which trade, which states, what to collect, how big, what
- * size of company. They were built as two separate screens that each declared
- * their own options, and they had already drifted:
- *
- *   - the search form offered a revenue band; the harvest silently ran every
- *     scan at "no limit", so the same request produced different results
- *     depending on which screen asked for it
- *   - the harvest's mode control was three descriptive cards while the form's
- *     was three plain buttons with a caption
- *   - "Vertical" on one, "Verticals to scan" on the other; "Companies to find"
- *     against "Leads per folder"
+ * Which trade, which states, what to collect, how big, what size of company.
+ * These were once declared separately by each screen that asked, and they had
+ * already drifted: one offered a revenue band the other silently ran at "no
+ * limit", so the same request produced different results depending on who
+ * asked; one called it "Vertical" and the other "Verticals to scan".
  *
  * Sharing the definitions is what stops that happening again: a new mode, a
- * reworded description or a different band shows up on both screens or on
+ * reworded description or a different band shows up everywhere or on
  * neither.
  */
 
@@ -89,12 +82,6 @@ export function bandIndexFor(min: number | null, max: number | null): number {
 }
 
 /**
- * Suggested signal-focus phrasings, shared by the one-off search and the
- * weekly harvest. Same decision, same suggestions — they were only on the
- * search form, which is how the harvest ended up with no way to express it
- * at all.
- */
-/**
  * The twelve observable signals from the client's ICP, as things to click,
  * in four groups of three.
  *
@@ -161,10 +148,6 @@ export const ICP_SIGNAL_GROUPS: {
 
 export const ICP_SIGNALS = ICP_SIGNAL_GROUPS.flatMap((g) => g.signals);
 
-/**
- * Kept for the compact places that only want a taste rather than the full
- * twelve — the ideal-client summary and the harvest form.
- */
 /**
  * How many phrases actually steer DISCOVERY.
  *

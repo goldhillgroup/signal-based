@@ -4,11 +4,10 @@ import { resolveSetting, setSetting } from "../settings";
  * Can a run actually succeed right now — and if not, say so where a human
  * will see it.
  *
- * WHY THIS EXISTS: once the weekly harvest is on a cron there is nobody
- * watching it. The failure that matters is not a crash; a crash is loud. It is
- * the QUIET one: OpenRouter runs out of credit, every classify call 402s, the
- * harvest finishes with zero results, and Monday's folder is empty. That is
- * indistinguishable from "there were no leads this week" — which is a lie the
+ * WHY THIS EXISTS: the failure that matters is not a crash. A crash is loud.
+ * It is the QUIET one: OpenRouter runs out of credit, every classify call
+ * 402s, the run finishes with zero results, and the folder is empty. That is
+ * indistinguishable from "there were no leads out there" — which is a lie the
  * system tells confidently, and the most expensive kind of bug in a product
  * whose whole value is that its output can be trusted.
  *

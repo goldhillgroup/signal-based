@@ -443,7 +443,7 @@ story += table(
     [
         ["All leads", "Everything the search got you. This is where it opens."],
         ["Founder + successor", "Both generations named, both running it today. What the product is for, and the rarest: about one company in thirty."],
-        ["Good fit, no successor", "Right trade, right area, family-run, but nobody named to take over. Worth a call."],
+        ["Good fit, no successor named", "Right trade, right area, family-run, but the site does not name a successor. There may still be one; worth a call."],
         ["Not a fit", "Cut, with the reason on the row. Shown so you can disagree with it."],
     ],
     [42 * mm, W - 42 * mm],

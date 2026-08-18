@@ -59,8 +59,8 @@ export function enrichScopesFor(companies: Company[]): EnrichScope[] {
     },
     {
       key: "fits",
-      label: "Good fit, no successor yet",
-      hint: "Right trade and area, family-run, nobody named to take over",
+      label: "Good fit, no successor named",
+      hint: "Right trade and area, family-run, no successor named on the site",
       ids: fits.map((c) => c.id),
     },
     {
