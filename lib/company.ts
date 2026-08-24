@@ -1,3 +1,4 @@
+import { isSharedInbox } from "./pipeline/page-email";
 import type {
   Industry,
   CompanyStatus,
@@ -32,7 +33,60 @@ export interface Contact {
   title: string | null;
   email: string | null;
   findStatus: FindStatus;
+  /**
+   * Where the address came from: "anymailfinder", "reused-known-domain", or
+   * "company-page:<kind>" where kind is person_match | person | role |
+   * free_mail (see lib/pipeline/page-email.ts).
+   *
+   * Carried to the client because the local part alone cannot settle who an
+   * address reaches. atz5232@aol.com is nobody's name and info@ is nobody's
+   * name, but they are different KINDS of nobody: one is the company's own
+   * catch-all, the other a screened reception inbox.
+   */
+  findSource?: string | null;
   verificationStatus: VerificationStatus;
+}
+
+/**
+ * Does this address reach a PERSON, or the company's front desk?
+ *
+ * The distinction Daniel asked for, and the one the product turns on. Jonathan
+ * opens conversations about handing a family business to a child. office@
+ * reaches whoever screens the mail; buddy@ reaches Buddy. Both are worth
+ * having and they are not the same lead, so they get their own columns rather
+ * than competing for one.
+ *
+ * A bought address counts as personal: AnymailFinder is asked for a named
+ * person. A scraped one counts only when the crawl judged it person_match (it
+ * matched the founder's or successor's name) or person (a name-shaped mailbox
+ * on the company's own domain).
+ */
+export function reachesAPerson(c: Contact | null | undefined): boolean {
+  if (!c?.email) return false;
+  const src = c.findSource ?? "";
+  if (src.startsWith("company-page:")) {
+    const kind = src.slice("company-page:".length);
+    return kind === "person_match" || kind === "person";
+  }
+  // anymailfinder / reused-known-domain, or anything unlabelled that the
+  // lookup settled: a named mailbox is what was asked for.
+  return c.findStatus === "found" && !isSharedInbox(c.email);
+}
+
+/** The address to actually write to, whether it was bought or already on the page. */
+export function personalEmail(c: Company): Contact | null {
+  for (const cand of [c.contact, c.backupContact]) {
+    if (reachesAPerson(cand)) return cand ?? null;
+  }
+  return null;
+}
+
+/** The front-desk address, shown alongside rather than instead. */
+export function generalEmail(c: Company): Contact | null {
+  for (const cand of [c.contact, c.backupContact]) {
+    if (cand?.email && !reachesAPerson(cand)) return cand;
+  }
+  return null;
 }
 
 export interface Company {

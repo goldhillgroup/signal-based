@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { Company } from "@/lib/company";
+import { Company, personalEmail, generalEmail } from "@/lib/company";
 import { INDUSTRY_META } from "@/lib/signal-meta";
 import {
   ConfidenceBadge,
@@ -47,14 +47,18 @@ export function CompanyDrawer({
   onClose: () => void;
 }) {
   const open = company !== null;
-  const [copied, setCopied] = useState(false);
+  // Which address was copied, not merely that one was: with two buttons a
+  // boolean would tick both at once.
+  const [copied, setCopied] = useState<string | null>(null);
   const fit = company ? explainFit(company) : null;
+  const personal = company ? personalEmail(company) : null;
+  const general = company ? generalEmail(company) : null;
 
   async function copyEmail(email: string) {
     try {
       await navigator.clipboard.writeText(email);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      setCopied(email);
+      setTimeout(() => setCopied(null), 1500);
     } catch {
       // clipboard API unavailable — no-op, email is still visible to copy manually
     }
@@ -288,40 +292,74 @@ export function CompanyDrawer({
                 </div>
               )}
 
-              {company.contact && (
+              {(company.contact || company.backupContact) && (
                 <div>
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gh-ink-muted">
                     Contact
                   </p>
                   <div className="space-y-3 rounded-lg border border-gh-border p-3.5">
-                    <div className="flex items-center justify-between">
-                      <FindStatusBadge status={company.contact.findStatus} />
-                      {company.contact.findStatus === "found" && (
-                        <VerificationBadge status={company.contact.verificationStatus} />
-                      )}
-                    </div>
-                    {company.contact.name && (
-                      <Row
-                        k="Name"
-                        v={`${company.contact.name}${company.contact.nameInferred ? " (inferred from email)" : ""}${
-                          company.contact.title ? `, ${company.contact.title}` : ""
-                        }`}
-                      />
-                    )}
-                    {company.contact.email ? (
+                    {/* The panel now renders when EITHER address exists, so
+                        the header describes whichever contact row is leading.
+                        Prefer the personal one: its status is the one that
+                        answers "can I write to this person". */}
+                    {(() => {
+                      const head = personal ?? company.contact ?? company.backupContact;
+                      if (!head) return null;
+                      return (
+                        <>
+                          <div className="flex items-center justify-between">
+                            <FindStatusBadge status={head.findStatus} />
+                            {head.findStatus === "found" && (
+                              <VerificationBadge status={head.verificationStatus} />
+                            )}
+                          </div>
+                          {head.name && (
+                            <Row
+                              k="Name"
+                              v={`${head.name}${head.nameInferred ? " (inferred from email)" : ""}${
+                                head.title ? `, ${head.title}` : ""
+                              }`}
+                            />
+                          )}
+                        </>
+                      );
+                    })()}
+                    {/* LABELLED BY WHO IT REACHES, and both shown.
+                        This panel used to print one address under the flat
+                        heading "Email", so office@fatherandsonlandscape.com
+                        looked like the way to reach Buddy Orth. It is the way
+                        to reach whoever opens the office mail. Saying which is
+                        which is the difference between a warm approach and one
+                        that never arrives. */}
+                    {personal?.email && (
                       <div className="flex items-center justify-between gap-2 text-sm">
-                        <span className="text-gh-ink-muted">Email</span>
+                        <span className="text-gh-ink-muted">Personal</span>
                         <button
                           type="button"
-                          onClick={() => copyEmail(company.contact!.email!)}
+                          onClick={() => copyEmail(personal.email!)}
                           className="font-medium text-gh-sky hover:underline"
                         >
-                          {copied ? "Copied ✓" : company.contact.email}
+                          {copied === personal.email ? "Copied ✓" : personal.email}
                         </button>
                       </div>
-                    ) : (
+                    )}
+                    {general?.email && (
+                      <div className="flex items-center justify-between gap-2 text-sm">
+                        <span className="text-gh-ink-muted">General inbox</span>
+                        <button
+                          type="button"
+                          onClick={() => copyEmail(general.email!)}
+                          className="font-medium text-gh-ink-secondary hover:underline"
+                        >
+                          {copied === general.email ? "Copied ✓" : general.email}
+                        </button>
+                      </div>
+                    )}
+                    {!personal?.email && (
                       <p className="text-xs text-gh-ink-muted">
-                        No individually published email found at this domain.
+                        {general?.email
+                          ? "No personal address published on the site. Find emails will look one up."
+                          : "No individually published email found at this domain."}
                       </p>
                     )}
                   </div>

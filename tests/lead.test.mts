@@ -125,8 +125,17 @@ ok("no score reason mentions an email for a parked row",
    !scoreFactors(parkedRow).factors.some((f) => /email/i.test(f)));
 
 const parkedCsv = companiesToCsv([parkedRow]).split("\r\n")[1];
-ok("the CSV does not leak a parked email", !parkedCsv.includes("info@acme.com"), parkedCsv.slice(0, 80));
-ok("the CSV says it is not enriched yet", parkedCsv.includes("not_enriched_yet"));
+// DELIBERATELY REVERSED. These used to assert that a parked info@ never
+// reached the sheet, on the reasoning that an unbought address should not look
+// like a bought one. In practice it meant a company printing its office inbox
+// in its own footer exported two blank cells while that address sat visible in
+// the app. The address is real and free; the fix was to say which kind it is,
+// not to hide it. It now has its own column and its own status.
+ok("the CSV exports a parked general inbox", parkedCsv.includes("info@acme.com"), parkedCsv.slice(0, 80));
+ok("the CSV says only a general inbox is known", parkedCsv.includes("general_inbox_only"));
+ok("and contact_email is left empty rather than filled with it",
+   companiesToCsv([parkedRow]).split("\r\n")[0].split(",").indexOf("contact_email") >= 0 &&
+   parkedCsv.split(",")[companiesToCsv([parkedRow]).split("\r\n")[0].split(",").indexOf("contact_email")] === "");
 const foundCsv = companiesToCsv([foundRow]).split("\r\n")[1];
 ok("the CSV does export a real contact", foundCsv.includes("sean@acme.com"));
 
@@ -156,7 +165,9 @@ ok("a shared inbox still scores above nothing",
 ok("the reason says it is shared",
    scoreFactors(sharedVerified).factors.some((f) => /shared inbox/i.test(f)));
 const sharedCsv = companiesToCsv([sharedVerified]).split("\r\n")[1];
-ok("the CSV marks it shared_inbox", sharedCsv.includes("shared_inbox"));
+// info@ is no longer "the contact with a shared type" -- it is the general
+// inbox, in its own column, and contact_email is left for a named person.
+ok("the CSV puts a shared inbox in general_inbox", sharedCsv.includes("info@acme.com"));
 ok("the CSV marks a person named_person",
    companiesToCsv([personVerified]).split("\r\n")[1].includes("named_person"));
 ok("the CSV has a phone column", companiesToCsv([personVerified]).split("\r\n")[0].includes("phone"));

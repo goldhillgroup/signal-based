@@ -2,9 +2,8 @@
 
 import { Fragment } from "react";
 import type { Company } from "@/lib/company";
-import { settledContact } from "@/lib/company";
+import { personalEmail, generalEmail } from "@/lib/company";
 import { toLead, SIGNAL_TYPE_META, leadPeople } from "@/lib/lead-signal";
-import { isSharedInbox } from "@/lib/pipeline/page-email";
 
 /**
  * A spreadsheet, not a layout.
@@ -43,7 +42,7 @@ export interface LeadGroup {
 
 /** Grows to 11 when the pick column is on. Used by the group separator rows,
  *  which span the whole sheet and would leave a hole if this were wrong. */
-const BASE_COLS = 10;
+const BASE_COLS = 11;
 
 /** Short enough for a column. Full wording lives in the drawer. */
 const CREWS: Record<string, string> = {
@@ -85,9 +84,16 @@ export function LeadTable({
             <Th className="w-[7%]">Crews</Th>
             <Th className="w-[17%]">What the site says</Th>
             <Th className="w-[12%]">Who to reach</Th>
+            {/* TWO COLUMNS, because they are two different leads.
+                One column meant a company that printed office@ in its footer
+                showed "after Enrich" here while the address sat visible in the
+                drawer -- the table contradicting the panel behind it. And the
+                two are not interchangeable: office@ reaches whoever screens
+                the mail, buddy@ reaches Buddy. */}
             <Th className="w-[13%]">Email</Th>
-            <Th className="w-[10%]">Deliverable</Th>
-            <Th className="w-[6%]">Source</Th>
+            <Th className="w-[12%]">General inbox</Th>
+            <Th className="w-[9%]">Deliverable</Th>
+            <Th className="w-[5%]">Source</Th>
           </tr>
         </thead>
         <tbody>
@@ -108,7 +114,11 @@ export function LeadTable({
                 const lead = toLead(c);
                 const meta = SIGNAL_TYPE_META[lead.signalType];
                 const { founder, nextGen } = leadPeople(c);
-                const contact = settledContact(c);
+                // Split by WHO the address reaches, not by whether it was paid
+                // for: a founder's address scraped free off an About page is
+                // the better lead than a bought info@.
+                const personal = personalEmail(c);
+                const general = generalEmail(c);
                 const who = nextGen ?? founder ?? null;
                 return (
                   <tr
@@ -179,39 +189,58 @@ export function LeadTable({
                     </Td>
                     <Td title={lead.signalDetail ?? ""}>{lead.signalDetail ?? <Muted>-</Muted>}</Td>
                     <Td title={who ?? ""}>{who ?? <Muted>nobody named</Muted>}</Td>
-                    <Td title={contact?.email ?? ""}>
-                      {contact?.email ? (
+                    <Td title={personal?.email ?? ""}>
+                      {personal?.email ? (
                         <a
-                          href={`mailto:${contact.email}`}
+                          href={`mailto:${personal.email}`}
                           onClick={(e) => e.stopPropagation()}
                           className="text-gh-sky hover:underline"
                         >
-                          {contact.email}
+                          {personal.email}
                         </a>
                       ) : (
-                        <Muted>{c.contact?.email ? "after Enrich" : "-"}</Muted>
+                        // "after Enrich" only when a lookup is what is missing.
+                        // A company we simply have nothing for says so.
+                        <Muted>{general?.email ? "after Enrich" : "-"}</Muted>
+                      )}
+                    </Td>
+                    <Td title={general?.email ?? ""}>
+                      {general?.email ? (
+                        <a
+                          href={`mailto:${general.email}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-gh-ink-secondary hover:underline"
+                        >
+                          {general.email}
+                        </a>
+                      ) : (
+                        <Muted>-</Muted>
                       )}
                     </Td>
                     {/* Plain words, not a coloured pill. In a sheet this column
                         is read, not spotted, and nine columns of badges is
                         where the first version stopped looking like data. */}
                     <Td>
-                      {contact?.email ? (
+                      {/* Describes the address in the Email column beside it,
+                          which is the one anybody would write to. A general
+                          inbox scraped off a footer has never been verified
+                          and claiming otherwise here would be a false
+                          reassurance about the wrong address. */}
+                      {personal?.email ? (
                         <span
                           className={
-                            contact.verificationStatus === "valid"
+                            personal.verificationStatus === "valid"
                               ? "text-[#0b7a0b]"
-                              : contact.verificationStatus === "invalid"
+                              : personal.verificationStatus === "invalid"
                                 ? "text-gh-critical"
                                 : "text-gh-ink-muted"
                           }
                         >
-                          {contact.verificationStatus === "valid"
+                          {personal.verificationStatus === "valid"
                             ? "deliverable"
-                            : contact.verificationStatus === "invalid"
+                            : personal.verificationStatus === "invalid"
                               ? "bad address"
                               : "unconfirmed"}
-                          {isSharedInbox(contact.email) ? ", shared" : ""}
                         </span>
                       ) : (
                         <Muted>-</Muted>

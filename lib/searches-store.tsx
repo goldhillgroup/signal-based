@@ -127,6 +127,7 @@ interface CompanyJoinRow {
     title: string | null;
     email: string | null;
     find_status: FindStatus;
+    find_source: string | null;
     verification_status: VerificationStatus;
   }>;
 }
@@ -195,6 +196,7 @@ function mapCompanyRow(row: CompanyJoinRow): Company {
           title: contact.title,
           email: contact.email,
           findStatus: contact.find_status,
+          findSource: contact.find_source,
           verificationStatus: contact.verification_status,
         }
       : null,
@@ -205,6 +207,7 @@ function mapCompanyRow(row: CompanyJoinRow): Company {
           title: backup.title,
           email: backup.email,
           findStatus: backup.find_status,
+          findSource: backup.find_source,
           verificationStatus: backup.verification_status,
         }
       : null,

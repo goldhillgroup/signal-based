@@ -1970,13 +1970,28 @@ export async function enrichContacts(
         // runs: $0.006 to know whether it delivers beats $0.05 to look up an
         // address that is already sitting on the page.
         //
-        // A SHARED inbox is the deliberate exception and still triggers the
-        // paid lookup, because info@ reaches whoever screens the inbox and
-        // this product exists to reach the founder by name. Both rows are
-        // kept -- see mapCompanyRow, which ranks the personal one first and
-        // keeps the shared one as backup.
+        // "Personal" is the crawl's own verdict, not a guess from the local
+        // part. It classifies every address it scrapes into four kinds and
+        // only two of them reach a person:
+        //
+        //   person_match  matched the founder's or successor's name  -> keep
+        //   person        a name-shaped mailbox on their own domain  -> keep
+        //   role          info@ / office@, a screened front desk     -> look up
+        //   free_mail     atz5232@aol.com, the company catch-all     -> look up
+        //
+        // The last two are the reason this is not simply isSharedInbox: an
+        // aol address is nobody's name either, and treating it as "we already
+        // have someone" would have quietly cancelled the lookup for Tristan
+        // Zullo on the strength of a mailbox that reaches the front office.
+        // Both are still SHOWN, in their own column, and both remain
+        // enrichable -- Daniel's call, and the right one.
         const parked = parkedByCompany.get(company.id);
-        if (parked?.email && !isSharedInbox(parked.email)) {
+        const parkedKind = String(parked?.find_source ?? "").startsWith("company-page:")
+          ? String(parked?.find_source).slice("company-page:".length)
+          : null;
+        const parkedReachesAPerson =
+          parkedKind === "person_match" || parkedKind === "person";
+        if (parked?.email && parkedReachesAPerson) {
           const verification = await verifyEmail(parked.email).catch(() => "unknown" as const);
           await supabase
             .from("contacts")

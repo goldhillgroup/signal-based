@@ -1,6 +1,7 @@
 import { settledContact, type Company } from "./company";
 import { toLead, SIGNAL_TYPE_META } from "./lead-signal";
 import { isSharedInbox } from "./pipeline/page-email";
+import { personalEmail, generalEmail } from "./company";
 
 // The "sheet" — a plain CSV download, opens directly in Excel/Google Sheets/
 // Numbers with no export API, no OAuth, no extra vendor. Simplest thing that
@@ -52,30 +53,29 @@ const COLUMNS: { header: string; get: (c: Company) => string }[] = [
   { header: "next_gen_title", get: (c) => c.nextGenTitle ?? "" },
   { header: "phone", get: (c) => c.phone ?? "" },
   { header: "address", get: (c) => c.address ?? "" },
-  { header: "contact_name", get: (c) => settledContact(c)?.name ?? "" },
-  { header: "contact_email", get: (c) => settledContact(c)?.email ?? "" },
-  // BOTH addresses, not one. A named person and the office inbox are different
-  // leads for a conversation this personal — will@ reaches Will, info@ reaches
-  // whoever screens the inbox — and the sheet used to show whichever row the
-  // database returned first. The primary is now always the named person where
-  // one exists; this is the shared inbox kept alongside it.
-  {
-    header: "backup_email",
-    get: (c) => (c.backupContact?.findStatus === "found" ? (c.backupContact.email ?? "") : ""),
-  },
+  { header: "contact_name", get: (c) => personalEmail(c)?.name ?? "" },
+  // BOTH addresses, in the columns the screen uses. These were gated on a PAID
+  // lookup, so a company printing office@ in its own footer exported two blank
+  // cells while that address sat visible in the app -- the sheet Jonathan
+  // works from disagreeing with the page he approved it on. Whether an address
+  // was bought is not the question a sheet needs answered; who it reaches is,
+  // and email_status below still says how sure we are.
+  { header: "contact_email", get: (c) => personalEmail(c)?.email ?? "" },
+  { header: "general_inbox", get: (c) => generalEmail(c)?.email ?? "" },
   {
     header: "email_status",
     get: (c) => {
-      const settled = settledContact(c);
-      if (!settled) return c.contact?.email ? "not_enriched_yet" : "not_found";
-      const v = settled.verificationStatus;
+      const personal = personalEmail(c);
+      if (!personal) return generalEmail(c) ? "general_inbox_only" : "not_found";
+      if (personal.findStatus !== "found") return "read_from_their_site";
+      const v = personal.verificationStatus;
       return v === "not_attempted" ? "unverified" : v;
     },
   },
   {
     header: "contact_type",
     get: (c) => {
-      const s = settledContact(c);
+      const s = personalEmail(c);
       return s?.email ? (isSharedInbox(s.email) ? "shared_inbox" : "named_person") : "";
     },
   },
