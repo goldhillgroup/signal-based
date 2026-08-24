@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { Company, personalEmail, generalEmail } from "@/lib/company";
+import { Company, personalEmail, generalEmail, lookupCameBackEmpty } from "@/lib/company";
 import { INDUSTRY_META } from "@/lib/signal-meta";
 import {
   ConfidenceBadge,
@@ -357,9 +357,9 @@ export function CompanyDrawer({
                     )}
                     {!personal?.email && (
                       <p className="text-xs text-gh-ink-muted">
-                        {general?.email
-                          ? "No personal address published on the site. Find emails will look one up."
-                          : "No individually published email found at this domain."}
+                        {lookupCameBackEmpty(company)
+                          ? "The lookup ran and found no personal address for this company."
+                          : "No personal address on their site yet. Find emails will look one up."}
                       </p>
                     )}
                   </div>

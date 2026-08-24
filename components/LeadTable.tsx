@@ -2,7 +2,7 @@
 
 import { Fragment } from "react";
 import type { Company } from "@/lib/company";
-import { personalEmail, generalEmail } from "@/lib/company";
+import { personalEmail, generalEmail, lookupCameBackEmpty } from "@/lib/company";
 import { toLead, SIGNAL_TYPE_META, leadPeople } from "@/lib/lead-signal";
 
 /**
@@ -199,9 +199,14 @@ export function LeadTable({
                           {personal.email}
                         </a>
                       ) : (
-                        // "after Enrich" only when a lookup is what is missing.
-                        // A company we simply have nothing for says so.
-                        <Muted>{general?.email ? "after Enrich" : "-"}</Muted>
+                        // NOT "does a general inbox exist" -- that was the old
+                        // test and it drew a line nobody could act on: both
+                        // kinds of row get looked up in exactly the same way,
+                        // so "after Enrich" against one and "-" against the
+                        // other only invited the question of what the
+                        // difference was. The real one is whether the lookup
+                        // has happened.
+                        <Muted>{lookupCameBackEmpty(c) ? "none found" : "after Enrich"}</Muted>
                       )}
                     </Td>
                     <Td title={general?.email ?? ""}>

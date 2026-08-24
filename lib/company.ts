@@ -81,6 +81,21 @@ export function personalEmail(c: Company): Contact | null {
   return null;
 }
 
+/**
+ * Has a paid lookup already been run for this company and come back empty?
+ *
+ * The difference between "we have not looked yet" and "we looked and there is
+ * nothing", which is the only distinction the Email column can usefully draw
+ * when it has no address to print. Showing "after Enrich" against one company
+ * and "-" against another, when pressing Find emails would treat them
+ * identically, is a difference the reader cannot act on.
+ */
+export function lookupCameBackEmpty(c: Company): boolean {
+  return (
+    c.contact?.findStatus === "not_found" || c.backupContact?.findStatus === "not_found"
+  );
+}
+
 /** The front-desk address, shown alongside rather than instead. */
 export function generalEmail(c: Company): Contact | null {
   for (const cand of [c.contact, c.backupContact]) {

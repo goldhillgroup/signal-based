@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { personalEmail, generalEmail, reachesAPerson, type Company, type Contact } from "../lib/company.js";
+import { personalEmail, generalEmail, reachesAPerson, lookupCameBackEmpty, type Company, type Contact } from "../lib/company.js";
 
 function contact(email: string, findSource: string, findStatus: Contact["findStatus"] = "not_attempted"): Contact {
   return { name: null, nameInferred: false, title: null, email, findStatus, findSource, verificationStatus: "not_attempted" };
@@ -62,4 +62,21 @@ test("an unlabelled legacy row is judged on its mailbox name", () => {
   // local part is worse than knowing, and better than dropping them.
   assert.equal(reachesAPerson(contact("will@example.com", "", "found")), true);
   assert.equal(reachesAPerson(contact("info@example.com", "", "found")), false);
+});
+
+test("an untouched company says the lookup has not run", () => {
+  assert.equal(lookupCameBackEmpty(company(null)), false);
+});
+
+test("a company whose lookup came back empty says so", () => {
+  const empty: Contact = { name: null, nameInferred: false, title: null, email: null,
+    findStatus: "not_found", findSource: "anymailfinder", verificationStatus: "not_attempted" };
+  assert.equal(lookupCameBackEmpty(company(empty)), true);
+});
+
+test("having a general inbox is NOT evidence the lookup ran", () => {
+  // The old rule keyed the Email column on this and drew a line the reader
+  // could not act on: both kinds of row enrich identically.
+  const c = company(contact("office@acme.com", "company-page:role"));
+  assert.equal(lookupCameBackEmpty(c), false);
 });
