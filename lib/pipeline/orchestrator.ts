@@ -1906,15 +1906,77 @@ export async function enrichContacts(
 
     const toEnrich = (companies ?? []).filter((c) => !alreadyEnriched.has(c.id));
 
-    for (const company of toEnrich) {
-      try {
-        // A parked candidate that already belongs to the person we want —
-        // it matched the founder's or successor's name off their own page.
-        // AnymailFinder cannot beat that, so promote it and spend nothing.
-        // Verification still runs: $0.006 to know whether it delivers is
-        // worth it against $0.05 to look up an address we already have.
+    // ── ONE AT A TIME WAS THE WHOLE PROBLEM ──────────────────────────────
+    //
+    // Every company here does an AnymailFinder lookup, a MillionVerifier
+    // check, sometimes a page fetch, and three or four database writes. Run
+    // strictly in sequence that is comfortably ten seconds each, so a folder
+    // of thirty ran past the platform's five-minute ceiling, got killed
+    // mid-flight, and was tidied up afterwards by the reaper. Daniel enriched
+    // a 12-lead folder and got ONE address: not a bug in the lookup, just the
+    // clock running out somewhere around company three.
+    //
+    // These are independent -- no company's result affects another's -- so
+    // sequence bought nothing. Six at a time turns ten minutes of work into
+    // under two.
+    //
+    // Six, not sixty: each slot is a paid vendor call, and a burst of sixty
+    // concurrent requests to AnymailFinder is how an account starts getting
+    // 429s or looked at. Six is a comfortable multiple with no burst.
+    const POOL = 6;
+
+    // ── AND ITS OWN DEADLINE ─────────────────────────────────────────────
+    //
+    // Even parallel, a big enough folder can run long. Being KILLED is the bad
+    // ending: work in flight is lost, the row is left mid-write, and the
+    // reaper has to guess a message from a stale counter, which is why the
+    // folder said "0 emails" while one was already saved. Stopping on purpose
+    // means every finished company is written, the count is true, and Retry
+    // picks up an exact remainder. The margin matches the discovery run's.
+    const ENRICH_MARGIN_MS = 45_000;
+    const enrichDeadline = Date.now() + Math.max(30_000, RUN_CEILING_MS - ENRICH_MARGIN_MS);
+    let ranOutOfTime = false;
+
+    // Counters are shared, and safe: JavaScript is single-threaded, so `++`
+    // between awaits cannot interleave. The database write is what needs
+    // care, and it is throttled below rather than fired per company.
+    let lastBumpAt = 0;
+    async function maybeBump(force = false) {
+      if (!force && Date.now() - lastBumpAt < 2000) return;
+      lastBumpAt = Date.now();
+      await bump(supabase, searchId, {
+        contacts_found: contactsFound,
+        contacts_verified: contactsVerified,
+      });
+    }
+
+    let checked = 0;
+    await runWithConcurrency(
+      toEnrich,
+      Math.min(POOL, toEnrich.length),
+      async (company) => {
+        checked++;
+        try {
+        // ALREADY HAVE A PERSONAL ADDRESS OFF THEIR OWN SITE? DON'T BUY ONE.
+        //
+        // The crawl reads every page it fetches for addresses and parks what
+        // it finds at 'not_attempted', costing nothing. This used to promote
+        // only the ones that matched the founder's or successor's name by
+        // name, and sent everything else to AnymailFinder anyway -- so a
+        // company that printed manny@oceansidelandscapinginc.com right there
+        // in its footer still cost $0.05 to be told about Manny.
+        //
+        // Any PERSONAL address already in hand is now kept. Verification still
+        // runs: $0.006 to know whether it delivers beats $0.05 to look up an
+        // address that is already sitting on the page.
+        //
+        // A SHARED inbox is the deliberate exception and still triggers the
+        // paid lookup, because info@ reaches whoever screens the inbox and
+        // this product exists to reach the founder by name. Both rows are
+        // kept -- see mapCompanyRow, which ranks the personal one first and
+        // keeps the shared one as backup.
         const parked = parkedByCompany.get(company.id);
-        if (parked?.email && String(parked.find_source).endsWith(":person_match")) {
+        if (parked?.email && !isSharedInbox(parked.email)) {
           const verification = await verifyEmail(parked.email).catch(() => "unknown" as const);
           await supabase
             .from("contacts")
@@ -1929,7 +1991,7 @@ export async function enrichContacts(
           contactsFound++;
           if (verification === "valid") contactsVerified++;
           await bump(supabase, searchId, { contacts_found: contactsFound, contacts_verified: contactsVerified });
-          continue;
+          return; // next company; this one is settled without a paid lookup
         }
 
         // Domain already has a purchased contact — copy it forward instead of
@@ -1951,7 +2013,7 @@ export async function enrichContacts(
           contactsFound++;
           if (known.verification_status === "valid") contactsVerified++;
           await bump(supabase, searchId, { contacts_found: contactsFound, contacts_verified: contactsVerified });
-          continue;
+          return; // next company; this one is settled without a paid lookup
         }
 
         // Any parked candidate left at this point is a shared inbox or an
@@ -2027,17 +2089,30 @@ export async function enrichContacts(
             });
           }
         }
-      } catch (e) {
-        // One company's vendor hiccup doesn't stop the rest of the batch —
-        // it just stays unenriched and picks up on the next run (no
-        // contacts row was inserted, so alreadyEnriched won't skip it).
-        console.warn(`Search ${searchId}: contact enrichment failed for ${company.domain}: ${(e as Error).message}`);
+        } catch (e) {
+          // One company's vendor hiccup doesn't stop the rest of the batch —
+          // it just stays unenriched and picks up on the next run (no
+          // contacts row was inserted, so alreadyEnriched won't skip it).
+          console.warn(`Search ${searchId}: contact enrichment failed for ${company.domain}: ${(e as Error).message}`);
+        }
+        await maybeBump();
+      },
+      () => {
+        const out = Date.now() >= enrichDeadline;
+        if (out) ranOutOfTime = true;
+        return out;
       }
-      await bump(supabase, searchId, { contacts_found: contactsFound, contacts_verified: contactsVerified });
-    }
+    );
+    await maybeBump(true);
 
+    const leftUnchecked = Math.max(0, toEnrich.length - checked);
     await bump(supabase, searchId, {
       enrichment_status: "complete",
+      // Stopping deliberately still has to SAY so, or the folder reads as a
+      // finished pass that simply found less than it should have.
+      enrichment_error: ranOutOfTime && leftUnchecked > 0
+        ? `Stopped at the ${Math.round(RUN_CEILING_MS / 60000)} minute limit with ${leftUnchecked} still to check. Everything found is saved. Press Retry for the rest, you are never charged twice for an address already found.`
+        : null,
       ...(await addEnrichmentCost(supabase, searchId, enrichCounters)),
     });
   } catch (e) {

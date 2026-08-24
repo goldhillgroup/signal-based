@@ -8,6 +8,7 @@ import { MobileNavProvider } from "@/lib/mobile-nav";
 import { Sidebar } from "@/components/Sidebar";
 import { Topbar } from "@/components/Topbar";
 import { DashboardTour } from "@/components/DashboardTour";
+import { BackgroundWatch } from "@/components/BackgroundWatch";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { reapStaleRuns, reapStaleEnrichment } from "@/lib/pipeline/reap";
 
@@ -84,6 +85,13 @@ export default async function DashboardLayout({ children }: { children: ReactNod
             lands after signing in — which is not always Overview. It shows
             itself once and remembers, so this costs a returning user nothing. */}
         <DashboardTour />
+
+        {/* Beside the tour, and for the same reason: it has to reach you
+            wherever you happen to be standing, so it cannot belong to a page.
+            Enrichment runs detached, and before this the only thing watching
+            it was a poll inside the folder page -- leave that page and the
+            pass finished into silence. */}
+        <BackgroundWatch />
       </MobileNavProvider>
     </SearchesProvider>
   );
