@@ -206,7 +206,7 @@ export function LeadTable({
                         // other only invited the question of what the
                         // difference was. The real one is whether the lookup
                         // has happened.
-                        <Muted>{lookupCameBackEmpty(c) ? "none found" : "after Enrich"}</Muted>
+                        <Muted>{lookupCameBackEmpty(c) ? "not found" : "needs enrichment"}</Muted>
                       )}
                     </Td>
                     <Td title={general?.email ?? ""}>
