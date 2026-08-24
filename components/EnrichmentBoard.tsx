@@ -185,7 +185,7 @@ export function EnrichmentBoard() {
                       disabled={busy === f.id}
                       className="shrink-0 cursor-pointer rounded-lg bg-gh-navy px-3 py-1.5 text-[11px] font-semibold text-white transition-colors duration-200 hover:bg-gh-navy-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                      {busy === f.id ? "Reading…" : "Find emails"}
+                      {busy === f.id ? "Reading…" : "Find personal emails"}
                     </button>
                   )}
                   {sig === 0 && all === 0 && (

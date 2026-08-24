@@ -60,10 +60,10 @@ export function EnrichScopeDialog({
       }}
     >
       <div className="w-full max-w-md rounded-2xl border border-gh-border bg-gh-surface p-5 shadow-lg">
-        <h3 className="font-display text-base font-semibold text-gh-ink">Find emails for who?</h3>
+        <h3 className="font-display text-base font-semibold text-gh-ink">Find a personal email for who?</h3>
         <p className="mt-1 text-xs leading-relaxed text-gh-ink-muted">
-          {folderLabel}. Pick any combination. It looks up the successor first
-          where there is one.
+          {folderLabel}. Pick any combination. It looks for the successor’s own
+          address first where there is one, and never another office inbox.
         </p>
 
         <div className="mt-4 flex flex-col gap-1.5">
@@ -123,7 +123,7 @@ export function EnrichScopeDialog({
             "Pick at least one"
           ) : (
             <>
-              Find emails for {total} {total === 1 ? "company" : "companies"}
+              Find a personal email for {total} {total === 1 ? "company" : "companies"}
               <span className="tabular ml-1.5 font-normal text-white/60">
                 up to ${(total * ENRICH_CEILING_PER_COMPANY_USD).toFixed(2)}
               </span>

@@ -359,7 +359,7 @@ export function CompanyDrawer({
                       <p className="text-xs text-gh-ink-muted">
                         {lookupCameBackEmpty(company)
                           ? "The lookup ran and found no personal address for this company."
-                          : "No personal address on their site yet. Find emails will look one up."}
+                          : "No personal address on their site yet. Find personal emails will look one up."}
                       </p>
                     )}
                   </div>

@@ -593,7 +593,7 @@ function SelectionBar({
         disabled={busy}
         className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-gh-navy px-3 py-1.5 text-xs font-semibold text-white hover:bg-gh-navy-2 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
       >
-        {busy ? "Starting…" : `Find emails for ${n}`}
+        {busy ? "Starting…" : `Find a personal email for ${n}`}
       </button>
     </div>
   );

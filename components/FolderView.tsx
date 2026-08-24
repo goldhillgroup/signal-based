@@ -352,10 +352,10 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
           AnymailFinder/MillionVerifier credits. */}
       <div className="flex flex-col items-start gap-2 rounded-xl border border-gh-border bg-gh-surface p-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-sm font-semibold text-gh-ink">Contact enrichment</p>
+          <p className="text-sm font-semibold text-gh-ink">Find a personal email</p>
           <p className="mt-0.5 text-xs text-gh-ink-secondary">
             {folder.enrichmentStatus === "idle" &&
-              `Find and verify emails for the ${stats.qualified + stats.verify} with a signal, separate step, runs on demand. Tick rows below to pick your own.`}
+              `Looks up a named person\u2019s address for the ${stats.qualified + stats.verify} with a signal, not another office inbox. Separate step, runs on demand. Tick rows below to pick your own.`}
             {folder.enrichmentStatus === "running" &&
               `Looking up contacts, ${stats.contactsFound} found, ${stats.contactsVerified} verified so far…`}
             {folder.enrichmentStatus === "complete" &&
@@ -382,7 +382,7 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
               ? "Find more emails"
               : folder.enrichmentStatus === "failed"
                 ? "Retry finding emails"
-                : "Find emails"}
+                : "Find personal emails"}
           </button>
         )}
       </div>

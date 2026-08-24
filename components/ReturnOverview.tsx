@@ -146,7 +146,7 @@ export function ReturnOverview() {
                 disabled={busy === f.id}
                 className="shrink-0 rounded-lg bg-gh-navy px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-gh-navy-2 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {busy === f.id ? "Starting…" : "Find emails"}
+                {busy === f.id ? "Starting…" : "Find personal emails"}
               </button>
             </div>
           ))}

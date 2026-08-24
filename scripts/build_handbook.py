@@ -474,11 +474,18 @@ story += table(
 )
 
 # ── 5. Finding email addresses ─────────────────────────────────────────────
-story += section(5, "Finding email addresses")
-story += [lede("Separate from searching, and never automatic. It costs money "
-               "per address found.")]
+story += section(5, "Finding a personal email")
+story += [lede("This step looks for a named person\u2019s own address, not another "
+               "office inbox. Separate from searching, never automatic, and it "
+               "costs money per address found.")]
+story += [body(
+    "Where a company already prints a general address such as office@ or "
+    "info@, the list keeps it in the General inbox column. That is the front "
+    "desk. The Email column is the one that reaches the founder or the son "
+    "or daughter by name, and it reads Needs enrichment until this step has "
+    "run, or Not found if it ran and there was nothing to find.")]
 story += steps([
-    ("Press Find emails:", "on the Overview, inside a folder, or on the Enrichment screen. All three do the same thing."),
+    ("Press Find personal emails:", "on the Overview, inside a list, or on the Enrichment screen. All three do the same thing."),
     ("Tick who you want:", "founder + successor, good fits, or cut but arguable. Pairs and fits are ticked for you."),
     ("The button shows", "the number of companies and the most it can cost. Press it to start."),
 ])
