@@ -131,7 +131,9 @@ export function EnrichScopeDialog({
           />
           <span className="text-gh-ink-secondary">
             <strong className="font-semibold text-gh-ink">Look up everyone</strong>, not
-            just the person picked on each lead. Costs one lookup per person.
+            just the person picked on each lead. One lookup per person, and on
+            the leads tested so far the second person often came back with the
+            same address as the first.
           </span>
         </label>
 

@@ -2205,6 +2205,27 @@ export async function enrichContacts(
 
           const extra = await findContact(company.domain, person.name);
           if (!extra.found || !extra.email) continue;
+
+          // THE SAME ADDRESS AGAIN, WHICH IS THE COMMON CASE.
+          //
+          // Measured on two real leads: asking for the founder and then for
+          // the successor returned one address both times. AnymailFinder
+          // resolves per DOMAIN, and when it has no mailbox for the specific
+          // person it hands back whichever it does have. So "look up everyone"
+          // often buys one address twice.
+          //
+          // The purchase cannot be taken back -- the vendor bills on a find,
+          // and the find is what tells us it is a duplicate -- but storing it
+          // twice under two different people would put a second name on an
+          // address that demonstrably is not theirs, and that is a lie the
+          // list would carry into an email.
+          const { data: sameAddress } = await supabase
+            .from("contacts")
+            .select("id")
+            .eq("company_id", company.id)
+            .ilike("email", extra.email)
+            .maybeSingle();
+          if (sameAddress) continue;
           const extraVerification = await verifyEmail(extra.email).catch(() => "unknown" as const);
           await supabase.from("contacts").insert({
             company_id: company.id,
