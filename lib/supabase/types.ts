@@ -177,6 +177,10 @@ export interface Database {
         Row: {
           id: string;
           company_id: string;
+          /** Which of the company's people this address belongs to, when it
+           *  was bought for a named one. Null for a general inbox and for
+           *  every row written before company_people existed. */
+          person_id: string | null;
           name: string | null;
           name_inferred: boolean;
           title: string | null;

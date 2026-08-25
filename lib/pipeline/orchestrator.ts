@@ -2091,7 +2091,8 @@ export async function enrichContacts(
           });
           contactsFound++;
           if (known.verification_status === "valid") contactsVerified++;
-          await bump(supabase, searchId, { contacts_found: contactsFound, contacts_verified: contactsVerified });
+
+        await bump(supabase, searchId, { contacts_found: contactsFound, contacts_verified: contactsVerified });
           return; // next company; this one is settled without a paid lookup
         }
 
@@ -2118,10 +2119,14 @@ export async function enrichContacts(
             company_id: company.id,
             name: contact.name,
             name_inferred: contact.nameInferred,
-            title: contact.nameInferred ? null : company.next_gen_title ?? company.founder_title,
+            title: contact.nameInferred ? null : primary?.title ?? company.next_gen_title ?? company.founder_title,
             email: contact.email,
             find_status: "found",
             find_source: "anymailfinder",
+            // Which of the company's people this address belongs to, so
+            // "already looked him up" is answerable per person. Null on the
+            // fallback path, where there is no people row to point at.
+            person_id: primary?.id ?? null,
             verification_status: verification,
             verification_source: "millionverifier",
             verified_at: new Date().toISOString(),
@@ -2172,6 +2177,50 @@ export async function enrichContacts(
               find_source: "anymailfinder+company-page",
             });
           }
+        }
+          // EVERYBODY ELSE AT THIS COMPANY, when that was asked for.
+        //
+        // targetsFor already returned the full list and only the first entry
+        // was being used, so the "look up everyone" checkbox threaded all the
+        // way from the dialog to here and then did nothing. Each extra person
+        // is a separate purchase, which is exactly why the option is off by
+        // default and priced per person.
+        for (const person of wanted.slice(1)) {
+          if (!person?.name) continue;
+          // Someone already bought for is skipped, so pressing this twice does
+          // not pay twice. Same rule as the per-company check above, one level
+          // finer.
+          // Only people that came from the table can be checked this way; a
+          // fallback entry has no row to point at, and it is never in
+          // wanted.slice(1) anyway because that path returns exactly one.
+          if (!person.id) continue;
+          const { data: already } = await supabase
+            .from("contacts")
+            .select("id")
+            .eq("company_id", company.id)
+            .eq("person_id", person.id)
+            .eq("find_status", "found")
+            .maybeSingle();
+          if (already) continue;
+
+          const extra = await findContact(company.domain, person.name);
+          if (!extra.found || !extra.email) continue;
+          const extraVerification = await verifyEmail(extra.email).catch(() => "unknown" as const);
+          await supabase.from("contacts").insert({
+            company_id: company.id,
+            name: extra.name ?? person.name,
+            name_inferred: extra.nameInferred,
+            title: extra.nameInferred ? null : person.title,
+            email: extra.email,
+            find_status: "found",
+            find_source: "anymailfinder",
+            person_id: person.id ?? null,
+            verification_status: extraVerification,
+            verification_source: "millionverifier",
+            verified_at: new Date().toISOString(),
+          });
+          contactsFound++;
+          if (extraVerification === "valid") contactsVerified++;
         }
         } catch (e) {
           // One company's vendor hiccup doesn't stop the rest of the batch —
