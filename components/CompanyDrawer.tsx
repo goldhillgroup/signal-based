@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { PeopleEditor } from "./PeopleEditor";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
@@ -59,6 +59,12 @@ export function CompanyDrawer({
   const [peopleTableMissing, setPeopleTableMissing] = useState(false);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  // A flag that clears itself, rather than comparing Date.now() during render:
+  // reading the clock while rendering makes the output depend on WHEN React
+  // happens to re-render, which is exactly the kind of instability that shows
+  // up once and never reproduces.
+  const [justSaved, setJustSaved] = useState(false);
+  const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [error, setError] = useState("");
   const [draft, setDraft] = useState({
     founder_name: "",
@@ -68,9 +74,29 @@ export function CompanyDrawer({
   });
   const router = useRouter();
 
+  // What the fields held when editing opened. Blur fires on every click away,
+  // including one that changed nothing, and a PATCH per stray click is noise
+  // in the log and a needless write.
+  const original = useRef({ founder_name: "", founder_title: "", next_gen_name: "", next_gen_title: "" });
+  function dirty() {
+    const o = original.current;
+    return (
+      o.founder_name !== draft.founder_name ||
+      o.founder_title !== draft.founder_title ||
+      o.next_gen_name !== draft.next_gen_name ||
+      o.next_gen_title !== draft.next_gen_title
+    );
+  }
+
   function startEdit() {
     if (!company) return;
     setError("");
+    original.current = {
+      founder_name: company.founderName ?? "",
+      founder_title: company.founderTitle ?? "",
+      next_gen_name: company.nextGenName ?? "",
+      next_gen_title: company.nextGenTitle ?? "",
+    };
     setDraft({
       founder_name: company.founderName ?? "",
       founder_title: company.founderTitle ?? "",
@@ -85,7 +111,7 @@ export function CompanyDrawer({
     setError("");
   }
 
-  async function savePeople() {
+  async function savePeople({ keepOpen = false }: { keepOpen?: boolean } = {}) {
     if (!company) return;
     setSaving(true);
     setError("");
@@ -97,7 +123,13 @@ export function CompanyDrawer({
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || "Could not save that.");
-      setEditing(false);
+      original.current = { ...draft };
+      setJustSaved(true);
+      if (savedTimer.current) clearTimeout(savedTimer.current);
+      savedTimer.current = setTimeout(() => setJustSaved(false), 4000);
+      // An auto-save keeps the boxes open: focus left them, the intent to keep
+      // editing did not necessarily go with it.
+      if (!keepOpen) setEditing(false);
       // The drawer reads from a server-rendered list, so the row behind it is
       // stale the moment this succeeds.
       router.refresh();
@@ -327,7 +359,13 @@ export function CompanyDrawer({
                     disabled={saving}
                     className="cursor-pointer rounded-lg border border-gh-border px-2.5 py-1 text-[11px] font-semibold text-gh-ink-secondary transition-colors hover:border-gh-sky/50 hover:text-gh-ink disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
                   >
-                    {saving ? "Saving…" : editing ? "Save" : "Edit people"}
+                    {saving
+                      ? "Saving…"
+                      : editing
+                        ? "Done"
+                        : justSaved
+                          ? "Saved ✓"
+                          : "Edit people"}
                   </button>
                 </div>
                 <div className="space-y-2.5 rounded-lg border border-gh-border p-3.5 text-sm">
@@ -338,7 +376,22 @@ export function CompanyDrawer({
                     />
                   )}
                   {peopleTableMissing && editing ? (
-                    <>
+                    // SAVES WHEN YOU CLICK AWAY, like renaming a folder.
+                    //
+                    // Requiring the button meant a correction typed and then
+                    // abandoned was silently thrown away, which is the worst
+                    // shape for a form: it looks finished and is not. Blur on
+                    // the CONTAINER rather than each field, so tabbing between
+                    // the four boxes is one edit and one write rather than
+                    // four.
+                    <div
+                      onBlur={(e) => {
+                        if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+                        if (!dirty()) return;
+                        void savePeople({ keepOpen: true });
+                      }}
+                      className="space-y-2.5"
+                    >
                       <PersonEdit
                         label="Founder"
                         name={draft.founder_name}
@@ -370,7 +423,7 @@ export function CompanyDrawer({
                       >
                         Cancel
                       </button>
-                    </>
+                    </div>
                   ) : peopleTableMissing ? (
                     <>
                       {company.founderName ? (
