@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { PeopleEditor } from "./PeopleEditor";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { Company, personalEmail, generalEmail, lookupCameBackEmpty, emailKindLabel, reachesAPerson } from "@/lib/company";
+import { Company, personalEmail, lookupCameBackEmpty, emailKindLabel, reachesAPerson } from "@/lib/company";
 import { INDUSTRY_META } from "@/lib/signal-meta";
 import {
   ConfidenceBadge,
@@ -53,6 +54,9 @@ export function CompanyDrawer({
   const [copied, setCopied] = useState<string | null>(null);
   // EDITING WHO TO CALL. See app/api/company/[id]/people/route.ts for why the
   // people are editable and the evidence is not.
+  // Null while we find out; false once the people table has answered. See
+  // PeopleEditor for why a missing table must not surface as an error.
+  const [peopleTableMissing, setPeopleTableMissing] = useState(false);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -106,7 +110,6 @@ export function CompanyDrawer({
 
   const fit = company ? explainFit(company) : null;
   const personal = company ? personalEmail(company) : null;
-  const general = company ? generalEmail(company) : null;
 
   async function copyEmail(email: string) {
     try {
@@ -319,6 +322,7 @@ export function CompanyDrawer({
                   </p>
                   <button
                     type="button"
+                    hidden={!peopleTableMissing}
                     onClick={() => (editing ? savePeople() : startEdit())}
                     disabled={saving}
                     className="cursor-pointer rounded-lg border border-gh-border px-2.5 py-1 text-[11px] font-semibold text-gh-ink-secondary transition-colors hover:border-gh-sky/50 hover:text-gh-ink disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
@@ -327,7 +331,13 @@ export function CompanyDrawer({
                   </button>
                 </div>
                 <div className="space-y-2.5 rounded-lg border border-gh-border p-3.5 text-sm">
-                  {editing ? (
+                  {!peopleTableMissing && company && (
+                    <PeopleEditor
+                      companyId={company.id}
+                      onUnavailable={() => setPeopleTableMissing(true)}
+                    />
+                  )}
+                  {peopleTableMissing && editing ? (
                     <>
                       <PersonEdit
                         label="Founder"
@@ -361,7 +371,7 @@ export function CompanyDrawer({
                         Cancel
                       </button>
                     </>
-                  ) : (
+                  ) : peopleTableMissing ? (
                     <>
                       {company.founderName ? (
                         // Labeled "Founder" only alongside a real next-gen pairing (a
@@ -381,7 +391,7 @@ export function CompanyDrawer({
                         <Row k="Next generation" v="nobody named" muted />
                       )}
                     </>
-                  )}
+                  ) : null}
                   {/* Facts about the company rather than judgements about who
                       runs it, so they stay put in both modes. */}
                   <div className="flex items-center justify-between gap-2 pt-1">

@@ -1810,7 +1810,14 @@ async function emailFromCompanyPage(
 export async function enrichContacts(
   searchId: string,
   scope: EnrichScope = "all",
-  companyIds?: string[]
+  companyIds?: string[],
+  /**
+   * Buy an address for EVERY person listed at a company, not only the chosen
+   * one. Off by default because it multiplies the bill: a company with a
+   * founder and two sons is three lookups, not one. The dialog prices it per
+   * person for the same reason.
+   */
+  everyPerson = false
 ) {
   const supabase = createServiceRoleClient();
 
@@ -1916,6 +1923,49 @@ export async function enrichContacts(
         const hit = list.find((c) => c.find_status === "found" && c.email);
         if (hit && !knownByDomain.has(row.domain)) knownByDomain.set(row.domain, hit);
       });
+    }
+
+    // WHO TO BUY FOR, per company.
+    //
+    // Was `next_gen_name ?? founder_name`, which can only ever name one person
+    // and picks them by whichever the classifier happened to write first. A
+    // builder with two sons in the business could only have one looked up, and
+    // not necessarily the one Jonathan wanted.
+    //
+    // Wrapped in a try because this ships before the migration is applied: a
+    // missing company_people table must leave enrichment working exactly as it
+    // did, not take it down. Same reason the fallback below is the old rule
+    // verbatim.
+    const peopleByCompany = new Map<string, { id: string; name: string; title: string | null }[]>();
+    try {
+      const { data: peopleRows } = await supabase
+        .from("company_people")
+        .select("id, company_id, name, title, is_target, role, created_at")
+        .in("company_id", (companies ?? []).map((c) => c.id));
+      for (const row of peopleRows ?? []) {
+        const list = peopleByCompany.get(row.company_id) ?? [];
+        list.push({ id: row.id, name: row.name, title: row.title });
+        peopleByCompany.set(row.company_id, list);
+      }
+      // Target first, so the single-person path buys for the chosen one.
+      for (const [, list] of peopleByCompany) {
+        list.sort((a, b) => {
+          const at = (peopleRows ?? []).find((r) => r.id === a.id)?.is_target ? 1 : 0;
+          const bt = (peopleRows ?? []).find((r) => r.id === b.id)?.is_target ? 1 : 0;
+          return bt - at;
+        });
+      }
+    } catch {
+      // No people table yet. The fallback below is the original behaviour.
+    }
+
+    /** Everyone this pass should buy an address for at this company. */
+    function targetsFor(c: { id: string; next_gen_name: string | null; founder_name: string | null; next_gen_title: string | null; founder_title: string | null }) {
+      const listed = peopleByCompany.get(c.id) ?? [];
+      if (listed.length > 0) return everyPerson ? listed : listed.slice(0, 1);
+      const name = c.next_gen_name ?? c.founder_name ?? null;
+      const title = c.next_gen_name ? c.next_gen_title : c.founder_title;
+      return name ? [{ id: null as string | null, name, title }] : [{ id: null as string | null, name: null as unknown as string, title: null }];
     }
 
     const toEnrich = (companies ?? []).filter((c) => !alreadyEnriched.has(c.id));
@@ -2055,7 +2105,12 @@ export async function enrichContacts(
           await supabase.from("contacts").delete().eq("company_id", company.id).eq("find_status", "not_attempted");
         }
 
-        const targetName = company.next_gen_name ?? company.founder_name ?? null;
+        // One person, or everybody listed, depending on what was asked for.
+        // Each is a separate purchase, which is why "look up everyone" is an
+        // explicit choice and priced per person rather than per company.
+        const wanted = targetsFor(company);
+        const primary = wanted[0];
+        const targetName = primary?.name ?? null;
         const contact = await findContact(company.domain, targetName);
         if (contact.found && contact.email) {
           const verification = await verifyEmail(contact.email).catch(() => "unknown" as const);

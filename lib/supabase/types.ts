@@ -62,9 +62,47 @@ export type SearchMode = "signal" | "filter" | "hybrid";
 // subcontracts. Recorded for context, never a rejection gate.
 export type OperatingModel = "own_crews" | "subcontract" | "mixed" | "unknown";
 
+/** Which generation somebody belongs to. 'other' covers a non-family GM. */
+export type PersonRole = "founder" | "next_gen" | "other";
+
+/**
+ * A TYPE ALIAS, not an interface, and that is load-bearing.
+ *
+ * supabase-js constrains every table to Record<string, unknown>. A type alias
+ * satisfies that through its implicit index signature; an interface does not,
+ * so writing this as `interface` makes the table fail the constraint and every
+ * insert and update against it resolve to `never` -- which reads at the call
+ * site as "this table does not exist" and sends you looking in the wrong place.
+ */
+export type CompanyPersonRow = {
+  id: string;
+  company_id: string;
+  name: string;
+  title: string | null;
+  role: PersonRole;
+  /** At most one per company, enforced by a partial unique index. */
+  is_target: boolean;
+  /** 'user' rows are hand-corrected and survive a re-crawl. */
+  source: "crawler" | "user";
+  created_at: string;
+};
+
 export interface Database {
   public: {
     Tables: {
+      company_people: {
+        Row: CompanyPersonRow;
+        Insert: Partial<CompanyPersonRow> & {
+          company_id: string;
+          name: string;
+        };
+        Update: Partial<CompanyPersonRow>;
+        // Required by supabase-js's GenericTable. Without it the whole table
+        // fails the constraint and every query against it resolves to `never`,
+        // which reads as "this table does not exist" rather than "you left a
+        // key out".
+        Relationships: [];
+      };
       companies: {
         Row: {
           id: string;

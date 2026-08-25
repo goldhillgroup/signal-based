@@ -17,7 +17,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const body = (await req.json().catch(() => ({}))) as {
     scope?: string;
     companyIds?: unknown;
+    everyPerson?: unknown;
   };
+  // Strict true only. An absent or malformed flag must mean the CHEAP branch:
+  // this multiplies the bill by however many people a company lists, so it is
+  // opted into explicitly or not at all.
+  const everyPerson = body.everyPerson === true;
   // An explicit list wins over the scope word, and is only honoured when it is
   // actually a non-empty list of strings — a malformed body must fall back to a
   // narrower scope, never to a wider one.
@@ -130,7 +135,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   // (see maxDuration above) — the client polls the `searches` row for
   // enrichment_status/contacts_found/contacts_verified, same pattern as the
   // main search's progress polling.
-  after(() => enrichContacts(id, scope, companyIds));
+  after(() => enrichContacts(id, scope, companyIds, everyPerson));
 
   return NextResponse.json({ id, scope, count: toEnrich ?? 0 });
 }

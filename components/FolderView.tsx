@@ -101,7 +101,7 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
     try {
       // An explicit pick overrides the scope server-side, and is the only path
       // that can reach a company the pipeline rejected.
-      await startEnrichment(folder.id, undefined, ids ?? undefined);
+      await startEnrichment(folder.id, undefined, ids ?? undefined, everyPerson);
       setFolder({ ...folder, enrichmentStatus: "running" });
       setWatchingEnrich(true);
     } catch (e) {
@@ -121,6 +121,7 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
 
   // Same three choices as everywhere else. See lib/enrich-scopes — three
   // surfaces each had their own idea of this, and two of them decided for you.
+  const [everyPerson, setEveryPerson] = useState(false);
   const enrichScopes = enrichScopesFor(companies);
 
   const exportable = companies.filter(
@@ -169,9 +170,10 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
         open={choosingScope}
         folderLabel={folder.label}
         scopes={enrichScopes}
-        onPick={(ids) => {
+        onPick={(ids, everyPerson) => {
           setChoosingScope(false);
           setPendingPick(ids);
+          setEveryPerson(everyPerson);
           setConfirmEnrich(true);
         }}
         onCancel={() => setChoosingScope(false)}

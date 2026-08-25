@@ -1,105 +1,204 @@
 import { NextResponse } from "next/server";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import type { PersonRole, CompanyPersonRow } from "@/lib/supabase/types";
 
 /**
- * Correct who a lead's founder and successor actually are.
+ * The people at a company, and which of them the next lookup pays for.
  *
- * WHY THIS EXISTS. Jonathan checked a lead against the company's own site and
- * found the classifier had the generations the wrong way round: it read Steve
- * Hansman as the founder when the page says John Hansman founded it and Steve
- * runs it now. On another he found the successor on LinkedIn, a name the
- * website never prints at all.
+ * WHY THIS EXISTS. A company carried two name fields because the first brief
+ * described two people. Jonathan hit the limit straight away: a builder with a
+ * founder and two sons in the business can only have one of them looked up,
+ * and which one was decided by whichever the classifier happened to name
+ * first. He could see the problem and had no way to act on it.
  *
- * Both cases had the same dead end. Enrichment buys an address for
- * `next_gen_name ?? founder_name`, so a wrong name does not just look wrong,
- * it spends five cents looking up the wrong person and files the result as
- * though it were right. He could see the error and had no way to fix it.
+ * See supabase/migrations/20260819000000_company_people.sql for why this is a
+ * table rather than more columns, and why the crawler's own founder_name /
+ * next_gen_name are left alone: those are the record of what the page said,
+ * and this is the list of who to call. Different things.
  *
- * So: the four name and title fields are editable, and nothing else is. Not
- * the quote, not the source URL, not the verdict. Those are the record of what
- * the crawler actually read, and a product whose whole claim is "you can check
- * this against the live page" cannot let the evidence be rewritten. Who to
- * call is a judgement he is better placed to make than the model; what the
- * page said is a fact.
+ * GET     every person, target first
+ * POST    add one
+ * PATCH   rename, retitle, re-role, or make one the target
+ * DELETE  remove one
  */
 
-const FIELDS = ["founder_name", "founder_title", "next_gen_name", "next_gen_title"] as const;
-type Field = (typeof FIELDS)[number];
+const ROLES = new Set<PersonRole>(["founder", "next_gen", "other"]);
 
-/** Empty string means "clear this", which is different from "leave it alone". */
-function clean(v: unknown): string | null | undefined {
+function asRole(v: unknown): PersonRole | null {
+  return typeof v === "string" && ROLES.has(v as PersonRole) ? (v as PersonRole) : null;
+}
+
+function cleanName(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const t = v.trim().replace(/\s+/g, " ");
+  return t.length === 0 ? null : t.slice(0, 120);
+}
+
+function cleanOptional(v: unknown): string | null | undefined {
   if (v === undefined) return undefined;
   if (v === null) return null;
   if (typeof v !== "string") return undefined;
   const t = v.trim().replace(/\s+/g, " ");
-  if (t.length === 0) return null;
-  return t.slice(0, 120);
+  return t.length === 0 ? null : t.slice(0, 120);
 }
 
-export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-
+async function requireUser() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) {
+  return user;
+}
+
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  if (!(await requireUser())) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+  const service = createServiceRoleClient();
+  const { data, error } = await service
+    .from("company_people")
+    .select("id, name, title, role, is_target, source")
+    .eq("company_id", id)
+    .order("is_target", { ascending: false })
+    .order("created_at", { ascending: true });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ people: data ?? [] });
+}
+
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  if (!(await requireUser())) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  const name = cleanName(body.name);
+  if (!name) return NextResponse.json({ error: "A name is required." }, { status: 400 });
 
-  const patch: Partial<Record<Field, string | null>> = {};
-  for (const f of FIELDS) {
-    const v = clean(body[f]);
-    if (v !== undefined) patch[f] = v;
+  const role: PersonRole = asRole(body.role) ?? "other";
+  const title = cleanOptional(body.title) ?? null;
+  const service = createServiceRoleClient();
+
+  // First person on a company becomes the target: a company with exactly one
+  // name and nobody selected would otherwise enrich nobody.
+  const { count } = await service
+    .from("company_people")
+    .select("id", { count: "exact", head: true })
+    .eq("company_id", id);
+  const makeTarget = body.is_target === true || (count ?? 0) === 0;
+
+  if (makeTarget) {
+    await service.from("company_people").update({ is_target: false }).eq("company_id", id);
   }
+
+  const { data, error } = await service
+    .from("company_people")
+    .insert({ company_id: id, name, title, role, is_target: makeTarget, source: "user" })
+    .select("id, name, title, role, is_target, source")
+    .single();
+
+  if (error) {
+    // The unique index on (company_id, lower(name)) is the intended guard, so
+    // report it as the ordinary thing it is rather than a server failure.
+    if (error.code === "23505") {
+      return NextResponse.json({ error: "That person is already listed." }, { status: 409 });
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  return NextResponse.json({ person: data });
+}
+
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  if (!(await requireUser())) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  const personId = typeof body.person_id === "string" ? body.person_id : null;
+  if (!personId) return NextResponse.json({ error: "Which person?" }, { status: 400 });
+
+  const service = createServiceRoleClient();
+
+  // company_id is checked on every write. Without it a crafted request could
+  // retarget a person belonging to another company by id.
+  const { data: owned } = await service
+    .from("company_people")
+    .select("id")
+    .eq("id", personId)
+    .eq("company_id", id)
+    .maybeSingle();
+  if (!owned) return NextResponse.json({ error: "No such person here." }, { status: 404 });
+
+  const patch: Partial<CompanyPersonRow> = {};
+  const name = cleanOptional(body.name);
+  if (name !== undefined) {
+    if (name === null) return NextResponse.json({ error: "A name is required." }, { status: 400 });
+    patch.name = name;
+  }
+  const title = cleanOptional(body.title);
+  if (title !== undefined) patch.title = title;
+  const role = asRole(body.role);
+  if (role) patch.role = role;
+  // Editing a crawler row makes it the user's: a later re-crawl must not undo
+  // a correction that was made by hand.
+  if (Object.keys(patch).length > 0) patch.source = "user";
+
+  // One target per company is a partial unique index, so the old one has to be
+  // cleared before the new one is set or the second write violates it.
+  if (body.is_target === true) {
+    await service.from("company_people").update({ is_target: false }).eq("company_id", id);
+    patch.is_target = true;
+  }
+
   if (Object.keys(patch).length === 0) {
     return NextResponse.json({ error: "Nothing to update." }, { status: 400 });
   }
 
-  // A successor with no founder is fine; a next-gen TITLE with no next-gen NAME
-  // is a row that renders as a dangling ", President" with nobody attached.
-  const service = createServiceRoleClient();
-  const { data: current, error: readErr } = await service
-    .from("companies")
-    .select("founder_name, next_gen_name")
-    .eq("id", id)
-    .maybeSingle();
-  if (readErr) return NextResponse.json({ error: readErr.message }, { status: 500 });
-  if (!current) return NextResponse.json({ error: "No such company." }, { status: 404 });
-
-  const nextGenAfter = patch.next_gen_name !== undefined ? patch.next_gen_name : current.next_gen_name;
-  if (!nextGenAfter) patch.next_gen_title = null;
-  const founderAfter = patch.founder_name !== undefined ? patch.founder_name : current.founder_name;
-  if (!founderAfter) patch.founder_title = null;
-
-  // EDITING PEOPLE INVALIDATES A PARKED GUESS, not a purchased address.
-  //
-  // The crawl parks addresses it scraped off the page, some of them matched to
-  // the name it believed at the time. Correcting the name leaves those matched
-  // to somebody who is no longer the target, and enrichment treats a matched
-  // parked address as good enough to skip the paid lookup. Left alone, fixing
-  // the name would be silently ignored on exactly the companies the fix
-  // matters most for.
-  //
-  // Only the unpaid ones go. A contact that was actually bought stays: it cost
-  // money, it may still be the right person, and deleting it on a title typo
-  // would be its own bug.
-  const { error: updErr } = await service.from("companies").update(patch).eq("id", id);
-  if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 });
-
-  let clearedGuess = false;
-  if (patch.founder_name !== undefined || patch.next_gen_name !== undefined) {
-    const { data: dropped } = await service
-      .from("contacts")
-      .delete()
-      .eq("company_id", id)
-      .eq("find_status", "not_attempted")
-      .like("find_source", "company-page:person_match%")
-      .select("id");
-    clearedGuess = (dropped ?? []).length > 0;
+  const { error } = await service.from("company_people").update(patch).eq("id", personId);
+  if (error) {
+    if (error.code === "23505") {
+      return NextResponse.json({ error: "That person is already listed." }, { status: 409 });
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
+  return NextResponse.json({ ok: true });
+}
 
-  return NextResponse.json({ ok: true, clearedGuess });
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  if (!(await requireUser())) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+  const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  const personId = typeof body.person_id === "string" ? body.person_id : null;
+  if (!personId) return NextResponse.json({ error: "Which person?" }, { status: 400 });
+
+  const service = createServiceRoleClient();
+  const { data: gone, error } = await service
+    .from("company_people")
+    .delete()
+    .eq("id", personId)
+    .eq("company_id", id)
+    .select("is_target")
+    .maybeSingle();
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Deleting the target leaves nobody selected, which would silently enrich
+  // nobody. Promote whoever is left, by the same rule the backfill used.
+  if (gone?.is_target) {
+    const { data: rest } = await service
+      .from("company_people")
+      .select("id, role")
+      .eq("company_id", id);
+    const next =
+      (rest ?? []).find((p) => p.role === "next_gen") ??
+      (rest ?? []).find((p) => p.role === "founder") ??
+      (rest ?? [])[0];
+    if (next) {
+      await service.from("company_people").update({ is_target: true }).eq("id", next.id);
+    }
+  }
+  return NextResponse.json({ ok: true });
 }

@@ -33,9 +33,11 @@ export function EnrichScopeDialog({
   open: boolean;
   folderLabel: string;
   scopes: EnrichScope[];
-  onPick: (ids: string[]) => void;
+  onPick: (ids: string[], everyPerson: boolean) => void;
   onCancel: () => void;
 }) {
+  const [everyPerson, setEveryPerson] = useState(false);
+
   // PAIRS AND FITS BY DEFAULT — every lead the search accepted. Pairs alone was
   // the old silent default and it is too narrow: a folder of 24 leads with no
   // confirmed pair would have opened with nothing ticked and nothing to do. The
@@ -113,10 +115,30 @@ export function EnrichScopeDialog({
           })}
         </div>
 
+        {/* OFF BY DEFAULT, and priced honestly.
+            A company with a founder and two sons is three lookups, not one, so
+            this multiplies the bill by however many people are listed. The
+            ceiling below cannot know that number without reading every
+            company, so it says "per person" instead of pretending to a total
+            it has not computed. Overstating certainty about a bill is worse
+            than admitting the range. */}
+        <label className="mt-3 flex cursor-pointer items-start gap-2.5 rounded-lg border border-gh-border p-2.5 text-xs">
+          <input
+            type="checkbox"
+            checked={everyPerson}
+            onChange={(e) => setEveryPerson(e.target.checked)}
+            className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer accent-gh-sky"
+          />
+          <span className="text-gh-ink-secondary">
+            <strong className="font-semibold text-gh-ink">Look up everyone</strong>, not
+            just the person picked on each lead. Costs one lookup per person.
+          </span>
+        </label>
+
         <button
           type="button"
           disabled={total === 0}
-          onClick={() => onPick(ids)}
+          onClick={() => onPick(ids, everyPerson)}
           className="mt-4 min-h-11 w-full cursor-pointer rounded-lg bg-gh-navy px-4 py-2.5 text-sm font-semibold text-white transition-colors duration-200 hover:bg-gh-navy-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {total === 0 ? (
@@ -125,7 +147,9 @@ export function EnrichScopeDialog({
             <>
               Find a personal email for {total} {total === 1 ? "company" : "companies"}
               <span className="tabular ml-1.5 font-normal text-white/60">
-                up to ${(total * ENRICH_CEILING_PER_COMPANY_USD).toFixed(2)}
+                {everyPerson
+                  ? `up to $${ENRICH_CEILING_PER_COMPANY_USD.toFixed(2)} per person`
+                  : `up to $${(total * ENRICH_CEILING_PER_COMPANY_USD).toFixed(2)}`}
               </span>
             </>
           )}

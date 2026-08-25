@@ -69,12 +69,12 @@ export function ReturnOverview() {
     }
   }
 
-  async function enrich(id: string, ids: string[]) {
+  async function enrich(id: string, ids: string[], everyPerson = false) {
     setChoosing(null);
     setBusy(id);
     setError("");
     try {
-      await startEnrichment(id, undefined, ids);
+      await startEnrichment(id, undefined, ids, everyPerson);
     } catch (e) {
       setError((e as Error).message || "Could not start enrichment.");
     } finally {
@@ -168,7 +168,7 @@ export function ReturnOverview() {
         open={choosing !== null}
         folderLabel={choosing?.label ?? ""}
         scopes={choosing?.scopes ?? []}
-        onPick={(ids) => choosing && enrich(choosing.id, ids)}
+        onPick={(ids, everyPerson) => choosing && enrich(choosing.id, ids, everyPerson)}
         onCancel={() => setChoosing(null)}
       />
     </div>

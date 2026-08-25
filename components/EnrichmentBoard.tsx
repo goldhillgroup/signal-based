@@ -111,14 +111,14 @@ export function EnrichmentBoard() {
     }
   }
 
-  async function confirmEnrich(ids: string[]) {
+  async function confirmEnrich(ids: string[], everyPerson = false) {
     if (!pending) return;
     const { id } = pending;
     setPending(null);
     setBusy(id);
     setError("");
     try {
-      await startEnrichment(id, undefined, ids);
+      await startEnrichment(id, undefined, ids, everyPerson);
       setWatching({ id, target: ids.length });
     } catch (e) {
       setError((e as Error).message || "Could not start enrichment.");

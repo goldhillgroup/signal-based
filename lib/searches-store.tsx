@@ -265,7 +265,9 @@ interface SearchesContextValue {
   startEnrichment: (
     searchId: string,
     scope?: "signals" | "all",
-    companyIds?: string[]
+    companyIds?: string[],
+    /** Buy for every person listed at a company, not only the chosen one. */
+    everyPerson?: boolean
   ) => Promise<void>;
   deleteSearch: (searchId: string) => Promise<void>;
   renameSearch: (searchId: string, label: string) => Promise<void>;
@@ -397,11 +399,16 @@ export function SearchesProvider({ children }: { children: ReactNode }) {
   );
 
   const startEnrichment = useCallback(
-    async (searchId: string, scope: "signals" | "all" = "signals", companyIds?: string[]) => {
+    async (
+      searchId: string,
+      scope: "signals" | "all" = "signals",
+      companyIds?: string[],
+      everyPerson = false
+    ) => {
       const res = await fetch(`/api/search/${searchId}/enrich`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scope, companyIds }),
+        body: JSON.stringify({ scope, companyIds, everyPerson }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
