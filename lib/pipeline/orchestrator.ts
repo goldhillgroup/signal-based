@@ -2100,11 +2100,22 @@ export async function enrichContacts(
         // unmatched address. AnymailFinder is still worth trying, because a
         // named person beats info@ for someone whose whole pitch is reaching
         // the founder by name — and it only bills on success, so the attempt
-        // is free. Whatever wins replaces the parked row rather than sitting
-        // beside it, so a company never ends up with two contacts.
-        if (parked) {
-          await supabase.from("contacts").delete().eq("company_id", company.id).eq("find_status", "not_attempted");
-        }
+        // is free.
+        //
+        // THE PARKED ROWS USED TO BE DELETED HERE, all of them, before the
+        // purchase. The reason was sound at the time: the UI showed exactly
+        // one contact, so a leftover info@ could win the race and displace an
+        // address that had been paid for.
+        //
+        // It is not sound now. The drawer lists every address with what it is,
+        // and the table gives the personal one and the general inbox their own
+        // columns, so both being present is the point rather than a hazard.
+        // Deleting them meant a company with office@ on its page came out of
+        // enrichment with office@ GONE, replaced by the bought address --
+        // strictly less than it had before, and the front desk number is often
+        // the one that gets answered.
+        //
+        // Only the exact duplicate is removed, after the purchase, below.
 
         // One person, or everybody listed, depending on what was asked for.
         // Each is a separate purchase, which is why "look up everyone" is an
@@ -2115,7 +2126,7 @@ export async function enrichContacts(
         const contact = await findContact(company.domain, targetName);
         if (contact.found && contact.email) {
           const verification = await verifyEmail(contact.email).catch(() => "unknown" as const);
-          await supabase.from("contacts").insert({
+          const { error: insertErr } = await supabase.from("contacts").insert({
             company_id: company.id,
             name: contact.name,
             name_inferred: contact.nameInferred,
@@ -2124,13 +2135,36 @@ export async function enrichContacts(
             find_status: "found",
             find_source: "anymailfinder",
             // Which of the company's people this address belongs to, so
-            // "already looked him up" is answerable per person. Null on the
-            // fallback path, where there is no people row to point at.
-            person_id: primary?.id ?? null,
+            // "already looked him up" is answerable per person.
+            //
+            // SPREAD, NOT `person_id: x ?? null`. The column arrives with the
+            // company_people migration, and PostgREST rejects an entire row
+            // that names a column the table does not have. Written
+            // unconditionally, this silently discarded every purchased address
+            // on any database where that migration had not been run -- the
+            // lookup succeeded, the money was spent, and nothing was saved.
+            ...(primary?.id ? { person_id: primary.id } : {}),
             verification_status: verification,
             verification_source: "millionverifier",
             verified_at: new Date().toISOString(),
           });
+          // A REJECTED WRITE IS NOT A MISS. The address was bought and paid
+          // for; losing it to an unchecked error is the worst outcome
+          // available, so it is reported loudly and the company is left
+          // un-enriched so a retry can pick it up.
+          if (insertErr) {
+            throw new Error(`saving the bought address failed: ${insertErr.message}`);
+          }
+          // The one case the old blanket delete was right about: the address
+          // just bought is the same one already sitting on the page. Two rows
+          // for one mailbox is a duplicate, not two ways in.
+          await supabase
+            .from("contacts")
+            .delete()
+            .eq("company_id", company.id)
+            .eq("find_status", "not_attempted")
+            .ilike("email", contact.email);
+
           contactsFound++;
           if (verification === "valid") contactsVerified++;
         } else {
@@ -2238,7 +2272,7 @@ export async function enrichContacts(
             email: extra.email,
             find_status: "found",
             find_source: "anymailfinder",
-            person_id: person.id ?? null,
+            ...(person.id ? { person_id: person.id } : {}),
             verification_status: extraVerification,
             verification_source: "millionverifier",
             verified_at: new Date().toISOString(),
