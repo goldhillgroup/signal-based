@@ -116,10 +116,22 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-  const personId = typeof body.person_id === "string" ? body.person_id : null;
-  if (!personId) return NextResponse.json({ error: "Which person?" }, { status: 400 });
-
   const service = createServiceRoleClient();
+
+  // TWO SHAPES, because two editors talk to this route.
+  //
+  // The people-table editor sends a person_id. The older two-field editor,
+  // which is still what renders whenever company_people has not been created
+  // yet, sends founder_name / next_gen_name and knows nothing about person
+  // rows. Replacing this file with the person version broke that fallback: it
+  // answered "Which person?" to a request that had correctly not named one,
+  // and Save simply stopped working on every lead.
+  //
+  // The fallback path is the original behaviour, unchanged.
+  if (typeof body.person_id !== "string") {
+    return patchCompanyColumns(id, body, service);
+  }
+  const personId = body.person_id;
 
   // company_id is checked on every write. Without it a crafted request could
   // retarget a person belonging to another company by id.
@@ -201,4 +213,64 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     }
   }
   return NextResponse.json({ ok: true });
+}
+
+/**
+ * The pre-people editor: the four name fields on the company row itself.
+ *
+ * Kept because it is what the drawer falls back to while company_people does
+ * not exist, and because those columns are still the crawler's own record of
+ * what the page said. Clearing a name clears its title so a row cannot render
+ * as a dangling ", President" with nobody attached.
+ */
+async function patchCompanyColumns(
+  id: string,
+  body: Record<string, unknown>,
+  service: ReturnType<typeof createServiceRoleClient>
+) {
+  const FIELDS = ["founder_name", "founder_title", "next_gen_name", "next_gen_title"] as const;
+  type NameField = (typeof FIELDS)[number];
+  const patch: Partial<Record<NameField, string | null>> = {};
+  for (const f of FIELDS) {
+    const v = cleanOptional(body[f]);
+    if (v !== undefined) patch[f] = v;
+  }
+  if (Object.keys(patch).length === 0) {
+    return NextResponse.json({ error: "Nothing to update." }, { status: 400 });
+  }
+
+  const { data: current, error: readErr } = await service
+    .from("companies")
+    .select("founder_name, next_gen_name")
+    .eq("id", id)
+    .maybeSingle();
+  if (readErr) return NextResponse.json({ error: readErr.message }, { status: 500 });
+  if (!current) return NextResponse.json({ error: "No such company." }, { status: 404 });
+
+  const nextGenAfter =
+    patch.next_gen_name !== undefined ? patch.next_gen_name : current.next_gen_name;
+  if (!nextGenAfter) patch.next_gen_title = null;
+  const founderAfter =
+    patch.founder_name !== undefined ? patch.founder_name : current.founder_name;
+  if (!founderAfter) patch.founder_title = null;
+
+  const { error } = await service.from("companies").update(patch).eq("id", id);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // A name change invalidates an UNPAID address that was matched to the old
+  // one: enrichment treats a name-matched parked address as good enough to
+  // skip the paid lookup, so the correction would otherwise be ignored on
+  // exactly the companies it matters most for. Purchased contacts stay.
+  let clearedGuess = false;
+  if (patch.founder_name !== undefined || patch.next_gen_name !== undefined) {
+    const { data: dropped } = await service
+      .from("contacts")
+      .delete()
+      .eq("company_id", id)
+      .eq("find_status", "not_attempted")
+      .like("find_source", "company-page:person_match%")
+      .select("id");
+    clearedGuess = (dropped ?? []).length > 0;
+  }
+  return NextResponse.json({ ok: true, clearedGuess });
 }
