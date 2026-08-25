@@ -86,6 +86,20 @@ export async function findContact(
     personOnly?: boolean;
   } = {}
 ): Promise<ContactFindResult> {
+  // NAME TIDYING WAS TRIED HERE AND REMOVED, because it bought nothing.
+  //
+  // The theory was that a page writes people the way people talk -- John
+  // "Hayden" Turner, Bill Madey Jr, Edward R. Dowling Sr. -- while a directory
+  // holds "John Turner", so the decoration was costing us matches.
+  //
+  // Measured against every name in the database that stripping would change
+  // (19 of them, 10 tested live): raw found 2, tidied found the same 2, newly
+  // found by tidying ZERO. The vendor already normalises suffixes and
+  // nicknames. Sending the page's version verbatim is also the safer of the
+  // two, since a mailbox can genuinely contain "jr".
+  //
+  // Passing company_name alongside the domain was tried in the same pass and
+  // made no difference to any result either.
   if (fullName) {
     const { ok, data } = await post("/search/person.json", { domain, full_name: fullName });
     if (ok && data?.success && data?.results?.email) {
