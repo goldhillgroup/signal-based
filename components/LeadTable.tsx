@@ -69,31 +69,39 @@ export function LeadTable({
 }) {
   const total = groups.reduce((n, g) => n + g.rows.length, 0);
   const selectable = picked !== null && typeof onTogglePick === "function";
+  // THE WIDTHS BELOW ARE A BUDGET THAT MUST SUM TO 100.
+  //
+  // table-fixed divides the table's width by these percentages, so when they
+  // add up to more than 100 every column is scaled down together and the whole
+  // grid truncates at once -- which is exactly what adding "General inbox"
+  // without taking the space from anywhere else did (117%).
+  //
+  // Adding a column means deciding what gets narrower. It is not free.
   const COLS = BASE_COLS + (selectable ? 1 : 0);
 
   return (
     <div className="overflow-x-auto rounded-xl border border-gh-border">
-      <table className="w-full min-w-[1180px] table-fixed border-collapse text-left text-sm">
+      <table className="w-full min-w-[1720px] table-fixed border-collapse text-left text-sm">
         <thead className="sticky top-0 z-10">
           <tr className="bg-gh-surface-sunken text-xs font-semibold uppercase tracking-wide text-gh-ink-secondary">
             {selectable && <Th className="w-[3%]"><span className="sr-only">Pick</span></Th>}
-            <Th className="w-[15%]">Company</Th>
-            <Th className="w-[4%]">State</Th>
-            <Th className="w-[11%]">Signal</Th>
-            <Th className="w-[9%]">Size</Th>
-            <Th className="w-[7%]">Crews</Th>
-            <Th className="w-[17%]">What the site says</Th>
-            <Th className="w-[12%]">Who to reach</Th>
+            <Th className="w-[14%]">Company</Th>
+            <Th className="w-[3%]">State</Th>
+            <Th className="w-[8%]">Signal</Th>
+            <Th className="w-[7%]">Size</Th>
+            <Th className="w-[3%]">Crews</Th>
+            <Th className="w-[12%]">What the site says</Th>
+            <Th className="w-[11%]">Who to reach</Th>
             {/* TWO COLUMNS, because they are two different leads.
                 One column meant a company that printed office@ in its footer
                 showed "after Enrich" here while the address sat visible in the
                 drawer -- the table contradicting the panel behind it. And the
                 two are not interchangeable: office@ reaches whoever screens
                 the mail, buddy@ reaches Buddy. */}
-            <Th className="w-[13%]">Email</Th>
-            <Th className="w-[12%]">General inbox</Th>
-            <Th className="w-[9%]">Deliverable</Th>
-            <Th className="w-[5%]">Source</Th>
+            <Th className="w-[16%]">Email</Th>
+            <Th className="w-[14%]">General inbox</Th>
+            <Th className="w-[5%]">Deliverable</Th>
+            <Th className="w-[4%]">Source</Th>
           </tr>
         </thead>
         <tbody>
