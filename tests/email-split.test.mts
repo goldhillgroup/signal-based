@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { personalEmail, generalEmail, reachesAPerson, lookupCameBackEmpty, type Company, type Contact } from "../lib/company.js";
+import { personalEmail, generalEmail, reachesAPerson, lookupCameBackEmpty, emailKindLabel, type Company, type Contact } from "../lib/company.js";
 
 function contact(email: string, findSource: string, findStatus: Contact["findStatus"] = "not_attempted"): Contact {
   return { name: null, nameInferred: false, title: null, email, findStatus, findSource, verificationStatus: "not_attempted" };
@@ -79,4 +79,22 @@ test("having a general inbox is NOT evidence the lookup ran", () => {
   // could not act on: both kinds of row enrich identically.
   const c = company(contact("office@acme.com", "company-page:role"));
   assert.equal(lookupCameBackEmpty(c), false);
+});
+
+test("a bought address with an inferred name is not sold as a named person", () => {
+  // The domain fallback: asked for John Turner, got doug@ and read "Doug" off
+  // the handle. Real address, wrong person.
+  const inferred: Contact = { name: "Doug", nameInferred: true, title: null,
+    email: "doug@turnerandsonsllc.com", findStatus: "found",
+    findSource: "anymailfinder", verificationStatus: "valid" };
+  assert.equal(emailKindLabel(inferred), "Bought, company address");
+  assert.equal(reachesAPerson(inferred), false);
+});
+
+test("a bought address for a person actually found still counts", () => {
+  const real: Contact = { name: "Douglas Turner", nameInferred: false, title: null,
+    email: "doug@turnerandsonsllc.com", findStatus: "found",
+    findSource: "anymailfinder", verificationStatus: "valid" };
+  assert.equal(emailKindLabel(real), "Bought, named person");
+  assert.equal(reachesAPerson(real), true);
 });

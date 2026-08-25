@@ -68,6 +68,10 @@ export function reachesAPerson(c: Contact | null | undefined): boolean {
     const kind = src.slice("company-page:".length);
     return kind === "person_match" || kind === "person";
   }
+  // A bought address whose NAME was inferred came from the domain fallback,
+  // not from finding the person. It is still a way in, and it still belongs in
+  // the general column rather than being presented as somebody by name.
+  if (c.nameInferred) return false;
   // anymailfinder / reused-known-domain, or anything unlabelled that the
   // lookup settled: a named mailbox is what was asked for.
   return c.findStatus === "found" && !isSharedInbox(c.email);
@@ -90,7 +94,14 @@ export function personalEmail(c: Company): Contact | null {
  */
 export function emailKindLabel(c: Contact): string {
   const src = c.findSource ?? "";
-  if (src === "anymailfinder") return "Bought, named person";
+  if (src === "anymailfinder") {
+    // nameInferred means the person lookup found nothing and the DOMAIN
+    // fallback answered: the address is real, the name attached to it was
+    // read off the handle, and it is very often somebody else entirely.
+    // Asked for John Turner, this returned doug@turnerandsonsllc.com. Calling
+    // that "a named person" would put John's name on Doug's mailbox.
+    return c.nameInferred ? "Bought, company address" : "Bought, named person";
+  }
   if (src === "reused-known-domain") return "Found earlier for this domain";
   if (src.startsWith("company-page:")) {
     switch (src.slice("company-page:".length)) {

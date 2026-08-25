@@ -2203,7 +2203,10 @@ export async function enrichContacts(
             .maybeSingle();
           if (already) continue;
 
-          const extra = await findContact(company.domain, person.name);
+          // personOnly: the domain-wide fallback would hand back the address
+          // already bought for the first person. See findContact for the
+          // measurement behind this.
+          const extra = await findContact(company.domain, person.name, { personOnly: true });
           if (!extra.found || !extra.email) continue;
 
           // THE SAME ADDRESS AGAIN, WHICH IS THE COMMON CASE.

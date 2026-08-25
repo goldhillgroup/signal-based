@@ -60,13 +60,42 @@ async function post(path: string, body: Record<string, unknown>) {
 // never existed. Both branches below can bill at most once per call, since
 // the person lookup returns before the company fallback runs.
 // (Price is an ESTIMATE — see UNIT_USD.)
-export async function findContact(domain: string, fullName: string | null): Promise<ContactFindResult> {
+export async function findContact(
+  domain: string,
+  fullName: string | null,
+  opts: {
+    /**
+     * Refuse the any-address-at-this-domain fallback below.
+     *
+     * WHY THIS EXISTS. Asked for the founder and then the successor at Turner
+     * & Sons, this function returned doug@turnerandsonsllc.com both times, and
+     * scavallari@centralmechct.com both times at Central Mechanical. Not a
+     * vendor quirk: the person lookup found nothing for one of the two names,
+     * the company fallback ran, and a domain-wide address came back reported
+     * as a find. Two of two leads that name both generations.
+     *
+     * For the FIRST person at a company that fallback is the right trade: a
+     * general address beats no way in at all. For the second it is worse than
+     * nothing. We already hold that address, so the call buys a duplicate at
+     * full price and files it under somebody it demonstrably does not belong
+     * to, which is a lie the list would carry into an email.
+     *
+     * With this set the failed person lookup returns not-found and costs
+     * nothing, because the vendor bills on a find.
+     */
+    personOnly?: boolean;
+  } = {}
+): Promise<ContactFindResult> {
   if (fullName) {
     const { ok, data } = await post("/search/person.json", { domain, full_name: fullName });
     if (ok && data?.success && data?.results?.email) {
       recordCost("anymailfinder_lookup");
       return { found: true, email: data.results.email, name: fullName, nameInferred: false };
     }
+  }
+
+  if (opts.personOnly) {
+    return { found: false, email: null, name: null, nameInferred: false };
   }
 
   // Fallback: any email at the domain, name inferred from the handle.
