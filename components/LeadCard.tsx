@@ -188,10 +188,10 @@ export function LeadCard({
         ) : (
           <span className="text-[11px] text-gh-ink-muted">
             {company.contact?.findStatus === "not_found"
-              ? "No email found for this one"
+              ? "Looked up, no personal email exists"
               : parked
-                ? "Contact ready, press Enrich to reveal it"
-                : "Not looked up yet"}
+                ? "Office inbox only, no personal email yet"
+                : "Needs enrichment"}
           </span>
         )}
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { Company, personalEmail, generalEmail, lookupCameBackEmpty } from "@/lib/company";
 import { INDUSTRY_META } from "@/lib/signal-meta";
@@ -50,6 +51,59 @@ export function CompanyDrawer({
   // Which address was copied, not merely that one was: with two buttons a
   // boolean would tick both at once.
   const [copied, setCopied] = useState<string | null>(null);
+  // EDITING WHO TO CALL. See app/api/company/[id]/people/route.ts for why the
+  // people are editable and the evidence is not.
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [draft, setDraft] = useState({
+    founder_name: "",
+    founder_title: "",
+    next_gen_name: "",
+    next_gen_title: "",
+  });
+  const router = useRouter();
+
+  function startEdit() {
+    if (!company) return;
+    setError("");
+    setDraft({
+      founder_name: company.founderName ?? "",
+      founder_title: company.founderTitle ?? "",
+      next_gen_name: company.nextGenName ?? "",
+      next_gen_title: company.nextGenTitle ?? "",
+    });
+    setEditing(true);
+  }
+
+  function cancelEdit() {
+    setEditing(false);
+    setError("");
+  }
+
+  async function savePeople() {
+    if (!company) return;
+    setSaving(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/company/${company.id}/people`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(draft),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || "Could not save that.");
+      setEditing(false);
+      // The drawer reads from a server-rendered list, so the row behind it is
+      // stale the moment this succeeds.
+      router.refresh();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const fit = company ? explainFit(company) : null;
   const personal = company ? personalEmail(company) : null;
   const general = company ? generalEmail(company) : null;
@@ -253,44 +307,101 @@ export function CompanyDrawer({
                 </div>
               )}
 
-              {(company.founderName || company.nextGenName) && (
-                <div>
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gh-ink-muted">
+              {/* ALWAYS SHOWN, even when the crawler named nobody.
+                  It used to render only if a name existed, so a company whose
+                  successor Jonathan had found on LinkedIn had no row to put
+                  him in and no way to reach one. The empty state is the case
+                  that most needs the control. */}
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gh-ink-muted">
                     Leadership
                   </p>
-                  <div className="space-y-2.5 rounded-lg border border-gh-border p-3.5 text-sm">
-                    {company.founderName && (
-                      // Labeled "Founder" only alongside a real next-gen pairing (a
-                      // genuine succession story) — otherwise this is just whoever
-                      // the page names as the decision-maker (owner/CEO/GM/etc, see
-                      // openrouter.ts), so "Contact" reads accurately either way.
-                      <Row
-                        k={company.nextGenName ? "Founder" : "Contact"}
-                        v={`${company.founderName}${company.founderTitle ? `, ${company.founderTitle}` : ""}`}
-                      />
-                    )}
-                    {company.nextGenName && (
-                      <Row k="Next generation" v={`${company.nextGenName}${company.nextGenTitle ? `, ${company.nextGenTitle}` : ""}`} />
-                    )}
-                    <div className="flex items-center justify-between gap-2 pt-1">
-                      <span className="text-gh-ink-muted">Website</span>
-                      <span className="inline-flex items-center gap-1 font-medium text-gh-ink-secondary">
-                        <BuildingIcon className="h-3.5 w-3.5" />
-                        {company.domain}
-                      </span>
-                    </div>
-                    {company.operatingModel && (
-                      <Row
-                        k="Crews"
-                        v={OPERATING_MODEL_LABELS[company.operatingModel] ?? company.operatingModel}
-                      />
-                    )}
-                    {company.discoveryChannel && (
-                      <Row k="Found via" v={CHANNEL_LABELS[company.discoveryChannel] ?? company.discoveryChannel} />
-                    )}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => (editing ? savePeople() : startEdit())}
+                    disabled={saving}
+                    className="cursor-pointer rounded-lg border border-gh-border px-2.5 py-1 text-[11px] font-semibold text-gh-ink-secondary transition-colors hover:border-gh-sky/50 hover:text-gh-ink disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+                  >
+                    {saving ? "Saving…" : editing ? "Save" : "Edit people"}
+                  </button>
                 </div>
-              )}
+                <div className="space-y-2.5 rounded-lg border border-gh-border p-3.5 text-sm">
+                  {editing ? (
+                    <>
+                      <PersonEdit
+                        label="Founder"
+                        name={draft.founder_name}
+                        title={draft.founder_title}
+                        onName={(v) => setDraft((d) => ({ ...d, founder_name: v }))}
+                        onTitle={(v) => setDraft((d) => ({ ...d, founder_title: v }))}
+                      />
+                      <PersonEdit
+                        label="Next generation"
+                        name={draft.next_gen_name}
+                        title={draft.next_gen_title}
+                        onName={(v) => setDraft((d) => ({ ...d, next_gen_name: v }))}
+                        onTitle={(v) => setDraft((d) => ({ ...d, next_gen_title: v }))}
+                      />
+                      {/* The consequence of the edit, said before it is made.
+                          Find emails buys an address for the next generation
+                          when there is one and the founder otherwise, so which
+                          box a name goes in decides who gets paid for. */}
+                      <p className="pt-1 text-[11px] leading-relaxed text-gh-ink-muted">
+                        Find emails looks up the next generation when there is
+                        one, and the founder otherwise. Leave a box empty to
+                        clear it.
+                      </p>
+                      {error && <p className="text-[11px] text-gh-critical">{error}</p>}
+                      <button
+                        type="button"
+                        onClick={cancelEdit}
+                        className="cursor-pointer text-[11px] text-gh-ink-muted underline-offset-2 hover:underline"
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      {company.founderName ? (
+                        // Labeled "Founder" only alongside a real next-gen pairing (a
+                        // genuine succession story) — otherwise this is just whoever
+                        // the page names as the decision-maker (owner/CEO/GM/etc, see
+                        // openrouter.ts), so "Contact" reads accurately either way.
+                        <Row
+                          k={company.nextGenName ? "Founder" : "Contact"}
+                          v={`${company.founderName}${company.founderTitle ? `, ${company.founderTitle}` : ""}`}
+                        />
+                      ) : (
+                        <Row k="Founder" v="nobody named" muted />
+                      )}
+                      {company.nextGenName ? (
+                        <Row k="Next generation" v={`${company.nextGenName}${company.nextGenTitle ? `, ${company.nextGenTitle}` : ""}`} />
+                      ) : (
+                        <Row k="Next generation" v="nobody named" muted />
+                      )}
+                    </>
+                  )}
+                  {/* Facts about the company rather than judgements about who
+                      runs it, so they stay put in both modes. */}
+                  <div className="flex items-center justify-between gap-2 pt-1">
+                    <span className="text-gh-ink-muted">Website</span>
+                    <span className="inline-flex items-center gap-1 font-medium text-gh-ink-secondary">
+                      <BuildingIcon className="h-3.5 w-3.5" />
+                      {company.domain}
+                    </span>
+                  </div>
+                  {company.operatingModel && (
+                    <Row
+                      k="Crews"
+                      v={OPERATING_MODEL_LABELS[company.operatingModel] ?? company.operatingModel}
+                    />
+                  )}
+                  {company.discoveryChannel && (
+                    <Row k="Found via" v={CHANNEL_LABELS[company.discoveryChannel] ?? company.discoveryChannel} />
+                  )}
+                </div>
+              </div>
 
               {(company.contact || company.backupContact) && (
                 <div>
@@ -384,11 +495,53 @@ function InfoTile({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function Row({ k, v }: { k: string; v: string }) {
+function Row({ k, v, muted }: { k: string; v: string; muted?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-2">
       <span className="text-gh-ink-muted">{k}</span>
-      <span className="font-medium text-gh-ink">{v}</span>
+      <span className={muted ? "text-gh-ink-muted" : "font-medium text-gh-ink"}>{v}</span>
+    </div>
+  );
+}
+
+/** A name and a title, side by side, so the pair reads as one person. */
+function PersonEdit({
+  label,
+  name,
+  title,
+  onName,
+  onTitle,
+}: {
+  label: string;
+  name: string;
+  title: string;
+  onName: (v: string) => void;
+  onTitle: (v: string) => void;
+}) {
+  return (
+    <div>
+      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gh-ink-muted">
+        {label}
+      </p>
+      <div className="flex gap-1.5">
+        <input
+          value={name}
+          onChange={(e) => onName(e.target.value)}
+          placeholder="Name"
+          maxLength={120}
+          aria-label={`${label} name`}
+          // 16px on mobile, or iOS zooms in on focus and will not zoom back.
+          className="min-w-0 flex-[3] rounded-lg border border-gh-border bg-gh-surface-sunken px-2 py-1.5 text-base text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none focus:ring-2 focus:ring-gh-sky/25 sm:text-sm"
+        />
+        <input
+          value={title}
+          onChange={(e) => onTitle(e.target.value)}
+          placeholder="Title"
+          maxLength={120}
+          aria-label={`${label} title`}
+          className="min-w-0 flex-[2] rounded-lg border border-gh-border bg-gh-surface-sunken px-2 py-1.5 text-base text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none focus:ring-2 focus:ring-gh-sky/25 sm:text-sm"
+        />
+      </div>
     </div>
   );
 }

@@ -58,9 +58,9 @@ export const FIND_STATUS_META: Record<
   FindStatus,
   { label: string; color: string; bg: string }
 > = {
-  not_attempted: { label: "Not attempted", color: "var(--gh-ink-muted)", bg: "var(--gh-surface-sunken)" },
+  not_attempted: { label: "Needs enrichment", color: "var(--gh-ink-muted)", bg: "var(--gh-surface-sunken)" },
   found: { label: "Contact found", color: "#0b5e85", bg: "#e2f3fb" },
-  not_found: { label: "Contact not found", color: "#8a6400", bg: "#fef3d6" },
+  not_found: { label: "No personal email found", color: "#8a6400", bg: "#fef3d6" },
 };
 
 export const VERIFICATION_META: Record<

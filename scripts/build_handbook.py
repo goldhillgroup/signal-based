@@ -456,6 +456,22 @@ story += [body(
     "Collapse at the foot of the dark menu narrows it to icons and remembers, "
     "so it stays that way until you widen it again. Hover an icon to see its "
     "name. On a phone the menu is behind the button at the top left.")]
+story += [subsection("When it has the wrong person")]
+story += [body(
+    "Open a lead and press Edit people. You can correct the founder, the next "
+    "generation, and their titles. This matters more than it looks: Find "
+    "personal emails buys an address for the next generation when there is "
+    "one and the founder otherwise, so a wrong name spends money looking up "
+    "the wrong person.")]
+story += [body(
+    "Use it when the crawler has the generations the wrong way round, or when "
+    "you found the successor somewhere it could not look, such as LinkedIn. "
+    "Type the name in and it becomes the person the next lookup targets.")]
+story += [note("The quote and the source link cannot be edited.",
+               "Those are the record of what the page actually said, and the whole "
+               "point is that you can check them against the live site. Who to call "
+               "is your judgement; what the page said is a fact.",
+               "gray")]
 story += [subsection("The quote is the point")]
 story += [body(
     "Every confirmed pair carries a sentence from the company's own website, with "
