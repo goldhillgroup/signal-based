@@ -152,6 +152,46 @@ export function bestEmailFor(
 }
 
 /**
+ * Everything the page offered, best first, instead of only the winner.
+ *
+ * bestEmailFor answers "which one should we use", which is the right question
+ * for picking an enrichment target and the wrong one for what to KEEP. A
+ * contractor's About page routinely prints office@, the owner's own address
+ * and a gmail the crew uses, and the crawler was storing one and discarding
+ * the other two. Across every lead in the database not one company had more
+ * than a single address on file, which is not what those pages say.
+ *
+ * They are different things and Jonathan reads them differently: office@ is
+ * the front desk, will@ is Will, and the gmail is often the number he actually
+ * gets answered on. Keeping one and silently binning the rest decided for him.
+ *
+ * Same ranking, so callers that want the single best still take [0].
+ */
+export function allEmailsFor(
+  emails: string[],
+  companyDomain: string,
+  targetNames: (string | null)[]
+): FoundEmail[] {
+  const best = bestEmailFor(emails, companyDomain, targetNames);
+  if (!best) return [];
+  const order: EmailKind[] = ["person_match", "person", "role", "free_mail"];
+  const seen = new Set<string>();
+  const out: FoundEmail[] = [];
+  // bestEmailFor already did the filtering and scoring; re-run it over the
+  // remainder rather than duplicating the rules here, so the two can never
+  // disagree about what counts as a usable address.
+  let pool = emails;
+  for (let guard = 0; guard < 12; guard++) {
+    const next = bestEmailFor(pool, companyDomain, targetNames);
+    if (!next || seen.has(next.email)) break;
+    seen.add(next.email);
+    out.push(next);
+    pool = pool.filter((e) => e.toLowerCase() !== next.email.toLowerCase());
+  }
+  return out.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
+}
+
+/**
  * Is this address a shared inbox rather than a person?
  *
  * Judged on the local part, not on where the address came from, because the

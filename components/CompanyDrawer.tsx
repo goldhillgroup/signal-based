@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { Company, personalEmail, generalEmail, lookupCameBackEmpty } from "@/lib/company";
+import { Company, personalEmail, generalEmail, lookupCameBackEmpty, emailKindLabel, reachesAPerson } from "@/lib/company";
 import { INDUSTRY_META } from "@/lib/signal-meta";
 import {
   ConfidenceBadge,
@@ -403,7 +403,7 @@ export function CompanyDrawer({
                 </div>
               </div>
 
-              {(company.contact || company.backupContact) && (
+              {(company.allContacts ?? []).length > 0 && (
                 <div>
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gh-ink-muted">
                     Contact
@@ -435,37 +435,28 @@ export function CompanyDrawer({
                         </>
                       );
                     })()}
-                    {/* LABELLED BY WHO IT REACHES, and both shown.
-                        This panel used to print one address under the flat
-                        heading "Email", so office@fatherandsonlandscape.com
-                        looked like the way to reach Buddy Orth. It is the way
-                        to reach whoever opens the office mail. Saying which is
-                        which is the difference between a warm approach and one
-                        that never arrives. */}
-                    {personal?.email && (
-                      <div className="flex items-center justify-between gap-2 text-sm">
-                        <span className="text-gh-ink-muted">Personal</span>
+                    {/* EVERY ADDRESS, EACH SAYING WHAT IT IS.
+                        This printed the best personal one and the best general
+                        one, which is fine when a company has two and quietly
+                        wrong when it has four: the other two simply were not
+                        mentioned. Jonathan asked the question outright, "maybe
+                        there are three emails, which one is which", and the
+                        crawler already knew -- it classified each address when
+                        it read the page and then kept the answer to itself. */}
+                    {(company.allContacts ?? []).filter((c) => c.email).map((c) => (
+                      <div key={c.email} className="flex items-start justify-between gap-3 text-sm">
+                        <span className="shrink-0 text-gh-ink-muted">{emailKindLabel(c)}</span>
                         <button
                           type="button"
-                          onClick={() => copyEmail(personal.email!)}
-                          className="font-medium text-gh-sky hover:underline"
+                          onClick={() => copyEmail(c.email!)}
+                          className={`break-all text-right font-medium hover:underline ${
+                            reachesAPerson(c) ? "text-gh-sky" : "text-gh-ink-secondary"
+                          }`}
                         >
-                          {copied === personal.email ? "Copied ✓" : personal.email}
+                          {copied === c.email ? "Copied ✓" : c.email}
                         </button>
                       </div>
-                    )}
-                    {general?.email && (
-                      <div className="flex items-center justify-between gap-2 text-sm">
-                        <span className="text-gh-ink-muted">General inbox</span>
-                        <button
-                          type="button"
-                          onClick={() => copyEmail(general.email!)}
-                          className="font-medium text-gh-ink-secondary hover:underline"
-                        >
-                          {copied === general.email ? "Copied ✓" : general.email}
-                        </button>
-                      </div>
-                    )}
+                    ))}
                     {!personal?.email && (
                       <p className="text-xs text-gh-ink-muted">
                         {lookupCameBackEmpty(company)

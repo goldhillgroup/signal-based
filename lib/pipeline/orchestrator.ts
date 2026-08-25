@@ -5,7 +5,7 @@ import { findContact } from "./anymailfinder";
 import { verifyEmail } from "./millionverifier";
 import type { Industry, SearchMode, SearchRow } from "../supabase/types";
 import { recheckAfterFor, rejectionScope, sizeVerdictStillBinds, parseRevenueBand } from "./recheck-policy";
-import { extractEmails, bestEmailFor, type FoundEmail, bestPhoneFor, isSharedInbox } from "./page-email";
+import { extractEmails, bestEmailFor, allEmailsFor, type FoundEmail, bestPhoneFor, isSharedInbox } from "./page-email";
 import { callableName, cleanEmployeeBand, cleanPersonName, cleanRevenueBand, cleanTitle, earnedConfidence, fitOnlyIsLeadWorthy, isLifestyleBusiness, professionalServicesQualifies, realCompanyName } from "../lead-signal";
 import { buildWarningLine } from "./channel-health";
 import { INDUSTRY_META } from "../signal-meta";
@@ -1593,23 +1593,37 @@ export async function runSearchPipeline(
         // Only for accepted companies. A rejected one is not a lead, and a
         // contacts row on it would make enrichment think it had been handled.
         if (finalQualifies) {
-          const parked = bestEmailFor(extractEmails(classifyText), candidate.domain, [
+          // EVERY address the page printed, not just the winner.
+          //
+          // This took bestEmailFor and stored one row. An About page commonly
+          // carries office@, the owner's own address and a gmail the crew
+          // uses, and the other two were dropped on the floor: across the
+          // whole database not one company had more than a single address,
+          // which is not what those pages say.
+          //
+          // They mean different things to the person calling, so he gets to
+          // see which is which instead of the crawler deciding for him. The
+          // ranking is unchanged, so the first row is still the same address
+          // that used to be the only one.
+          const parkedAll = allEmailsFor(extractEmails(classifyText), candidate.domain, [
             classification.nextGenName,
             classification.founderName,
-          ]);
-          if (parked) {
-            await supabase.from("contacts").insert({
-              company_id: inserted.id,
-              email: parked.email,
-              name: parked.matchedName,
-              name_inferred: parked.matchedName !== null,
-              title: parked.matchedName
-                ? classification.nextGenTitle ?? classification.founderTitle
-                : null,
-              find_status: "not_attempted",
-              find_source: `company-page:${parked.kind}`,
-              verification_status: "not_attempted",
-            });
+          ]).slice(0, 5);
+          if (parkedAll.length > 0) {
+            await supabase.from("contacts").insert(
+              parkedAll.map((parked) => ({
+                company_id: inserted.id,
+                email: parked.email,
+                name: parked.matchedName,
+                name_inferred: parked.matchedName !== null,
+                title: parked.matchedName
+                  ? classification.nextGenTitle ?? classification.founderTitle
+                  : null,
+                find_status: "not_attempted" as const,
+                find_source: `company-page:${parked.kind}`,
+                verification_status: "not_attempted" as const,
+              }))
+            );
           }
         }
 

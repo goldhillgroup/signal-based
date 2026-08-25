@@ -200,6 +200,19 @@ function mapCompanyRow(row: CompanyJoinRow): Company {
           verificationStatus: contact.verification_status,
         }
       : null,
+    // ALL of them, ranked, so the drawer can say which is which instead of
+    // showing one and implying it is the only one.
+    allContacts: ranked
+      .filter((c) => c.email)
+      .map((c) => ({
+        name: c.name,
+        nameInferred: c.name_inferred,
+        title: c.title,
+        email: c.email,
+        findStatus: c.find_status,
+        findSource: c.find_source,
+        verificationStatus: c.verification_status,
+      })),
     backupContact: backup
       ? {
           name: backup.name,

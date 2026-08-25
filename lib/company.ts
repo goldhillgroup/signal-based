@@ -82,6 +82,32 @@ export function personalEmail(c: Company): Contact | null {
 }
 
 /**
+ * What kind of mailbox this is, in the words Jonathan uses.
+ *
+ * He asked it outright: with three addresses on a company, which is which?
+ * The crawler already knows, because it classified each one while reading the
+ * page (see page-email.ts's EmailKind), and was keeping the answer to itself.
+ */
+export function emailKindLabel(c: Contact): string {
+  const src = c.findSource ?? "";
+  if (src === "anymailfinder") return "Bought, named person";
+  if (src === "reused-known-domain") return "Found earlier for this domain";
+  if (src.startsWith("company-page:")) {
+    switch (src.slice("company-page:".length)) {
+      case "person_match":
+        return "Personal, matches the name";
+      case "person":
+        return "Personal, own domain";
+      case "role":
+        return "General inbox";
+      case "free_mail":
+        return "Free mail account";
+    }
+  }
+  return "On the page";
+}
+
+/**
  * Has a paid lookup already been run for this company and come back empty?
  *
  * The difference between "we have not looked yet" and "we looked and there is
@@ -156,6 +182,8 @@ export interface Company {
    * whichever row the database happened to return first.
    */
   backupContact: Contact | null;
+  /** Every address on file for this company, best first. */
+  allContacts?: Contact[];
 }
 
 /**

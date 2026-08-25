@@ -144,10 +144,21 @@ function SidebarBody({
 
       <nav className={`min-h-0 flex-1 space-y-1 overflow-y-auto py-5 ${collapsed ? "px-2" : "px-3"}`}>
         {NAV_ITEMS.map(({ label, icon: Icon, href }) => {
-          // Exact match for the dashboard root so it doesn't also light up
-          // while on /dashboard/lists/[id] — "All Leads" only lights up on
-          // its own exact route.
-          const active = pathname === href;
+          // A CHILD ROUTE LIGHTS ITS PARENT.
+          //
+          // This was an exact match, and the route it forgot is the one you
+          // spend the most time on: open a list and you are at
+          // /dashboard/lists/<id>, which is nothing's href, so the whole rail
+          // went dark and the app stopped saying where you were.
+          //
+          // /dashboard stays exact on purpose. It is a prefix of every other
+          // route, so section-matching it would light Signal Radar everywhere
+          // at once.
+          const active =
+            href === "/dashboard"
+              ? pathname === href
+              : pathname === href || pathname.startsWith(`${href}/`) ||
+                (href === "/dashboard/all-leads" && pathname.startsWith("/dashboard/lists/"));
           const badge = badges[href] ?? 0;
           return (
             <Link
@@ -166,7 +177,7 @@ function SidebarBody({
                 collapsed ? "justify-center px-0" : "px-3"
               } ${
                 active
-                  ? "bg-white/10 text-white"
+                  ? "bg-gh-sky/20 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
                   : "text-white/55 hover:bg-white/5 hover:text-white"
               }`}
             >
@@ -182,7 +193,7 @@ function SidebarBody({
               />
               <Icon
                 className={`h-4.5 w-4.5 shrink-0 transition-transform duration-200 ${
-                  active ? "scale-110" : "group-hover:scale-110"
+                  active ? "scale-110 text-gh-sky" : "group-hover:scale-110"
                 }`}
               />
               {!collapsed && <span className="flex-1">{label}</span>}
