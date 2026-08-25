@@ -445,11 +445,30 @@ async function fetchAnymailfinder(meta: VendorMeta): Promise<VendorUsage> {
 
   const left = num(res.data.credits_left);
   if (left === null) return unreadable(meta, "Balance missing from the response");
-  const total = num(res.data.credits_total);
+
+  // THEIR credits_total IS NOT THE PLAN SIZE.
+  //
+  // It comes back equal to credits_left on every call: 269 and 269 on a plan
+  // that renews at 400. Rendering "269 of 269 credits left" says nothing has
+  // been used, on an account with 32 lookups behind it, and the percentage
+  // derived from it is permanently 0%. A number that is always wrong in the
+  // reassuring direction is worse than no number.
+  //
+  // So the pair is only trusted when it actually differs.
+  const rawTotal = num(res.data.credits_total);
+  const total = rawTotal !== null && rawTotal > left ? rawTotal : null;
   const percentUsed = total === null ? null : pctUsed(total - left, total);
 
   const detail: string[] = [];
   if (res.data.email) detail.push(`Account: ${res.data.email}.`);
+  // What the vendor will not tell us, counted from our own side: every
+  // purchased address is exactly one billed credit, so this is the spend
+  // Signal Radar is responsible for. It says nothing about lookups made from
+  // their dashboard, which is why it is worded as ours rather than as usage.
+  const bought = await anymailfinderLookupsMade();
+  if (bought !== null) {
+    detail.push(`${units(bought)} ${bought === 1 ? "address" : "addresses"} bought through Signal Radar so far.`);
+  }
   detail.push("Charged only when a lookup returns an address, misses are free.");
 
   return {
@@ -465,6 +484,28 @@ async function fetchAnymailfinder(meta: VendorMeta): Promise<VendorUsage> {
     resetNote: "renewal date isn't exposed by the API, check the dashboard",
     warnLevel: levelFor(percentUsed),
   };
+}
+
+/**
+ * How many credits this product has actually spent.
+ *
+ * One purchased address is one billed credit, so the contacts table is an
+ * exact count and needs no separate meter. Returns null rather than throwing:
+ * a balance card must still render when the database is unreachable.
+ */
+async function anymailfinderLookupsMade(): Promise<number | null> {
+  try {
+    const { createServiceRoleClient } = await import("./supabase/server");
+    const { count, error } = await createServiceRoleClient()
+      .from("contacts")
+      .select("id", { count: "exact", head: true })
+      .eq("find_source", "anymailfinder")
+      .eq("find_status", "found");
+    if (error) return null;
+    return count ?? null;
+  } catch {
+    return null;
+  }
 }
 
 // ── MillionVerifier ───────────────────────────────────────────────────────
