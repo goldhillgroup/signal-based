@@ -1,8 +1,9 @@
 import { createServiceRoleClient } from "../supabase/server";
 import { discoverCandidates, fetchCompanyPages, pickBestPage, fetchSingleUrl, isOffTradeName, type Candidate, type FetchedPage } from "./apify";
 import { VendorUnavailableError, classifySignal, disprovePass } from "./openrouter";
-import { findContact } from "./anymailfinder";
+import { findContact, companyEmails } from "./anymailfinder";
 import { peopleFrom } from "./people";
+import { localMatchesName } from "./page-email";
 import { verifyEmail } from "./millionverifier";
 import type { Industry, SearchMode, SearchRow } from "../supabase/types";
 import { recheckAfterFor, rejectionScope, sizeVerdictStillBinds, parseRevenueBand } from "./recheck-policy";
@@ -1938,6 +1939,8 @@ export async function enrichContacts(
     // company nobody has edited there are no extra rows and no flag, so the
     // list collapses to exactly the old rule and nothing changes.
     const peopleByCompany = new Map<string, { id: string | null; name: string; title: string | null }[]>();
+    /** How many of a company's people were ticked. At least one, always. */
+    const selectedCount = new Map<string, number>();
     for (const c of companies ?? []) {
       const listed = peopleFrom(
         {
@@ -1949,18 +1952,26 @@ export async function enrichContacts(
         (existingContacts ?? []).filter((k) => k.company_id === c.id) as never
       );
       // Target first, so the single-person path buys for the chosen one.
+      // TICKED FIRST, AND EVERY TICKED ONE COUNTS. More than one person can
+      // be selected now, so this is not "the target and then the rest" -- it
+      // is "the ones chosen, then the ones not".
+      const ticked = listed.filter((p) => p.isTarget);
+      const rest = listed.filter((p) => !p.isTarget);
       peopleByCompany.set(
         c.id,
-        [...listed]
-          .sort((a, b) => Number(b.isTarget) - Number(a.isTarget))
-          .map((p) => ({ id: p.id, name: p.name, title: p.title }))
+        [...ticked, ...rest].map((p) => ({ id: p.id, name: p.name, title: p.title }))
       );
+      selectedCount.set(c.id, Math.max(1, ticked.length));
     }
 
     /** Everyone this pass should buy an address for at this company. */
     function targetsFor(c: { id: string; next_gen_name: string | null; founder_name: string | null; next_gen_title: string | null; founder_title: string | null }) {
       const listed = peopleByCompany.get(c.id) ?? [];
-      if (listed.length > 0) return everyPerson ? listed : listed.slice(0, 1);
+      // Everyone ticked. "Look up everyone" widens that to the whole list;
+      // without it, the ticks are the instruction.
+      if (listed.length > 0) {
+        return everyPerson ? listed : listed.slice(0, selectedCount.get(c.id) ?? 1);
+      }
       const name = c.next_gen_name ?? c.founder_name ?? null;
       const title = c.next_gen_name ? c.next_gen_title : c.founder_title;
       return name ? [{ id: null as string | null, name, title }] : [{ id: null as string | null, name: null as unknown as string, title: null }];
@@ -2210,15 +2221,81 @@ export async function enrichContacts(
             });
           }
         }
-          // EVERYBODY ELSE AT THIS COMPANY, when that was asked for.
+          // EVERY OTHER ADDRESS THE SAME LOOKUP RETURNED.
         //
-        // targetsFor already returned the full list and only the first entry
-        // was being used, so the "look up everyone" checkbox threaded all the
-        // way from the dialog to here and then did nothing. Each extra person
-        // is a separate purchase, which is exactly why the option is off by
-        // default and priced per person.
+        // The charge is per lookup, not per address, so these are already
+        // bought. Father & Son came back with seven and we were storing one:
+        // skip@ in that list is Skip Orth, the founder, and he was thrown
+        // away so that david@ could be shown by itself.
+        //
+        // Matched to a person by mailbox name where possible -- skip@ to Skip
+        // Orth, buddy@ to Buddy Orth -- because an address attached to the
+        // right human is the difference between a lead and a directory.
+        // Everything else is kept unattached rather than guessed at.
+        // Ask the vendor for the whole domain when "look up everyone" was
+        // ticked. The person lookup above returns one address and, when it
+        // succeeds, never fetches the list -- which is how Skip Orth stayed
+        // invisible on a company whose son had already been found.
+        const sweep =
+          everyPerson && contact.found ? await companyEmails(company.domain) : [];
+        const alsoFound = [...contact.alternates, ...sweep];
+
+        if (alsoFound.length > 0) {
+          const roster = (peopleByCompany.get(company.id) ?? []).filter((x) => x.name);
+          const { data: held } = await supabase
+            .from("contacts")
+            .select("email")
+            .eq("company_id", company.id);
+          const have = new Set(
+            (held ?? []).map((h) => String(h.email ?? "").toLowerCase()).filter(Boolean)
+          );
+
+          for (const extra of alsoFound) {
+            if (have.has(extra.toLowerCase())) continue;
+            have.add(extra.toLowerCase());
+            const local = extra.split("@")[0] ?? "";
+            const owner = roster.find((x) => localMatchesName(local, x.name)) ?? null;
+            // Verified only when it belongs to somebody named. The rest are
+            // billing@ and accounting@, and 0.6 cents each to confirm a
+            // mailbox nobody intends to write to is money for nothing.
+            const verification = owner
+              ? await verifyEmail(extra).catch(() => "unknown" as const)
+              : ("not_attempted" as const);
+            await supabase.from("contacts").insert({
+              company_id: company.id,
+              name: owner?.name ?? null,
+              name_inferred: false,
+              title: owner?.title ?? null,
+              email: extra,
+              find_status: "found",
+              // Distinct from "anymailfinder" so the drawer can say this came
+              // free with another lookup rather than being bought on purpose.
+              find_source: owner ? "anymailfinder:also" : "anymailfinder:also:unmatched",
+              verification_status: verification,
+              verification_source: owner ? "millionverifier" : null,
+              verified_at: owner ? new Date().toISOString() : null,
+            });
+            if (owner) {
+              contactsFound++;
+              if (verification === "valid") contactsVerified++;
+            }
+          }
+        }
+
+        // ANYBODY THE SWEEP DID NOT COVER.
+        //
+        // The domain sweep above is the cheap way to reach the rest of the
+        // family: one charge, up to ten addresses, matched by mailbox name.
+        // This loop is the expensive way and now only runs for people it
+        // missed -- somebody whose address is not on the company domain at
+        // all. Measured earlier, a per-person lookup returned the SAME address
+        // as the first person on both leads that named two generations, so
+        // this is the fallback rather than the method.
+        const covered = new Set(alsoFound.map((e) => (e.split("@")[0] ?? "").toLowerCase()));
         for (const person of wanted.slice(1)) {
           if (!person?.name) continue;
+          // Already picked up by the sweep, at no extra cost.
+          if ([...covered].some((local) => localMatchesName(local, person.name))) continue;
           // Someone already bought for is skipped, so pressing this twice does
           // not pay twice. Same rule as the per-company check above, one level
           // finer.

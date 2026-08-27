@@ -81,7 +81,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const t = body.target as Record<string, unknown>;
     const name = cleanName(t.name);
     if (!name) return NextResponse.json({ error: "Which person?" }, { status: 400 });
-    await setTarget(service, id, { name, title: cleanOptional(t.title) ?? null });
+    await setTarget(service, id, { name, title: cleanOptional(t.title) ?? null }, t.selected !== false);
     return NextResponse.json({ people: await loadPeople(service, id) });
   }
 

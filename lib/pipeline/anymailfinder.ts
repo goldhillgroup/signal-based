@@ -16,6 +16,18 @@ export interface ContactFindResult {
   email: string | null;
   name: string | null;
   nameInferred: boolean;
+  /**
+   * Every OTHER address the same paid lookup returned.
+   *
+   * The vendor hands back a list and we were keeping element zero. Asked about
+   * fatherandsonlandscape.com it returned seven of a stated ten -- david@,
+   * mattscheff@, buddy@, skip@, billing@, office@, accounting@ -- and skip@ is
+   * Skip Orth, the founder this product exists to reach. He was discarded, in
+   * a response already paid for, so that david@ could be shown alone.
+   *
+   * These cost nothing extra. The charge is per lookup, not per address.
+   */
+  alternates: string[];
 }
 
 // Read a plausible first name off an email handle for the fallback case —
@@ -104,12 +116,18 @@ export async function findContact(
     const { ok, data } = await post("/search/person.json", { domain, full_name: fullName });
     if (ok && data?.success && data?.results?.email) {
       recordCost("anymailfinder_lookup");
-      return { found: true, email: data.results.email, name: fullName, nameInferred: false };
+      return {
+        found: true,
+        email: data.results.email,
+        name: fullName,
+        nameInferred: false,
+        alternates: cleanEmails(data.results.alternatives, data.results.email),
+      };
     }
   }
 
   if (opts.personOnly) {
-    return { found: false, email: null, name: null, nameInferred: false };
+    return { found: false, email: null, name: null, nameInferred: false, alternates: [] };
   }
 
   // Fallback: any email at the domain, name inferred from the handle.
@@ -119,9 +137,58 @@ export async function findContact(
     const first = emails[0];
     if (first) {
       recordCost("anymailfinder_lookup");
-      return { found: true, email: first, name: inferNameFromEmail(first), nameInferred: true };
+      return {
+        found: true,
+        email: first,
+        name: inferNameFromEmail(first),
+        nameInferred: true,
+        alternates: cleanEmails(emails, first),
+      };
     }
   }
 
-  return { found: false, email: null, name: null, nameInferred: false };
+  return { found: false, email: null, name: null, nameInferred: false, alternates: [] };
+}
+
+/** The list minus the one already taken, deduplicated, sane, and capped. */
+function cleanEmails(raw: unknown, exclude: string | null): string[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of raw) {
+    const e = typeof v === "string" ? v.trim().toLowerCase() : "";
+    if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(e)) continue;
+    if (exclude && e === exclude.trim().toLowerCase()) continue;
+    if (seen.has(e)) continue;
+    seen.add(e);
+    out.push(e);
+    // Ten addresses on one small company is mostly billing@ and info@ by the
+    // tail. Enough to catch the family, not so many that the drawer becomes a
+    // mailing list.
+    if (out.length >= 9) break;
+  }
+  return out;
+}
+
+/**
+ * Every address the vendor holds for a domain, in one call.
+ *
+ * The company endpoint returns a LIST -- fatherandsonlandscape.com came back
+ * with seven of a stated ten, including skip@ for Skip Orth, the founder --
+ * and until now it only ran as a fallback when a person lookup found nothing.
+ * On a company where the person WAS found, the list was never fetched, so the
+ * rest of the family stayed invisible.
+ *
+ * ONE CHARGE, not one per person. That matters against the alternative: buying
+ * per person costs a lookup each and, measured on the two leads that name both
+ * generations, returned the SAME address both times. A single sweep is cheaper
+ * and returns more.
+ */
+export async function companyEmails(domain: string): Promise<string[]> {
+  const { ok, data } = await post("/search/company.json", { domain });
+  if (!ok || !data?.success) return [];
+  const emails: unknown = data?.results?.emails;
+  if (!Array.isArray(emails) || emails.length === 0) return [];
+  recordCost("anymailfinder_lookup");
+  return cleanEmails(emails, null);
 }

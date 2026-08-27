@@ -92,7 +92,7 @@ function nameTokens(name: string | null): string[] {
  * `will.greathouse`, `greathousew`. Requires a length-3 token so "a@" or "jo@"
  * cannot match "Joanne" by accident.
  */
-function localMatchesName(local: string, name: string): boolean {
+export function localMatchesName(local: string, name: string): boolean {
   const parts = nameTokens(name);
   if (parts.length === 0) return false;
   const flat = local.replace(/[._-]/g, "");

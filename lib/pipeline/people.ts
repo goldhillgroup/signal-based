@@ -47,7 +47,11 @@ export interface Person {
   title: string | null;
   /** Where this person came from, which decides whether they can be deleted. */
   origin: "founder" | "next_gen" | "user";
-  /** The one enrichment buys an address for. Exactly one is ever true. */
+  /**
+   * Ticked for enrichment. MORE THAN ONE MAY BE, which is the point: a
+   * builder with a founder and two sons is three people worth an address, and
+   * one radio button made that a choice between them.
+   */
   isTarget: boolean;
   /** An address already on file for them, if any. */
   email: string | null;
@@ -81,7 +85,7 @@ interface ContactRow {
  * as it did before this existed.
  */
 export function peopleFrom(company: CompanyRow, contacts: ContactRow[]): Person[] {
-  const flagged = contacts.find((c) => c.find_source === PERSON_TARGET_SOURCE && c.name);
+  const flagged = contacts.filter((c) => c.find_source === PERSON_TARGET_SOURCE && c.name);
 
   const out: Person[] = [];
   if (company.founder_name) {
@@ -139,10 +143,13 @@ export function peopleFrom(company: CompanyRow, contacts: ContactRow[]): Person[
     if (hit) p.email = hit.email;
   }
 
-  if (flagged) {
-    const t = out.find((p) => p.id === flagged.id) ?? out.find((p) => p.name === flagged.name);
+  for (const f of flagged) {
+    const t = out.find((p) => p.id === f.id) ?? out.find((p) => p.name === f.name);
     if (t) t.isTarget = true;
   }
+  // Nobody ticked is the old rule, unchanged: the next generation when there
+  // is one, the founder otherwise. A company nobody has touched still enriches
+  // exactly as it did before any of this existed.
   if (!out.some((p) => p.isTarget)) {
     const fallback = out.find((p) => p.origin === "next_gen") ?? out[0];
     if (fallback) fallback.isTarget = true;
@@ -171,18 +178,15 @@ export async function loadPeople(db: Db, companyId: string): Promise<Person[]> {
  * creates a row for them. That row carries no email and never will unless a
  * lookup finds one: it exists to say "this is who we want".
  */
-export async function setTarget(db: Db, companyId: string, person: { name: string; title: string | null }) {
-  // Clear the old flag first. Demoting to the plain person source rather than
-  // deleting keeps the person in the list, which is what an untick means.
-  const { data: current } = await db
-    .from("contacts")
-    .select("id")
-    .eq("company_id", companyId)
-    .eq("find_source", PERSON_TARGET_SOURCE);
-  for (const row of current ?? []) {
-    await db.from("contacts").update({ find_source: PERSON_SOURCE }).eq("id", row.id);
-  }
-
+export async function setTarget(
+  db: Db,
+  companyId: string,
+  person: { name: string; title: string | null },
+  selected = true
+) {
+  // NO LONGER EXCLUSIVE. Ticking one person used to untick everybody else,
+  // because enrichment could only ever buy for one. It can buy for each of
+  // them now, so this sets one person's flag and leaves the rest alone.
   const { data: existing } = await db
     .from("contacts")
     .select("id, find_source")
@@ -196,10 +200,19 @@ export async function setTarget(db: Db, companyId: string, person: { name: strin
     // would lose how the address was found, which is the audit trail.
     const src = String(row.find_source ?? "");
     if (src === PERSON_SOURCE || src === PERSON_TARGET_SOURCE || src === "") {
-      await db.from("contacts").update({ find_source: PERSON_TARGET_SOURCE }).eq("id", row.id);
+      await db
+        .from("contacts")
+        .update({ find_source: selected ? PERSON_TARGET_SOURCE : PERSON_SOURCE })
+        .eq("id", row.id);
       return;
     }
+    // A row we must not touch, and unticking it is a no-op: it already holds
+    // a bought address, so nothing more will be spent on that person anyway.
+    return;
   }
+
+  // Unticking somebody with no row of their own has nothing to write.
+  if (!selected) return;
 
   await db.from("contacts").insert({
     company_id: companyId,

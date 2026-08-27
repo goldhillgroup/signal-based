@@ -140,7 +140,7 @@ export function PeopleEditor({
                     bury the names it is meant to annotate. */}
                 {p.isTarget && (
                   <span className="shrink-0 rounded-full bg-gh-sky/10 px-2 py-0.5 text-[10px] font-semibold text-gh-navy">
-                    gets the email
+                    getting an email
                   </span>
                 )}
               </div>
@@ -162,9 +162,10 @@ export function PeopleEditor({
   return (
     <div className="space-y-2.5">
       <p className="text-[11px] leading-relaxed text-gh-ink-muted">
-        Click a name to correct it. Up to {max} people. The one marked{" "}
-        <span className="font-semibold text-gh-ink">Gets the email</span> is who
-        a paid lookup buys an address for.
+        Click a name to correct it. Up to {max} people. Everyone marked{" "}
+        <span className="font-semibold text-gh-ink">Getting an email</span> is
+        looked up when you press Find personal emails, and each one is charged
+        separately.
       </p>
       {people.length === 0 && (
         <p className="text-xs text-gh-ink-muted">
@@ -181,7 +182,11 @@ export function PeopleEditor({
           person={p}
           busy={busy}
           onSave={(name, title) => saveEdit(p, name, title)}
-          onTarget={() => send("PATCH", { target: { name: p.name, title: p.title } })}
+          onTarget={() =>
+            send("PATCH", {
+              target: { name: p.name, title: p.title, selected: !p.isTarget },
+            })
+          }
           onDelete={() =>
             p.origin === "user" && p.id
               ? send("DELETE", { contact_id: p.id })
@@ -332,24 +337,28 @@ function PersonRow({
             is spent on, and a radio next to a name reads as "select this row",
             which is a different and more ordinary thing. The control now says
             what it does. */}
+        {/* A TOGGLE, NOT A RADIO. Ticking one person used to untick everyone
+            else, because enrichment could only buy for one. It can buy for
+            each of them now, so a builder with a founder and two sons is
+            three ticks rather than a choice between them. */}
         <button
           type="button"
           onClick={onTarget}
-          disabled={busy || person.isTarget}
+          disabled={busy}
           aria-pressed={person.isTarget}
           title={
             person.isTarget
-              ? "Find personal emails will look this person up"
-              : `Look up an email for ${person.name} instead`
+              ? `Find personal emails will look ${person.name} up. Click to leave them out.`
+              : `Also look up an email for ${person.name}`
           }
           className={`mt-0.5 inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 ${
             person.isTarget
-              ? "cursor-default bg-gh-navy text-white"
+              ? "cursor-pointer bg-gh-navy text-white hover:bg-gh-navy-2"
               : "cursor-pointer border border-gh-border text-gh-ink-muted hover:border-gh-navy/40 hover:text-gh-ink"
           }`}
         >
           {person.isTarget && <CheckIcon className="h-3 w-3" />}
-          {person.isTarget ? "Gets the email" : "Email this one"}
+          {person.isTarget ? "Getting an email" : "Also get this one"}
         </button>
         <div className="min-w-0 flex-1">
           {editing ? (

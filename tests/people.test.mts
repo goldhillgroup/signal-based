@@ -65,3 +65,20 @@ test("a purchased contact is not mistaken for a hand-added person", () => {
   ]);
   assert.deepEqual(people.map((p) => p.name), ["John Hansmann", "Steve Hansmann"]);
 });
+
+test("more than one person can be ticked", () => {
+  // A builder with a founder and two sons is three people worth an address.
+  // One radio button made that a choice between them.
+  const people = peopleFrom(company, [
+    row({ id: "a", name: "Dave Hansmann", find_source: PERSON_TARGET_SOURCE }),
+    row({ id: "b", name: "Julie Hansmann", find_source: PERSON_TARGET_SOURCE }),
+    row({ id: "c", name: "Pat Hansmann", find_source: PERSON_SOURCE }),
+  ]);
+  const ticked = people.filter((p) => p.isTarget).map((p) => p.name);
+  assert.deepEqual(ticked, ["Dave Hansmann", "Julie Hansmann"]);
+});
+
+test("ticking nobody still falls back to the old single rule", () => {
+  const people = peopleFrom(company, [row({ id: "a", name: "Dave Hansmann", find_source: PERSON_SOURCE })]);
+  assert.deepEqual(people.filter((p) => p.isTarget).map((p) => p.name), ["Steve Hansmann"]);
+});
