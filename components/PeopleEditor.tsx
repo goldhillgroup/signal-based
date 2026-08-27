@@ -1,94 +1,76 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import type { PersonRole } from "@/lib/supabase/types";
+import { useEffect, useRef, useState } from "react";
 import { TrashIcon } from "./icons";
 
 /**
- * Who is at this company, and which of them the next lookup pays for.
+ * Who is at this company, and which one the next lookup pays for.
  *
- * A company used to carry exactly two names because the first brief described
- * two people. Jonathan hit the limit on his first real pass: a builder with a
- * founder and two sons could only ever have one of them looked up, and which
- * one was decided by whichever the classifier happened to write first. He
- * could see it was wrong and had no way to act on it.
+ * WHY IT EXISTS. Two name slots, founder and next generation, and Jonathan
+ * opened Hansmann Construction to find four people worth listing: he corrected
+ * the founder, then Dave (another son) and Julie turned up as well. He had to
+ * delete one to make room for another. Enrichment buys an address for one
+ * person, and which one was decided by whichever the classifier wrote first,
+ * so the wrong name did not merely look wrong -- it spent five cents on the
+ * wrong person and filed the result as if it were right.
  *
- * GRACEFUL WHEN THE TABLE IS NOT THERE. This ships before its migration is
- * applied, so a 404 or a PostgREST "no such table" is not an error state to
- * show him — the parent falls back to the old two-field editor and the app
- * carries on. Shipping a feature that takes the drawer down until somebody
- * runs a SQL file is worse than shipping it dark.
+ * Five slots, and an explicit choice of who gets bought for.
+ *
+ * WHAT IS NOT EDITABLE, deliberately: the quote, the source URL, the verdict.
+ * Those are the record of what the crawler actually read, and a product whose
+ * whole claim is "check this against the live page" cannot let the evidence be
+ * rewritten. Who to call is a judgement Jonathan is better placed to make than
+ * the model. What the page said is a fact.
  */
 
-export interface Person {
-  id: string;
+interface Person {
+  id: string | null;
   name: string;
   title: string | null;
-  role: PersonRole;
-  is_target: boolean;
-  source: "crawler" | "user";
+  origin: "founder" | "next_gen" | "user";
+  isTarget: boolean;
+  email: string | null;
 }
 
-const ROLE_LABEL: Record<PersonRole, string> = {
+const ROLE_LABEL: Record<Person["origin"], string> = {
   founder: "Founder",
   next_gen: "Next generation",
-  other: "Also there",
+  user: "Added by you",
 };
-
-const ROLE_ORDER: PersonRole[] = ["founder", "next_gen", "other"];
 
 export function PeopleEditor({
   companyId,
-  onUnavailable,
   onChanged,
 }: {
   companyId: string;
-  /** The table is missing. The parent shows the older editor instead. */
-  onUnavailable: () => void;
   onChanged?: () => void;
 }) {
   const [people, setPeople] = useState<Person[] | null>(null);
+  const [max, setMax] = useState(5);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState<{ name: string; title: string; role: PersonRole }>({
-    name: "",
-    title: "",
-    role: "next_gen",
-  });
-  const router = useRouter();
+  const [draftName, setDraftName] = useState("");
+  const [draftTitle, setDraftTitle] = useState("");
 
-  const load = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const res = await fetch(`/api/company/${companyId}/people`, { signal });
-      if (!res.ok) throw new Error("unavailable");
-      const json = await res.json();
-      if (!Array.isArray(json?.people)) throw new Error("unavailable");
-      if (!signal?.aborted) setPeople(json.people);
-    } catch (e) {
-      if ((e as Error)?.name === "AbortError") return;
-      onUnavailable();
-    }
-  }, [companyId, onUnavailable]);
-
-  // Abort on unmount rather than letting a late response set state on a drawer
-  // that has already closed, which is the usual way this pattern leaks.
-  //
-  // The lint rule below fires on any setState reachable from an effect. Here
-  // every one of them is behind an await on a network response, which is the
-  // case the rule exists to distinguish and cannot see through a useCallback.
-  // Fetching on mount is the correct shape for this; the alternative is
-  // hoisting the request into the parent, which moves the same effect one
-  // level up and makes the drawer pay for it on every company.
   useEffect(() => {
-    const ac = new AbortController();
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load(ac.signal);
-    return () => ac.abort();
-  }, [load]);
+    let cancelled = false;
+    fetch(`/api/company/${companyId}/people`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (cancelled) return;
+        setPeople(json?.people ?? []);
+        if (typeof json?.max === "number") setMax(json.max);
+      })
+      .catch(() => {
+        if (!cancelled) setPeople([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId]);
 
-  async function send(method: string, body: Record<string, unknown>) {
+  async function send(method: "POST" | "PATCH" | "DELETE", body: unknown) {
     setBusy(true);
     setError("");
     try {
@@ -97,12 +79,10 @@ export function PeopleEditor({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error || "That did not save.");
-      await load();
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "That did not work.");
+      if (json.people) setPeople(json.people);
       onChanged?.();
-      // The list behind the drawer is server-rendered and now stale.
-      router.refresh();
       return true;
     } catch (e) {
       setError((e as Error).message);
@@ -112,111 +92,78 @@ export function PeopleEditor({
     }
   }
 
-  if (people === null) {
-    return <p className="text-xs text-gh-ink-muted">Loading people…</p>;
+  /**
+   * Editing one of the two crawler slots writes to the company columns; a
+   * hand-added person writes to their own row. The caller does not need to
+   * know which, so it is decided here from where the person came.
+   */
+  async function saveEdit(p: Person, name: string, title: string) {
+    if (p.origin === "user" && p.id) {
+      return send("PATCH", { contact_id: p.id, name, title });
+    }
+    const prefix = p.origin === "founder" ? "founder" : "next_gen";
+    return send("PATCH", { [`${prefix}_name`]: name, [`${prefix}_title`]: title });
   }
 
-  const sorted = [...people].sort(
-    (a, b) =>
-      Number(b.is_target) - Number(a.is_target) ||
-      ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role)
-  );
+  if (people === null) {
+    return <p className="text-xs text-gh-ink-muted">Reading the people…</p>;
+  }
+
+  const full = people.length >= max;
 
   return (
     <div className="space-y-2.5">
-      {sorted.length === 0 && (
+      {people.length === 0 && (
         <p className="text-xs text-gh-ink-muted">
-          Nobody named on their site. Add whoever you found.
+          Nobody is named on this one yet. Add whoever you found.
         </p>
       )}
 
-      {sorted.map((p) => (
-        <div
-          key={p.id}
-          className={`flex items-start gap-2.5 rounded-lg border p-2.5 ${
-            p.is_target ? "border-gh-sky/50 bg-gh-sky/[0.06]" : "border-gh-border"
-          }`}
-        >
-          {/* A radio, not a checkbox: exactly one person is bought for, and the
-              database enforces that with a partial unique index. Offering a
-              shape the data cannot hold would be a lie about what happens. */}
-          <input
-            type="radio"
-            name={`target-${companyId}`}
-            checked={p.is_target}
-            disabled={busy}
-            onChange={() => send("PATCH", { person_id: p.id, is_target: true })}
-            aria-label={`Look up ${p.name}`}
-            className="mt-1 h-3.5 w-3.5 shrink-0 cursor-pointer accent-gh-sky"
-          />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-gh-ink">{p.name}</p>
-            <p className="truncate text-[11px] text-gh-ink-muted">
-              {ROLE_LABEL[p.role]}
-              {p.title ? ` · ${p.title}` : ""}
-              {p.source === "user" ? " · added by you" : ""}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => send("DELETE", { person_id: p.id })}
-            disabled={busy}
-            aria-label={`Remove ${p.name}`}
-            title="Remove"
-            className="shrink-0 cursor-pointer rounded-lg p-1.5 text-gh-ink-muted transition-colors hover:bg-gh-critical/10 hover:text-gh-critical disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-critical/30"
-          >
-            <TrashIcon className="h-3.5 w-3.5" />
-          </button>
-        </div>
+      {people.map((p, i) => (
+        <PersonRow
+          // Name and title in the key: the row holds them in local state
+          // while being edited, so it must remount when the saved values
+          // change rather than syncing them across in an effect.
+          key={`${p.id ?? p.origin}-${p.name}-${p.title ?? ""}`}
+          person={p}
+          busy={busy}
+          onSave={(name, title) => saveEdit(p, name, title)}
+          onTarget={() => send("PATCH", { target: { name: p.name, title: p.title } })}
+          onDelete={p.id ? () => send("DELETE", { contact_id: p.id }) : undefined}
+        />
       ))}
 
       {adding ? (
-        <div className="space-y-2 rounded-lg border border-gh-border p-2.5">
+        <div className="rounded-lg border border-gh-sky/40 bg-gh-surface-sunken p-2.5">
           <div className="flex gap-1.5">
             <input
               autoFocus
-              value={draft.name}
-              onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+              value={draftName}
+              onChange={(e) => setDraftName(e.target.value)}
               placeholder="Name"
               maxLength={120}
               aria-label="New person name"
-              // 16px on mobile, or iOS zooms on focus and will not zoom back.
-              className="min-w-0 flex-[3] rounded-lg border border-gh-border bg-gh-surface-sunken px-2 py-1.5 text-base text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none focus:ring-2 focus:ring-gh-sky/25 sm:text-sm"
+              // 16px on mobile, or iOS zooms in on focus and will not zoom back.
+              className="min-w-0 flex-[3] rounded-lg border border-gh-border bg-gh-surface px-2 py-1.5 text-base text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none sm:text-sm"
             />
             <input
-              value={draft.title}
-              onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
+              value={draftTitle}
+              onChange={(e) => setDraftTitle(e.target.value)}
               placeholder="Title"
               maxLength={120}
               aria-label="New person title"
-              className="min-w-0 flex-[2] rounded-lg border border-gh-border bg-gh-surface-sunken px-2 py-1.5 text-base text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none focus:ring-2 focus:ring-gh-sky/25 sm:text-sm"
+              className="min-w-0 flex-[2] rounded-lg border border-gh-border bg-gh-surface px-2 py-1.5 text-base text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none sm:text-sm"
             />
           </div>
-          <div className="flex items-center gap-1.5">
-            {ROLE_ORDER.map((r) => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => setDraft((d) => ({ ...d, role: r }))}
-                aria-pressed={draft.role === r}
-                className={`cursor-pointer rounded-lg border px-2 py-1 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 ${
-                  draft.role === r
-                    ? "border-gh-sky bg-gh-sky/10 text-gh-ink"
-                    : "border-gh-border text-gh-ink-muted hover:text-gh-ink"
-                }`}
-              >
-                {ROLE_LABEL[r]}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-2">
+          <div className="mt-2 flex items-center gap-2">
             <button
               type="button"
-              disabled={busy || draft.name.trim().length === 0}
+              disabled={busy || draftName.trim().length === 0}
               onClick={async () => {
-                const ok = await send("POST", draft);
+                const ok = await send("POST", { name: draftName, title: draftTitle });
                 if (ok) {
-                  setDraft({ name: "", title: "", role: "next_gen" });
+                  setDraftName("");
+                  setDraftTitle("");
                   setAdding(false);
                 }
               }}
@@ -228,6 +175,8 @@ export function PeopleEditor({
               type="button"
               onClick={() => {
                 setAdding(false);
+                setDraftName("");
+                setDraftTitle("");
                 setError("");
               }}
               className="cursor-pointer text-[11px] text-gh-ink-muted underline-offset-2 hover:underline"
@@ -239,21 +188,138 @@ export function PeopleEditor({
       ) : (
         <button
           type="button"
+          disabled={full || busy}
           onClick={() => setAdding(true)}
-          className="cursor-pointer rounded-lg border border-dashed border-gh-border px-3 py-1.5 text-[11px] font-semibold text-gh-ink-secondary transition-colors hover:border-gh-sky/50 hover:text-gh-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+          title={full ? `Five people is the limit on one company.` : undefined}
+          className="cursor-pointer rounded-lg border border-dashed border-gh-border px-3 py-1.5 text-[11px] font-semibold text-gh-ink-secondary transition-colors hover:border-gh-sky/50 hover:text-gh-ink disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
         >
-          + Add someone
+          {full ? `${people.length} of ${max}, that is the limit` : "Add a person"}
         </button>
       )}
 
       {error && <p className="text-[11px] text-gh-critical">{error}</p>}
 
-      {sorted.length > 0 && (
-        <p className="text-[11px] leading-relaxed text-gh-ink-muted">
-          Find emails buys an address for the person selected above. To get one
-          for everybody here, tick “look up everyone” when you start it.
-        </p>
-      )}
+      {/* The consequence of the radio, said where the radio is. Which person
+          is ticked decides who a paid lookup is spent on. */}
+      <p className="pt-0.5 text-[11px] leading-relaxed text-gh-ink-muted">
+        Find personal emails looks up whoever is ticked. Tick a different person
+        to change who it buys an address for.
+      </p>
+    </div>
+  );
+}
+
+function PersonRow({
+  person,
+  busy,
+  onSave,
+  onTarget,
+  onDelete,
+}: {
+  person: Person;
+  busy: boolean;
+  onSave: (name: string, title: string) => Promise<boolean>;
+  onTarget: () => void;
+  onDelete?: () => void;
+}) {
+  const [name, setName] = useState(person.name);
+  const [title, setTitle] = useState(person.title ?? "");
+  const [editing, setEditing] = useState(false);
+
+  const dirty = name.trim() !== person.name || title.trim() !== (person.title ?? "");
+
+  // Closing the drawer unmounts these inputs without them ever blurring, so a
+  // correction typed and then dismissed would be lost. The ref holds the
+  // latest values because the cleanup closes over the first render otherwise.
+  const pending = useRef({ dirty: false, name: "", title: "" });
+  const onSaveRef = useRef(onSave);
+  useEffect(() => {
+    pending.current = {
+      dirty: dirty && editing && name.trim().length > 0,
+      name: name.trim(),
+      title: title.trim(),
+    };
+    onSaveRef.current = onSave;
+  });
+  useEffect(
+    () => () => {
+      const q = pending.current;
+      if (q.dirty) void onSaveRef.current(q.name, q.title);
+    },
+    []
+  );
+
+  return (
+    <div
+      className={`rounded-lg border p-2.5 transition-colors ${
+        person.isTarget ? "border-gh-sky/50 bg-gh-sky/[0.04]" : "border-gh-border"
+      }`}
+      // Same rule as the drawer: clicking away commits, so a correction typed
+      // and abandoned is not silently thrown away.
+      onBlur={(e) => {
+        if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+        if (!editing || !dirty || !name.trim()) return;
+        void onSave(name.trim(), title.trim()).then(() => setEditing(false));
+      }}
+    >
+      <div className="flex items-start gap-2">
+        <input
+          type="radio"
+          name={`target-${person.origin}-${person.id ?? person.name}`}
+          checked={person.isTarget}
+          onChange={onTarget}
+          disabled={busy}
+          aria-label={`Look up an email for ${person.name}`}
+          className="mt-1 h-3.5 w-3.5 shrink-0 cursor-pointer accent-gh-navy"
+        />
+        <div className="min-w-0 flex-1">
+          {editing ? (
+            <div className="flex gap-1.5">
+              <input
+                autoFocus
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                maxLength={120}
+                aria-label={`${person.name} name`}
+                className="min-w-0 flex-[3] rounded border border-gh-border bg-gh-surface-sunken px-1.5 py-1 text-base text-gh-ink focus:border-gh-sky focus:outline-none sm:text-sm"
+              />
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Title"
+                maxLength={120}
+                aria-label={`${person.name} title`}
+                className="min-w-0 flex-[2] rounded border border-gh-border bg-gh-surface-sunken px-1.5 py-1 text-base text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none sm:text-sm"
+              />
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="block w-full cursor-text text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+            >
+              <span className="block truncate text-sm font-medium text-gh-ink">{person.name}</span>
+              <span className="block truncate text-[11px] text-gh-ink-muted">
+                {ROLE_LABEL[person.origin]}
+                {person.title ? ` · ${person.title}` : ""}
+                {person.email ? ` · ${person.email}` : ""}
+              </span>
+            </button>
+          )}
+        </div>
+        {onDelete && (
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={busy}
+            aria-label={`Remove ${person.name}`}
+            title="Remove"
+            className="shrink-0 cursor-pointer rounded p-1 text-gh-ink-muted transition-colors hover:bg-gh-critical/10 hover:text-gh-critical disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-critical/30"
+          >
+            <TrashIcon className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
     </div>
   );
 }

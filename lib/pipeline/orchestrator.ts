@@ -2,6 +2,7 @@ import { createServiceRoleClient } from "../supabase/server";
 import { discoverCandidates, fetchCompanyPages, pickBestPage, fetchSingleUrl, isOffTradeName, type Candidate, type FetchedPage } from "./apify";
 import { VendorUnavailableError, classifySignal, disprovePass } from "./openrouter";
 import { findContact } from "./anymailfinder";
+import { peopleFrom } from "./people";
 import { verifyEmail } from "./millionverifier";
 import type { Industry, SearchMode, SearchRow } from "../supabase/types";
 import { recheckAfterFor, rejectionScope, sizeVerdictStillBinds, parseRevenueBand } from "./recheck-policy";
@@ -1861,7 +1862,7 @@ export async function enrichContacts(
 
     const { data: existingContacts } = await supabase
       .from("contacts")
-      .select("company_id, email, find_status, find_source")
+      .select("id, company_id, name, title, email, find_status, find_source")
       .in("company_id", (companies ?? []).map((c) => c.id));
 
     // A row at 'not_attempted' is a PARKED CANDIDATE scraped free off the page
@@ -1932,31 +1933,28 @@ export async function enrichContacts(
     // builder with two sons in the business could only have one looked up, and
     // not necessarily the one Jonathan wanted.
     //
-    // Wrapped in a try because this ships before the migration is applied: a
-    // missing company_people table must leave enrichment working exactly as it
-    // did, not take it down. Same reason the fallback below is the old rule
-    // verbatim.
-    const peopleByCompany = new Map<string, { id: string; name: string; title: string | null }[]>();
-    try {
-      const { data: peopleRows } = await supabase
-        .from("company_people")
-        .select("id, company_id, name, title, is_target, role, created_at")
-        .in("company_id", (companies ?? []).map((c) => c.id));
-      for (const row of peopleRows ?? []) {
-        const list = peopleByCompany.get(row.company_id) ?? [];
-        list.push({ id: row.id, name: row.name, title: row.title });
-        peopleByCompany.set(row.company_id, list);
-      }
+    // Now the people list: the two crawler slots plus anybody typed in by
+    // hand, with one marked as the target. See lib/pipeline/people.ts. On a
+    // company nobody has edited there are no extra rows and no flag, so the
+    // list collapses to exactly the old rule and nothing changes.
+    const peopleByCompany = new Map<string, { id: string | null; name: string; title: string | null }[]>();
+    for (const c of companies ?? []) {
+      const listed = peopleFrom(
+        {
+          founder_name: c.founder_name,
+          founder_title: c.founder_title,
+          next_gen_name: c.next_gen_name,
+          next_gen_title: c.next_gen_title,
+        },
+        (existingContacts ?? []).filter((k) => k.company_id === c.id) as never
+      );
       // Target first, so the single-person path buys for the chosen one.
-      for (const [, list] of peopleByCompany) {
-        list.sort((a, b) => {
-          const at = (peopleRows ?? []).find((r) => r.id === a.id)?.is_target ? 1 : 0;
-          const bt = (peopleRows ?? []).find((r) => r.id === b.id)?.is_target ? 1 : 0;
-          return bt - at;
-        });
-      }
-    } catch {
-      // No people table yet. The fallback below is the original behaviour.
+      peopleByCompany.set(
+        c.id,
+        [...listed]
+          .sort((a, b) => Number(b.isTarget) - Number(a.isTarget))
+          .map((p) => ({ id: p.id, name: p.name, title: p.title }))
+      );
     }
 
     /** Everyone this pass should buy an address for at this company. */

@@ -52,140 +52,11 @@ export function CompanyDrawer({
   // Which address was copied, not merely that one was: with two buttons a
   // boolean would tick both at once.
   const [copied, setCopied] = useState<string | null>(null);
-  // EDITING WHO TO CALL. See app/api/company/[id]/people/route.ts for why the
-  // people are editable and the evidence is not.
-  // Null while we find out; false once the people table has answered. See
-  // PeopleEditor for why a missing table must not surface as an error.
-  const [peopleTableMissing, setPeopleTableMissing] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
-  // A flag that clears itself, rather than comparing Date.now() during render:
-  // reading the clock while rendering makes the output depend on WHEN React
-  // happens to re-render, which is exactly the kind of instability that shows
-  // up once and never reproduces.
-  const [justSaved, setJustSaved] = useState(false);
-  const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [error, setError] = useState("");
-  const [draft, setDraft] = useState({
-    founder_name: "",
-    founder_title: "",
-    next_gen_name: "",
-    next_gen_title: "",
-  });
   const router = useRouter();
 
-  // What the fields held when editing opened. Blur fires on every click away,
-  // including one that changed nothing, and a PATCH per stray click is noise
-  // in the log and a needless write.
-  const original = useRef({ founder_name: "", founder_title: "", next_gen_name: "", next_gen_title: "" });
-  function dirty() {
-    const o = original.current;
-    return (
-      o.founder_name !== draft.founder_name ||
-      o.founder_title !== draft.founder_title ||
-      o.next_gen_name !== draft.next_gen_name ||
-      o.next_gen_title !== draft.next_gen_title
-    );
-  }
-
-  function startEdit() {
-    if (!company) return;
-    setError("");
-    original.current = {
-      founder_name: company.founderName ?? "",
-      founder_title: company.founderTitle ?? "",
-      next_gen_name: company.nextGenName ?? "",
-      next_gen_title: company.nextGenTitle ?? "",
-    };
-    setDraft({
-      founder_name: company.founderName ?? "",
-      founder_title: company.founderTitle ?? "",
-      next_gen_name: company.nextGenName ?? "",
-      next_gen_title: company.nextGenTitle ?? "",
-    });
-    setEditing(true);
-  }
-
-  function cancelEdit() {
-    setEditing(false);
-    setError("");
-  }
-
-  /**
-   * Closing while a correction is half-typed.
-   *
-   * Auto-save fires on blur, and blur does NOT fire when the drawer unmounts
-   * out from under the inputs -- clicking the backdrop, pressing the X, or
-   * hitting Escape all destroy the fields without them ever losing focus in a
-   * way React reports. So the exact gesture Jonathan described, edit a name
-   * then click away to something else, was still the one that lost the edit.
-   *
-   * A "save or discard?" prompt is the obvious fix and the wrong one: the
-   * answer is always save. He typed it on purpose. So it saves, and the close
-   * waits for the write rather than racing it.
-   */
-  async function closeSafely() {
-    if (editing && dirty() && !saving) {
-      await savePeople({ keepOpen: true });
-    }
-    onClose();
-  }
-
-  async function savePeople({ keepOpen = false }: { keepOpen?: boolean } = {}) {
-    if (!company) return;
-    setSaving(true);
-    setError("");
-    try {
-      const res = await fetch(`/api/company/${company.id}/people`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(draft),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error || "Could not save that.");
-      original.current = { ...draft };
-      setJustSaved(true);
-      if (savedTimer.current) clearTimeout(savedTimer.current);
-      savedTimer.current = setTimeout(() => setJustSaved(false), 4000);
-      // An auto-save keeps the boxes open: focus left them, the intent to keep
-      // editing did not necessarily go with it.
-      if (!keepOpen) setEditing(false);
-      // The drawer reads from a server-rendered list, so the row behind it is
-      // stale the moment this succeeds.
-      router.refresh();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  // Escape closes the drawer without any element losing focus first, so it
-  // needs the same save-then-close path as the backdrop and the X.
-  useEffect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        void closeSafely();
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  });
-
-  // And a real navigation away -- a link, a reload, the back button -- cannot
-  // be awaited, so this is the one case that genuinely has to ask. The browser
-  // shows its own "leave site?" dialog; the wording is not ours to choose.
-  useEffect(() => {
-    if (!(editing && dirty())) return;
-    function warn(e: BeforeUnloadEvent) {
-      e.preventDefault();
-      e.returnValue = "";
-    }
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  });
+  // No editing state here any more. Every row in PeopleEditor edits in place
+  // and commits on blur, and saves itself on unmount, so the drawer does not
+  // need to know whether a correction is in flight before it closes.
 
   const fit = company ? explainFit(company) : null;
   const personal = company ? personalEmail(company) : null;
@@ -206,7 +77,7 @@ export function CompanyDrawer({
         className={`fixed inset-0 z-30 bg-gh-navy-3/40 transition-opacity duration-[var(--gh-dur)] ease-[var(--gh-ease-out)] ${
           open ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
-        onClick={() => void closeSafely()}
+        onClick={onClose}
         aria-hidden
       />
       <aside
@@ -246,7 +117,7 @@ export function CompanyDrawer({
               </div>
               <button
                 type="button"
-                onClick={() => void closeSafely()}
+                onClick={onClose}
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gh-ink-muted transition-colors hover:bg-gh-surface-sunken hover:text-gh-ink"
                 aria-label="Close"
               >
@@ -399,99 +270,14 @@ export function CompanyDrawer({
                   <p className="text-xs font-semibold uppercase tracking-wide text-gh-ink-muted">
                     Leadership
                   </p>
-                  <button
-                    type="button"
-                    hidden={!peopleTableMissing}
-                    onClick={() => (editing ? savePeople() : startEdit())}
-                    disabled={saving}
-                    className="cursor-pointer rounded-lg border border-gh-border px-2.5 py-1 text-[11px] font-semibold text-gh-ink-secondary transition-colors hover:border-gh-sky/50 hover:text-gh-ink disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
-                  >
-                    {saving
-                      ? "Saving…"
-                      : editing
-                        ? "Done"
-                        : justSaved
-                          ? "Saved ✓"
-                          : "Edit people"}
-                  </button>
                 </div>
                 <div className="space-y-2.5 rounded-lg border border-gh-border p-3.5 text-sm">
-                  {!peopleTableMissing && company && (
+                  {company && (
                     <PeopleEditor
                       companyId={company.id}
-                      onUnavailable={() => setPeopleTableMissing(true)}
+                      onChanged={() => router.refresh()}
                     />
                   )}
-                  {peopleTableMissing && editing ? (
-                    // SAVES WHEN YOU CLICK AWAY, like renaming a folder.
-                    //
-                    // Requiring the button meant a correction typed and then
-                    // abandoned was silently thrown away, which is the worst
-                    // shape for a form: it looks finished and is not. Blur on
-                    // the CONTAINER rather than each field, so tabbing between
-                    // the four boxes is one edit and one write rather than
-                    // four.
-                    <div
-                      onBlur={(e) => {
-                        if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
-                        if (!dirty()) return;
-                        void savePeople({ keepOpen: true });
-                      }}
-                      className="space-y-2.5"
-                    >
-                      <PersonEdit
-                        label="Founder"
-                        name={draft.founder_name}
-                        title={draft.founder_title}
-                        onName={(v) => setDraft((d) => ({ ...d, founder_name: v }))}
-                        onTitle={(v) => setDraft((d) => ({ ...d, founder_title: v }))}
-                      />
-                      <PersonEdit
-                        label="Next generation"
-                        name={draft.next_gen_name}
-                        title={draft.next_gen_title}
-                        onName={(v) => setDraft((d) => ({ ...d, next_gen_name: v }))}
-                        onTitle={(v) => setDraft((d) => ({ ...d, next_gen_title: v }))}
-                      />
-                      {/* The consequence of the edit, said before it is made.
-                          Find emails buys an address for the next generation
-                          when there is one and the founder otherwise, so which
-                          box a name goes in decides who gets paid for. */}
-                      <p className="pt-1 text-[11px] leading-relaxed text-gh-ink-muted">
-                        Find emails looks up the next generation when there is
-                        one, and the founder otherwise. Leave a box empty to
-                        clear it.
-                      </p>
-                      {error && <p className="text-[11px] text-gh-critical">{error}</p>}
-                      <button
-                        type="button"
-                        onClick={cancelEdit}
-                        className="cursor-pointer text-[11px] text-gh-ink-muted underline-offset-2 hover:underline"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  ) : peopleTableMissing ? (
-                    <>
-                      {company.founderName ? (
-                        // Labeled "Founder" only alongside a real next-gen pairing (a
-                        // genuine succession story) — otherwise this is just whoever
-                        // the page names as the decision-maker (owner/CEO/GM/etc, see
-                        // openrouter.ts), so "Contact" reads accurately either way.
-                        <Row
-                          k={company.nextGenName ? "Founder" : "Contact"}
-                          v={`${company.founderName}${company.founderTitle ? `, ${company.founderTitle}` : ""}`}
-                        />
-                      ) : (
-                        <Row k="Founder" v="nobody named" muted />
-                      )}
-                      {company.nextGenName ? (
-                        <Row k="Next generation" v={`${company.nextGenName}${company.nextGenTitle ? `, ${company.nextGenTitle}` : ""}`} />
-                      ) : (
-                        <Row k="Next generation" v="nobody named" muted />
-                      )}
-                    </>
-                  ) : null}
                   {/* Facts about the company rather than judgements about who
                       runs it, so they stay put in both modes. */}
                   <div className="flex items-center justify-between gap-2 pt-1">
@@ -605,44 +391,3 @@ function Row({ k, v, muted }: { k: string; v: string; muted?: boolean }) {
   );
 }
 
-/** A name and a title, side by side, so the pair reads as one person. */
-function PersonEdit({
-  label,
-  name,
-  title,
-  onName,
-  onTitle,
-}: {
-  label: string;
-  name: string;
-  title: string;
-  onName: (v: string) => void;
-  onTitle: (v: string) => void;
-}) {
-  return (
-    <div>
-      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gh-ink-muted">
-        {label}
-      </p>
-      <div className="flex gap-1.5">
-        <input
-          value={name}
-          onChange={(e) => onName(e.target.value)}
-          placeholder="Name"
-          maxLength={120}
-          aria-label={`${label} name`}
-          // 16px on mobile, or iOS zooms in on focus and will not zoom back.
-          className="min-w-0 flex-[3] rounded-lg border border-gh-border bg-gh-surface-sunken px-2 py-1.5 text-base text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none focus:ring-2 focus:ring-gh-sky/25 sm:text-sm"
-        />
-        <input
-          value={title}
-          onChange={(e) => onTitle(e.target.value)}
-          placeholder="Title"
-          maxLength={120}
-          aria-label={`${label} title`}
-          className="min-w-0 flex-[2] rounded-lg border border-gh-border bg-gh-surface-sunken px-2 py-1.5 text-base text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none focus:ring-2 focus:ring-gh-sky/25 sm:text-sm"
-        />
-      </div>
-    </div>
-  );
-}
