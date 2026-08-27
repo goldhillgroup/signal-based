@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PeopleEditor } from "./PeopleEditor";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
@@ -111,6 +111,26 @@ export function CompanyDrawer({
     setError("");
   }
 
+  /**
+   * Closing while a correction is half-typed.
+   *
+   * Auto-save fires on blur, and blur does NOT fire when the drawer unmounts
+   * out from under the inputs -- clicking the backdrop, pressing the X, or
+   * hitting Escape all destroy the fields without them ever losing focus in a
+   * way React reports. So the exact gesture Jonathan described, edit a name
+   * then click away to something else, was still the one that lost the edit.
+   *
+   * A "save or discard?" prompt is the obvious fix and the wrong one: the
+   * answer is always save. He typed it on purpose. So it saves, and the close
+   * waits for the write rather than racing it.
+   */
+  async function closeSafely() {
+    if (editing && dirty() && !saving) {
+      await savePeople({ keepOpen: true });
+    }
+    onClose();
+  }
+
   async function savePeople({ keepOpen = false }: { keepOpen?: boolean } = {}) {
     if (!company) return;
     setSaving(true);
@@ -140,6 +160,33 @@ export function CompanyDrawer({
     }
   }
 
+  // Escape closes the drawer without any element losing focus first, so it
+  // needs the same save-then-close path as the backdrop and the X.
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        void closeSafely();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  // And a real navigation away -- a link, a reload, the back button -- cannot
+  // be awaited, so this is the one case that genuinely has to ask. The browser
+  // shows its own "leave site?" dialog; the wording is not ours to choose.
+  useEffect(() => {
+    if (!(editing && dirty())) return;
+    function warn(e: BeforeUnloadEvent) {
+      e.preventDefault();
+      e.returnValue = "";
+    }
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  });
+
   const fit = company ? explainFit(company) : null;
   const personal = company ? personalEmail(company) : null;
 
@@ -159,7 +206,7 @@ export function CompanyDrawer({
         className={`fixed inset-0 z-30 bg-gh-navy-3/40 transition-opacity duration-[var(--gh-dur)] ease-[var(--gh-ease-out)] ${
           open ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
-        onClick={onClose}
+        onClick={() => void closeSafely()}
         aria-hidden
       />
       <aside
@@ -199,7 +246,7 @@ export function CompanyDrawer({
               </div>
               <button
                 type="button"
-                onClick={onClose}
+                onClick={() => void closeSafely()}
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gh-ink-muted transition-colors hover:bg-gh-surface-sunken hover:text-gh-ink"
                 aria-label="Close"
               >
