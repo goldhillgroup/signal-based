@@ -44,9 +44,19 @@ const CHANNEL_LABELS: Record<string, string> = {
 export function CompanyDrawer({
   company,
   onClose,
+  onDataChanged,
 }: {
   company: Company | null;
   onClose: () => void;
+  /**
+   * Re-read the list behind the drawer.
+   *
+   * router.refresh() is the wrong tool on the folder page: it is a client
+   * component holding its companies in state, so there is no server render to
+   * invalidate and the call does nothing. Blacklisting a lead therefore left
+   * it sitting on screen until the page was reloaded by hand.
+   */
+  onDataChanged?: () => void | Promise<void>;
 }) {
   const open = company !== null;
   // Which address was copied, not merely that one was: with two buttons a
@@ -100,8 +110,9 @@ export function CompanyDrawer({
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || "That did not work.");
-      // The list behind the drawer is server-rendered, so it still shows the
-      // company on the tab it has just left.
+      // Re-read before closing, so the row leaves the tab it was on rather
+      // than lingering until a manual reload.
+      await onDataChanged?.();
       router.refresh();
       onClose();
     } catch (e) {
@@ -352,7 +363,10 @@ export function CompanyDrawer({
                   {company && (
                     <PeopleEditor
                       companyId={company.id}
-                      onChanged={() => router.refresh()}
+                      onChanged={() => {
+                        void onDataChanged?.();
+                        router.refresh();
+                      }}
                       onDirtyChange={setPeopleDirty}
                     />
                   )}

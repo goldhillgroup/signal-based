@@ -480,7 +480,18 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
           rejections simply bury 28 leads. */}
       <WhyTheseAreNot searchId={folder.id} count={folder.rejectedCount} />
 
-      <CompanyDrawer company={selected} onClose={() => setSelectedId(null)} />
+      {/* THE LIST HERE IS CLIENT STATE, not a server render, so the drawer's
+          router.refresh() could never update it -- which is why blacklisting a
+          company left it on screen until the page was reloaded by hand. This
+          re-reads the folder for real. */}
+      <CompanyDrawer
+        company={selected}
+        onClose={() => setSelectedId(null)}
+        onDataChanged={async () => {
+          const c = await fetchCompanies(folder.id);
+          setCompanies(c);
+        }}
+      />
     </div>
   );
 }
