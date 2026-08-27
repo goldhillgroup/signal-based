@@ -2143,16 +2143,12 @@ export async function enrichContacts(
             email: contact.email,
             find_status: "found",
             find_source: "anymailfinder",
-            // Which of the company's people this address belongs to, so
-            // "already looked him up" is answerable per person.
-            //
-            // SPREAD, NOT `person_id: x ?? null`. The column arrives with the
-            // company_people migration, and PostgREST rejects an entire row
-            // that names a column the table does not have. Written
-            // unconditionally, this silently discarded every purchased address
-            // on any database where that migration had not been run -- the
-            // lookup succeeded, the money was spent, and nothing was saved.
-            ...(primary?.id ? { person_id: primary.id } : {}),
+            // NO person_id. It belonged to the company_people table that was
+            // never created and has since been abandoned -- people live in
+            // this same table now, so a contacts row pointing at a contacts
+            // row is meaningless as well as impossible. Passing it made
+            // PostgREST reject the whole insert, which is how five purchased
+            // addresses were lost before the error check below existed.
             verification_status: verification,
             verification_source: "millionverifier",
             verified_at: new Date().toISOString(),
@@ -2236,8 +2232,17 @@ export async function enrichContacts(
         // ticked. The person lookup above returns one address and, when it
         // succeeds, never fetches the list -- which is how Skip Orth stayed
         // invisible on a company whose son had already been found.
-        const sweep =
-          everyPerson && contact.found ? await companyEmails(company.domain) : [];
+        // THE SWEEP IS THE CHEAP PATH, so it runs whenever more than one
+        // person is wanted -- not only when the dialog's "look up everyone"
+        // box was ticked.
+        //
+        // Without this, ticking three people in the drawer bought three
+        // separate lookups at 5 cents each, when one call to the company
+        // endpoint returns up to ten addresses for a single charge and, on
+        // Father & Son, would have covered all three. The expensive path is
+        // the fallback below, for anybody the sweep missed.
+        const wantSeveral = everyPerson || (selectedCount.get(company.id) ?? 1) > 1;
+        const sweep = wantSeveral && contact.found ? await companyEmails(company.domain) : [];
         const alsoFound = [...contact.alternates, ...sweep];
 
         if (alsoFound.length > 0) {
@@ -2347,7 +2352,6 @@ export async function enrichContacts(
             email: extra.email,
             find_status: "found",
             find_source: "anymailfinder",
-            ...(person.id ? { person_id: person.id } : {}),
             verification_status: extraVerification,
             verification_source: "millionverifier",
             verified_at: new Date().toISOString(),
