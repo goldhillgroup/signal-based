@@ -53,6 +53,38 @@ export function CompanyDrawer({
   // boolean would tick both at once.
   const [copied, setCopied] = useState<string | null>(null);
   const router = useRouter();
+  // Unsaved work in the people editor. Closing the drawer would destroy it
+  // without a word, which is the exact thing the explicit-save rewrite exists
+  // to prevent, so the close is refused and says why.
+  const [peopleDirty, setPeopleDirty] = useState(false);
+  const [blockedClose, setBlockedClose] = useState(false);
+
+  function closeUnlessEditing() {
+    if (peopleDirty) {
+      setBlockedClose(true);
+      return;
+    }
+    onClose();
+  }
+
+  // Escape closes the drawer, and must go through the same guard as the
+  // backdrop and the X. It was lost when the old editing state was stripped
+  // out, so Escape did nothing at all for a while.
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      if (peopleDirty) {
+        setBlockedClose(true);
+        return;
+      }
+      onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
   const [blacklisting, setBlacklisting] = useState(false);
   const [blacklistError, setBlacklistError] = useState("");
 
@@ -102,7 +134,7 @@ export function CompanyDrawer({
         className={`fixed inset-0 z-30 bg-gh-navy-3/40 transition-opacity duration-[var(--gh-dur)] ease-[var(--gh-ease-out)] ${
           open ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
-        onClick={onClose}
+        onClick={closeUnlessEditing}
         aria-hidden
       />
       <aside
@@ -142,7 +174,7 @@ export function CompanyDrawer({
               </div>
               <button
                 type="button"
-                onClick={onClose}
+                onClick={closeUnlessEditing}
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gh-ink-muted transition-colors hover:bg-gh-surface-sunken hover:text-gh-ink"
                 aria-label="Close"
               >
@@ -220,6 +252,26 @@ export function CompanyDrawer({
                   empty space where the explanation should be, under a status
                   chip reading "Not yet classified". The reason it was cut is
                   the ONLY thing this panel should say about it. */}
+              {blockedClose && (
+                <div className="rounded-lg border border-gh-warning/40 bg-gh-warning/10 px-3 py-2">
+                  <p className="text-[11px] leading-relaxed text-gh-ink-secondary">
+                    You have unsaved changes to the people on this lead. Press
+                    Done editing to keep them, or Cancel to drop them.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBlockedClose(false);
+                      setPeopleDirty(false);
+                      onClose();
+                    }}
+                    className="mt-1.5 cursor-pointer text-[11px] font-semibold text-gh-critical underline-offset-2 hover:underline"
+                  >
+                    Close anyway and lose them
+                  </button>
+                </div>
+              )}
+
               {company.status === "rejected" && (
                 <div className="rounded-lg border-l-2 border-gh-border-strong bg-gh-surface-sunken p-3.5">
                   <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gh-ink-muted">
@@ -301,6 +353,7 @@ export function CompanyDrawer({
                     <PeopleEditor
                       companyId={company.id}
                       onChanged={() => router.refresh()}
+                      onDirtyChange={setPeopleDirty}
                     />
                   )}
                   {/* Facts about the company rather than judgements about who

@@ -2307,13 +2307,17 @@ export async function enrichContacts(
           // Only people that came from the table can be checked this way; a
           // fallback entry has no row to point at, and it is never in
           // wanted.slice(1) anyway because that path returns exactly one.
-          if (!person.id) continue;
+          if (!person.name) continue;
+          // MATCHED BY NAME, not by person_id. That column belonged to the
+          // abandoned company_people table and querying it makes PostgREST
+          // reject the request outright, taking the whole company's
+          // enrichment down with it.
           const { data: already } = await supabase
             .from("contacts")
             .select("id")
             .eq("company_id", company.id)
-            .eq("person_id", person.id)
             .eq("find_status", "found")
+            .ilike("name", person.name)
             .maybeSingle();
           if (already) continue;
 

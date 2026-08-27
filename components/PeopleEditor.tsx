@@ -4,17 +4,23 @@ import { useEffect, useRef, useState } from "react";
 import { CheckIcon, PencilIcon, TrashIcon } from "./icons";
 
 /**
- * Who is at this company, and which one the next lookup pays for.
+ * Who is at this company, and which of them a paid lookup is for.
  *
  * WHY IT EXISTS. Two name slots, founder and next generation, and Jonathan
  * opened Hansmann Construction to find four people worth listing: he corrected
  * the founder, then Dave (another son) and Julie turned up as well. He had to
- * delete one to make room for another. Enrichment buys an address for one
+ * delete one to make room for another. Enrichment bought an address for one
  * person, and which one was decided by whichever the classifier wrote first,
- * so the wrong name did not merely look wrong -- it spent five cents on the
- * wrong person and filed the result as if it were right.
+ * so a wrong name did not merely look wrong -- it spent five cents on the
+ * wrong person and filed the result as though it were right.
  *
- * Five slots, and an explicit choice of who gets bought for.
+ * NOTHING SAVES UNTIL DONE EDITING, which reverses how this worked for a day.
+ * Rows used to commit the moment focus left them, on the argument that a
+ * correction typed and then abandoned should not be thrown away. Daniel asked
+ * twice for the opposite and was right to: a panel that writes on every blur
+ * gives you no way to change your mind, and half-typed text becomes a saved
+ * fact while you are still looking at it. The draft is yours until you say
+ * otherwise, and leaving with unsaved work asks rather than guessing.
  *
  * WHAT IS NOT EDITABLE, deliberately: the quote, the source URL, the verdict.
  * Those are the record of what the crawler actually read, and a product whose
@@ -32,34 +38,48 @@ interface Person {
   email: string | null;
 }
 
+/** A person plus whatever the draft has done to them. */
+interface Draft extends Person {
+  key: string;
+  removed: boolean;
+  isNew: boolean;
+}
+
 const ROLE_LABEL: Record<Person["origin"], string> = {
   founder: "Founder",
   next_gen: "Next generation",
   user: "Added by you",
 };
 
+function toDrafts(people: Person[]): Draft[] {
+  return people.map((p, i) => ({
+    ...p,
+    key: p.id ?? `${p.origin}-${i}`,
+    removed: false,
+    isNew: false,
+  }));
+}
+
 export function PeopleEditor({
   companyId,
   onChanged,
+  onDirtyChange,
 }: {
   companyId: string;
   onChanged?: () => void;
+  /** Lets the drawer refuse to close on unsaved work. */
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const [people, setPeople] = useState<Person[] | null>(null);
   const [max, setMax] = useState(5);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  // READ-ONLY UNTIL YOU PRESS EDIT.
-  //
-  // Every row carried its own radio, its own delete and a permanent "Add a
-  // person" button, so a panel that is mostly READ -- who runs this company --
-  // looked like a form being filled in. Daniel asked for the pattern used
-  // everywhere else: one Edit, which turns the section into an editor, and
-  // where adding somebody belongs.
   const [editing, setEditing] = useState(false);
+  const [drafts, setDrafts] = useState<Draft[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
   const [draftName, setDraftName] = useState("");
   const [draftTitle, setDraftTitle] = useState("");
+  const [confirmLeave, setConfirmLeave] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -78,121 +98,189 @@ export function PeopleEditor({
     };
   }, [companyId]);
 
-  async function send(method: "POST" | "PATCH" | "DELETE", body: unknown) {
-    setBusy(true);
+  const baseline = people ?? [];
+  const dirty =
+    editing &&
+    (drafts.some((d) => d.removed || d.isNew) ||
+      drafts.some((d) => {
+        const was = baseline.find((p) => (p.id ?? "") === (d.id ?? "") && p.origin === d.origin);
+        if (!was) return true;
+        return (
+          d.name.trim() !== was.name.trim() ||
+          (d.title ?? "").trim() !== (was.title ?? "").trim() ||
+          d.isTarget !== was.isTarget
+        );
+      }));
+
+  // The drawer needs to know, so a click on the backdrop cannot throw the
+  // draft away without asking first.
+  const dirtyRef = useRef(false);
+  useEffect(() => {
+    if (dirtyRef.current !== dirty) {
+      dirtyRef.current = dirty;
+      onDirtyChange?.(dirty);
+    }
+  });
+
+  function openEditor() {
+    setDrafts(toDrafts(people ?? []));
     setError("");
-    try {
+    setEditing(true);
+  }
+
+  function discard() {
+    setDrafts([]);
+    setEditing(false);
+    setAdding(false);
+    setConfirmLeave(false);
+    setError("");
+    onDirtyChange?.(false);
+  }
+
+  function tryClose() {
+    if (dirty) {
+      setConfirmLeave(true);
+      return;
+    }
+    discard();
+  }
+
+  /**
+   * Everything the draft changed, in one go.
+   *
+   * Removals first, so taking somebody out and adding a fifth in the same
+   * sitting does not trip the limit on a person already on their way out.
+   */
+  async function saveAll() {
+    setSaving(true);
+    setError("");
+    const call = async (method: "POST" | "PATCH" | "DELETE", body: unknown) => {
       const res = await fetch(`/api/company/${companyId}/people`, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || "That did not work.");
-      if (json.people) setPeople(json.people);
+      return json;
+    };
+
+    try {
+      for (const d of drafts.filter((x) => x.removed && !x.isNew)) {
+        if (d.origin === "user" && d.id) await call("DELETE", { contact_id: d.id });
+        else await call("PATCH", { [`${d.origin === "founder" ? "founder" : "next_gen"}_name`]: "" });
+      }
+
+      for (const d of drafts.filter((x) => x.isNew && !x.removed)) {
+        await call("POST", { name: d.name, title: d.title });
+        if (d.isTarget) {
+          await call("PATCH", { target: { name: d.name, title: d.title, selected: true } });
+        }
+      }
+
+      for (const d of drafts.filter((x) => !x.removed && !x.isNew)) {
+        const was = baseline.find((p) => (p.id ?? "") === (d.id ?? "") && p.origin === d.origin);
+        if (!was) continue;
+        const renamed =
+          d.name.trim() !== was.name.trim() || (d.title ?? "").trim() !== (was.title ?? "").trim();
+        if (renamed) {
+          if (d.origin === "user" && d.id) {
+            await call("PATCH", { contact_id: d.id, name: d.name, title: d.title });
+          } else {
+            const prefix = d.origin === "founder" ? "founder" : "next_gen";
+            await call("PATCH", { [`${prefix}_name`]: d.name, [`${prefix}_title`]: d.title ?? "" });
+          }
+        }
+        if (d.isTarget !== was.isTarget) {
+          await call("PATCH", { target: { name: d.name, title: d.title, selected: d.isTarget } });
+        }
+      }
+
+      const fresh = await fetch(`/api/company/${companyId}/people`).then((r) => r.json());
+      setPeople(fresh?.people ?? []);
+      setDrafts([]);
+      setEditing(false);
+      setAdding(false);
+      setConfirmLeave(false);
+      onDirtyChange?.(false);
       onChanged?.();
-      return true;
     } catch (e) {
       setError((e as Error).message);
-      return false;
     } finally {
-      setBusy(false);
+      setSaving(false);
     }
-  }
-
-  /**
-   * Editing one of the two crawler slots writes to the company columns; a
-   * hand-added person writes to their own row. The caller does not need to
-   * know which, so it is decided here from where the person came.
-   */
-  async function saveEdit(p: Person, name: string, title: string) {
-    if (p.origin === "user" && p.id) {
-      return send("PATCH", { contact_id: p.id, name, title });
-    }
-    const prefix = p.origin === "founder" ? "founder" : "next_gen";
-    return send("PATCH", { [`${prefix}_name`]: name, [`${prefix}_title`]: title });
   }
 
   if (people === null) {
     return <p className="text-xs text-gh-ink-muted">Reading the people…</p>;
   }
 
-  const full = people.length >= max;
-
+  // ── Read mode ──────────────────────────────────────────────────────────
   if (!editing) {
     return (
-      <div className="space-y-2">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1 space-y-1.5">
-            {people.length === 0 && (
-              <p className="text-xs text-gh-ink-muted">Nobody is named on this one.</p>
-            )}
-            {people.map((p) => (
-              <div key={`${p.id ?? p.origin}-${p.name}`} className="flex items-baseline justify-between gap-2">
-                <span className="min-w-0 flex-1">
-                  <span className="text-sm font-medium text-gh-ink">{p.name}</span>
-                  <span className="ml-1.5 text-[11px] text-gh-ink-muted">
-                    {p.title ?? ROLE_LABEL[p.origin]}
-                  </span>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1 space-y-1.5">
+          {people.length === 0 && (
+            <p className="text-xs text-gh-ink-muted">Nobody is named on this one.</p>
+          )}
+          {people.map((p) => (
+            <div
+              key={`${p.id ?? p.origin}-${p.name}`}
+              className="flex items-baseline justify-between gap-2"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="text-sm font-medium text-gh-ink">{p.name}</span>
+                <span className="ml-1.5 text-[11px] text-gh-ink-muted">
+                  {p.title ?? ROLE_LABEL[p.origin]}
                 </span>
-                {/* Marked, not explained: the sentence under the editor says
-                    what the tick means, and repeating it on every row would
-                    bury the names it is meant to annotate. */}
-                {p.isTarget && (
-                  <span className="shrink-0 rounded-full bg-gh-sky/10 px-2 py-0.5 text-[10px] font-semibold text-gh-navy">
-                    getting an email
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-gh-border px-2.5 py-1.5 text-[11px] font-semibold text-gh-ink-secondary transition-colors hover:border-gh-sky/50 hover:text-gh-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
-          >
-            <PencilIcon className="h-3.5 w-3.5" />
-            Edit people
-          </button>
+              </span>
+              {p.isTarget && (
+                <span className="shrink-0 rounded-full bg-gh-sky/10 px-2 py-0.5 text-[10px] font-semibold text-gh-navy">
+                  getting an email
+                </span>
+              )}
+            </div>
+          ))}
         </div>
+        <button
+          type="button"
+          onClick={openEditor}
+          className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-gh-border px-2.5 py-1.5 text-[11px] font-semibold text-gh-ink-secondary transition-colors hover:border-gh-sky/50 hover:text-gh-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+        >
+          <PencilIcon className="h-3.5 w-3.5" />
+          Edit people
+        </button>
       </div>
     );
   }
 
+  const live = drafts.filter((d) => !d.removed);
+  const full = live.length >= max;
+
+  // ── Edit mode ──────────────────────────────────────────────────────────
   return (
     <div className="space-y-2.5">
       <p className="text-[11px] leading-relaxed text-gh-ink-muted">
-        Click a name to correct it. Up to {max} people. Everyone marked{" "}
+        Up to {max} people. Everyone marked{" "}
         <span className="font-semibold text-gh-ink">Getting an email</span> is
-        looked up when you press Find personal emails, and each one is charged
-        separately.
+        looked up when you press Find personal emails, and each is charged
+        separately. Nothing is saved until you press Done editing.
       </p>
-      {people.length === 0 && (
-        <p className="text-xs text-gh-ink-muted">
-          Nobody is named on this one yet. Add whoever you found.
-        </p>
-      )}
 
-      {people.map((p, i) => (
+      {live.map((d) => (
         <PersonRow
-          // Name and title in the key: the row holds them in local state
-          // while being edited, so it must remount when the saved values
-          // change rather than syncing them across in an effect.
-          key={`${p.id ?? p.origin}-${p.name}-${p.title ?? ""}`}
-          person={p}
-          busy={busy}
-          onSave={(name, title) => saveEdit(p, name, title)}
-          onTarget={() =>
-            send("PATCH", {
-              target: { name: p.name, title: p.title, selected: !p.isTarget },
-            })
+          key={d.key}
+          draft={d}
+          busy={saving}
+          onChange={(patch) =>
+            setDrafts((prev) => prev.map((x) => (x.key === d.key ? { ...x, ...patch } : x)))
           }
-          onDelete={() =>
-            p.origin === "user" && p.id
-              ? send("DELETE", { contact_id: p.id })
-              : send("PATCH", {
-                  [`${p.origin === "founder" ? "founder" : "next_gen"}_name`]: "",
-                })
+          onRemove={() =>
+            setDrafts((prev) =>
+              d.isNew
+                ? prev.filter((x) => x.key !== d.key)
+                : prev.map((x) => (x.key === d.key ? { ...x, removed: true } : x))
+            )
           }
         />
       ))}
@@ -207,7 +295,6 @@ export function PeopleEditor({
               placeholder="Name"
               maxLength={120}
               aria-label="New person name"
-              // 16px on mobile, or iOS zooms in on focus and will not zoom back.
               className="min-w-0 flex-[3] rounded-lg border border-gh-border bg-gh-surface px-2 py-1.5 text-base text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none sm:text-sm"
             />
             <input
@@ -222,18 +309,29 @@ export function PeopleEditor({
           <div className="mt-2 flex items-center gap-2">
             <button
               type="button"
-              disabled={busy || draftName.trim().length === 0}
-              onClick={async () => {
-                const ok = await send("POST", { name: draftName, title: draftTitle });
-                if (ok) {
-                  setDraftName("");
-                  setDraftTitle("");
-                  setAdding(false);
-                }
+              disabled={draftName.trim().length === 0}
+              onClick={() => {
+                setDrafts((prev) => [
+                  ...prev,
+                  {
+                    key: `new-${prev.length}-${draftName.trim()}`,
+                    id: null,
+                    name: draftName.trim(),
+                    title: draftTitle.trim() || null,
+                    origin: "user",
+                    isTarget: false,
+                    email: null,
+                    removed: false,
+                    isNew: true,
+                  },
+                ]);
+                setDraftName("");
+                setDraftTitle("");
+                setAdding(false);
               }}
               className="cursor-pointer rounded-lg bg-gh-navy px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-gh-navy-2 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
             >
-              {busy ? "Adding…" : "Add"}
+              Add
             </button>
             <button
               type="button"
@@ -241,7 +339,6 @@ export function PeopleEditor({
                 setAdding(false);
                 setDraftName("");
                 setDraftTitle("");
-                setError("");
               }}
               className="cursor-pointer text-[11px] text-gh-ink-muted underline-offset-2 hover:underline"
             >
@@ -252,171 +349,146 @@ export function PeopleEditor({
       ) : (
         <button
           type="button"
-          disabled={full || busy}
+          disabled={full || saving}
           onClick={() => setAdding(true)}
-          title={full ? `Five people is the limit on one company.` : undefined}
+          title={full ? `${max} people is the limit on one company.` : undefined}
           className="cursor-pointer rounded-lg border border-dashed border-gh-border px-3 py-1.5 text-[11px] font-semibold text-gh-ink-secondary transition-colors hover:border-gh-sky/50 hover:text-gh-ink disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
         >
-          {full ? `${people.length} of ${max}, that is the limit` : "Add a person"}
+          {full ? `${live.length} of ${max}, that is the limit` : "Add a person"}
         </button>
       )}
 
       {error && <p className="text-[11px] text-gh-critical">{error}</p>}
 
-      <button
-        type="button"
-        onClick={() => {
-          setEditing(false);
-          setAdding(false);
-          setError("");
-        }}
-        className="cursor-pointer rounded-lg border border-gh-border px-2.5 py-1 text-[11px] font-semibold text-gh-ink-secondary transition-colors hover:border-gh-sky/50 hover:text-gh-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
-      >
-        Done editing
-      </button>
+      {confirmLeave ? (
+        <div className="rounded-lg border border-gh-warning/40 bg-gh-warning/10 p-2.5">
+          <p className="text-[11px] leading-relaxed text-gh-ink-secondary">
+            You have changes that are not saved. Save them?
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => void saveAll()}
+              className="cursor-pointer rounded-lg bg-gh-navy px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-gh-navy-2 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+            >
+              {saving ? "Saving…" : "Save changes"}
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={discard}
+              className="cursor-pointer rounded-lg border border-gh-border px-3 py-1.5 text-[11px] font-semibold text-gh-ink-secondary transition-colors hover:border-gh-critical/50 hover:text-gh-critical focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-critical/30"
+            >
+              Discard them
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmLeave(false)}
+              className="cursor-pointer text-[11px] text-gh-ink-muted underline-offset-2 hover:underline"
+            >
+              Keep editing
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => void saveAll()}
+            className="cursor-pointer rounded-lg bg-gh-navy px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-gh-navy-2 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+          >
+            {saving ? "Saving…" : "Done editing"}
+          </button>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={tryClose}
+            className="cursor-pointer text-[11px] text-gh-ink-muted underline-offset-2 hover:underline"
+          >
+            Cancel
+          </button>
+          {dirty && (
+            <span className="text-[10px] font-semibold text-gh-warning">unsaved changes</span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
+/** One row of the draft. Edits the draft only; nothing reaches the server. */
 function PersonRow({
-  person,
+  draft,
   busy,
-  onSave,
-  onTarget,
-  onDelete,
+  onChange,
+  onRemove,
 }: {
-  person: Person;
+  draft: Draft;
   busy: boolean;
-  onSave: (name: string, title: string) => Promise<boolean>;
-  onTarget: () => void;
-  onDelete: () => void;
+  onChange: (patch: Partial<Draft>) => void;
+  onRemove: () => void;
 }) {
-  const [name, setName] = useState(person.name);
-  const [title, setTitle] = useState(person.title ?? "");
-  const [editing, setEditing] = useState(false);
-
-  const dirty = name.trim() !== person.name || title.trim() !== (person.title ?? "");
-
-  // Closing the drawer unmounts these inputs without them ever blurring, so a
-  // correction typed and then dismissed would be lost. The ref holds the
-  // latest values because the cleanup closes over the first render otherwise.
-  const pending = useRef({ dirty: false, name: "", title: "" });
-  const onSaveRef = useRef(onSave);
-  useEffect(() => {
-    pending.current = {
-      dirty: dirty && editing && name.trim().length > 0,
-      name: name.trim(),
-      title: title.trim(),
-    };
-    onSaveRef.current = onSave;
-  });
-  useEffect(
-    () => () => {
-      const q = pending.current;
-      if (q.dirty) void onSaveRef.current(q.name, q.title);
-    },
-    []
-  );
-
   return (
     <div
       className={`rounded-lg border p-2.5 transition-colors ${
-        person.isTarget ? "border-gh-sky/50 bg-gh-sky/[0.04]" : "border-gh-border"
+        draft.isTarget ? "border-gh-sky/50 bg-gh-sky/[0.04]" : "border-gh-border"
       }`}
-      // Same rule as the drawer: clicking away commits, so a correction typed
-      // and abandoned is not silently thrown away.
-      onBlur={(e) => {
-        if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
-        if (!editing || !dirty || !name.trim()) return;
-        void onSave(name.trim(), title.trim()).then(() => setEditing(false));
-      }}
     >
       <div className="flex items-start gap-2">
-        {/* WAS A BARE RADIO, and Daniel could not tell what it was for.
-            Nothing on the row said that ticking it decides who a paid lookup
-            is spent on, and a radio next to a name reads as "select this row",
-            which is a different and more ordinary thing. The control now says
-            what it does. */}
-        {/* A TOGGLE, NOT A RADIO. Ticking one person used to untick everyone
-            else, because enrichment could only buy for one. It can buy for
-            each of them now, so a builder with a founder and two sons is
-            three ticks rather than a choice between them. */}
+        {/* A TOGGLE, NOT A RADIO. Enrichment can buy for each person now, so a
+            builder with a founder and two sons is three ticks rather than a
+            choice between them. */}
         <button
           type="button"
-          onClick={onTarget}
+          onClick={() => onChange({ isTarget: !draft.isTarget })}
           disabled={busy}
-          aria-pressed={person.isTarget}
+          aria-pressed={draft.isTarget}
           title={
-            person.isTarget
-              ? `Find personal emails will look ${person.name} up. Click to leave them out.`
-              : `Also look up an email for ${person.name}`
+            draft.isTarget
+              ? `${draft.name} will be looked up. Click to leave them out.`
+              : `Also look up an email for ${draft.name}`
           }
-          className={`mt-0.5 inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 ${
-            person.isTarget
-              ? "cursor-pointer bg-gh-navy text-white hover:bg-gh-navy-2"
-              : "cursor-pointer border border-gh-border text-gh-ink-muted hover:border-gh-navy/40 hover:text-gh-ink"
+          className={`mt-0.5 inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 ${
+            draft.isTarget
+              ? "bg-gh-navy text-white hover:bg-gh-navy-2"
+              : "border border-gh-border text-gh-ink-muted hover:border-gh-navy/40 hover:text-gh-ink"
           }`}
         >
-          {person.isTarget && <CheckIcon className="h-3 w-3" />}
-          {person.isTarget ? "Getting an email" : "Also get this one"}
+          {draft.isTarget && <CheckIcon className="h-3 w-3" />}
+          {draft.isTarget ? "Getting an email" : "Also get this one"}
         </button>
+
         <div className="min-w-0 flex-1">
-          {editing ? (
-            <div className="flex gap-1.5">
-              <input
-                autoFocus
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                maxLength={120}
-                aria-label={`${person.name} name`}
-                className="min-w-0 flex-[3] rounded border border-gh-border bg-gh-surface-sunken px-1.5 py-1 text-base text-gh-ink focus:border-gh-sky focus:outline-none sm:text-sm"
-              />
-              <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Title"
-                maxLength={120}
-                aria-label={`${person.name} title`}
-                className="min-w-0 flex-[2] rounded border border-gh-border bg-gh-surface-sunken px-1.5 py-1 text-base text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none sm:text-sm"
-              />
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              className="block w-full cursor-text text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
-            >
-              <span className="block truncate text-sm font-medium text-gh-ink">{person.name}</span>
-              <span className="block truncate text-[11px] text-gh-ink-muted">
-                {/* "Founder · Founder" was what this produced whenever the
-                    title the page gave matched the slot it sits in, which for
-                    a founder is most of the time. */}
-                {[
-                  ROLE_LABEL[person.origin],
-                  person.title && person.title.toLowerCase() !== ROLE_LABEL[person.origin].toLowerCase()
-                    ? person.title
-                    : null,
-                  person.email,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </span>
-            </button>
-          )}
+          <div className="flex gap-1.5">
+            <input
+              value={draft.name}
+              onChange={(e) => onChange({ name: e.target.value })}
+              maxLength={120}
+              aria-label={`${draft.name} name`}
+              // 16px on mobile, or iOS zooms in on focus and will not zoom back.
+              className="min-w-0 flex-[3] rounded border border-gh-border bg-gh-surface-sunken px-1.5 py-1 text-base text-gh-ink focus:border-gh-sky focus:outline-none sm:text-sm"
+            />
+            <input
+              value={draft.title ?? ""}
+              onChange={(e) => onChange({ title: e.target.value || null })}
+              placeholder="Title"
+              maxLength={120}
+              aria-label={`${draft.name} title`}
+              className="min-w-0 flex-[2] rounded border border-gh-border bg-gh-surface-sunken px-1.5 py-1 text-base text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none sm:text-sm"
+            />
+          </div>
+          <p className="mt-1 text-[10px] text-gh-ink-muted">
+            {[ROLE_LABEL[draft.origin], draft.email].filter(Boolean).join(" · ")}
+          </p>
         </div>
-        {/* Labelled, not just an icon. A bin next to a name in a panel that
-            also has a delete-the-whole-folder button elsewhere is worth being
-            unambiguous about. */}
+
         <button
           type="button"
-          onClick={onDelete}
+          onClick={onRemove}
           disabled={busy}
-          aria-label={`Remove ${person.name} from this list`}
-          title={
-            person.origin === "user"
-              ? `Remove ${person.name}`
-              : `Clear ${person.name}. Any email already found for them is kept.`
-          }
+          aria-label={`Remove ${draft.name} from this list`}
           className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded px-1.5 py-1 text-[10px] font-semibold text-gh-ink-muted transition-colors hover:bg-gh-critical/10 hover:text-gh-critical disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-critical/30"
         >
           <TrashIcon className="h-3.5 w-3.5" />
