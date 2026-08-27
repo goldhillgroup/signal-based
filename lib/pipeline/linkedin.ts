@@ -177,5 +177,36 @@ export async function lookupOnLinkedIn(company: {
     }
   }
 
+  // ONE MORE ASK, when the right page was found and its snippet happened not
+  // to carry the headcount.
+  //
+  // The snippet a search index returns for the SAME page varies between calls:
+  // Grasshopper Gardens gave "51-200 employees" one minute and nothing the
+  // next, so the button found a size or did not depending on when it was
+  // pressed. Putting the word "employees" in the query makes the index return
+  // the part of the page that has it, and on both companies tested it worked
+  // where the plain query had just failed.
+  //
+  // Only when there is a page to attach it to, so this cannot pick a number
+  // off a similarly-named company: the slug still has to match.
+  if (out.companyUrl && !out.employeeBand) {
+    try {
+      const more = await tavilySearch(`site:linkedin.com/company "${company.name}" employees`, {
+        maxResults: 4,
+      });
+      for (const h of more) {
+        if (!isLinkedIn(h.url) || !slugMatches(h.url, company.name)) continue;
+        out.checked++;
+        const band = (h.content ?? "").replace(/\s+/g, " ").match(BAND_RE);
+        if (band) {
+          out.employeeBand = `${band[1].replace(/\s+/g, "")} employees`;
+          break;
+        }
+      }
+    } catch {
+      // The first pass still stands.
+    }
+  }
+
   return out;
 }

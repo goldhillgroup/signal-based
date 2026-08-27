@@ -85,6 +85,36 @@ export function CompanyDrawer({
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  // LinkedIn, on demand. Roughly 1.6 cents a press and it finds something on
+  // about half of companies, so it is a button rather than part of every run.
+  const [liBusy, setLiBusy] = useState(false);
+  const [liResult, setLiResult] = useState<{
+    employeeBand: string | null;
+    wroteSize: boolean;
+    companyUrl: string | null;
+    people: { name: string; title: string | null; url: string }[];
+    checked: number;
+  } | null>(null);
+  const [liError, setLiError] = useState("");
+
+  async function lookUpOnLinkedIn() {
+    if (!company) return;
+    setLiBusy(true);
+    setLiError("");
+    setLiResult(null);
+    try {
+      const res = await fetch(`/api/company/${company.id}/linkedin`, { method: "POST" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || "That did not work.");
+      setLiResult(json);
+      if (json.wroteSize) router.refresh();
+    } catch (e) {
+      setLiError((e as Error).message);
+    } finally {
+      setLiBusy(false);
+    }
+  }
+
   const [blacklisting, setBlacklisting] = useState(false);
   const [blacklistError, setBlacklistError] = useState("");
 
@@ -375,6 +405,72 @@ export function CompanyDrawer({
                     <Row k="Found via" v={CHANNEL_LABELS[company.discoveryChannel] ?? company.discoveryChannel} />
                   )}
                 </div>
+              </div>
+
+              {/* LOOK IT UP ON LINKEDIN. Above blacklist, because it is the
+                  thing you try before deciding, not after. */}
+              <div className="rounded-lg border border-gh-border p-3.5">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-xs text-gh-ink-secondary">
+                    Check LinkedIn for company size and who works there.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={liBusy}
+                    onClick={() => void lookUpOnLinkedIn()}
+                    className="shrink-0 cursor-pointer rounded-lg border border-gh-border px-2.5 py-1.5 text-[11px] font-semibold text-gh-ink-secondary transition-colors hover:border-gh-sky/50 hover:text-gh-ink disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+                  >
+                    {liBusy ? "Looking…" : "Look up"}
+                  </button>
+                </div>
+
+                {liResult && (
+                  <div className="mt-2.5 space-y-1.5 border-t border-gh-border pt-2.5 text-[11px]">
+                    <p className="text-gh-ink-secondary">
+                      Company size:{" "}
+                      <span className="font-semibold text-gh-ink">
+                        {liResult.employeeBand ?? "not published"}
+                      </span>
+                      {liResult.wroteSize && (
+                        <span className="text-gh-ink-muted"> · saved to this lead</span>
+                      )}
+                    </p>
+                    {liResult.companyUrl && (
+                      <a
+                        href={liResult.companyUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block truncate text-gh-sky hover:underline"
+                      >
+                        {liResult.companyUrl.replace(/^https?:\/\/(www\.)?/, "")}
+                      </a>
+                    )}
+                    {liResult.people.map((pp) => (
+                      <a
+                        key={pp.url}
+                        href={pp.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block truncate text-gh-sky hover:underline"
+                      >
+                        {pp.name}
+                        {pp.title ? ` — ${pp.title}` : ""}
+                      </a>
+                    ))}
+                    {/* Said plainly. It finds something on about half of
+                        companies, and a button that goes quiet on the other
+                        half looks broken rather than honest. */}
+                    {!liResult.employeeBand &&
+                      !liResult.companyUrl &&
+                      liResult.people.length === 0 && (
+                        <p className="text-gh-ink-muted">
+                          Nothing public on LinkedIn for this one. It only finds
+                          something for about half of companies.
+                        </p>
+                      )}
+                  </div>
+                )}
+                {liError && <p className="mt-1.5 text-[11px] text-gh-critical">{liError}</p>}
               </div>
 
               {/* BLACKLIST, at the foot of everything the lead has to say.

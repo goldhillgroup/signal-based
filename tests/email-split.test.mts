@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { personalEmail, generalEmail, reachesAPerson, lookupCameBackEmpty, emailKindLabel, type Company, type Contact } from "../lib/company.js";
+import { localMatchesName } from "../lib/pipeline/page-email.js";
 
 function contact(email: string, findSource: string, findStatus: Contact["findStatus"] = "not_attempted"): Contact {
   return { name: null, nameInferred: false, title: null, email, findStatus, findSource, verificationStatus: "not_attempted" };
@@ -97,4 +98,25 @@ test("a bought address for a person actually found still counts", () => {
     findSource: "anymailfinder", verificationStatus: "valid" };
   assert.equal(emailKindLabel(real), "Bought, named person");
   assert.equal(reachesAPerson(real), true);
+});
+
+test("a mailbox carrying a generational suffix matches its person", () => {
+  // Central Mechanical publishes billjr@ and its successor is Bill Madey Jr.
+  // nameTokens drops "Jr" for being two letters, so the address was found,
+  // sat in the results, and could not be attached to the obvious owner.
+  assert.equal(localMatchesName("billjr", "Bill Madey Jr"), true);
+  assert.equal(localMatchesName("bill.jr", "Bill Madey Jr"), true);
+  assert.equal(localMatchesName("bmadeyjr", "Bill Madey Jr"), true);
+});
+
+test("the suffix rule does not match a different person", () => {
+  assert.equal(localMatchesName("dmadey", "Bill Madey Jr"), false);
+  assert.equal(localMatchesName("markjr", "Bill Madey Jr"), false);
+  assert.equal(localMatchesName("office", "Bill Madey Jr"), false);
+});
+
+test("names without a suffix are unaffected", () => {
+  assert.equal(localMatchesName("skip", "Skip Orth"), true);
+  assert.equal(localMatchesName("buddy", "Buddy Orth"), true);
+  assert.equal(localMatchesName("accounting", "Skip Orth"), false);
 });

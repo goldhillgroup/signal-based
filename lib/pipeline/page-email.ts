@@ -92,6 +92,9 @@ function nameTokens(name: string | null): string[] {
  * `will.greathouse`, `greathousew`. Requires a length-3 token so "a@" or "jo@"
  * cannot match "Joanne" by accident.
  */
+/** Generational suffixes, which nameTokens drops for being under 3 letters. */
+const SUFFIXES = ["jr", "sr", "ii", "iii", "iv"];
+
 export function localMatchesName(local: string, name: string): boolean {
   const parts = nameTokens(name);
   if (parts.length === 0) return false;
@@ -103,6 +106,19 @@ export function localMatchesName(local: string, name: string): boolean {
   if (last && first && flat === `${first[0]}${last}`) return true; // wgreathouse
   if (last && first && flat === `${last}${first[0]}`) return true; // greathousew
   if (last && first && flat === `${first}${last[0]}`) return true; // willg
+
+  // A GENERATIONAL SUFFIX IS PART OF THE MAILBOX, and nameTokens throws it
+  // away for being two letters. Central Mechanical publishes billjr@ and the
+  // company's successor is Bill Madey Jr; the address was found, sat in the
+  // results, and could not be attached to the one person it obviously belongs
+  // to. In a product about handing a business from a father to a son, "Jr" is
+  // close to the last token that should be discarded.
+  const suffix = SUFFIXES.find((sx) => new RegExp(`\\b${sx}\\b`, "i").test(name));
+  if (suffix && first) {
+    if (flat === `${first}${suffix}`) return true; // billjr
+    if (last && flat === `${first}${last}${suffix}`) return true; // billmadeyjr
+    if (last && flat === `${first[0]}${last}${suffix}`) return true; // bmadeyjr
+  }
   return false;
 }
 
