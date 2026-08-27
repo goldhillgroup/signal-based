@@ -53,6 +53,31 @@ export function CompanyDrawer({
   // boolean would tick both at once.
   const [copied, setCopied] = useState<string | null>(null);
   const router = useRouter();
+  const [blacklisting, setBlacklisting] = useState(false);
+  const [blacklistError, setBlacklistError] = useState("");
+
+  async function setBlacklisted(action: "blacklist" | "restore") {
+    if (!company) return;
+    setBlacklisting(true);
+    setBlacklistError("");
+    try {
+      const res = await fetch(`/api/company/${company.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || "That did not work.");
+      // The list behind the drawer is server-rendered, so it still shows the
+      // company on the tab it has just left.
+      router.refresh();
+      onClose();
+    } catch (e) {
+      setBlacklistError((e as Error).message);
+    } finally {
+      setBlacklisting(false);
+    }
+  }
 
   // No editing state here any more. Every row in PeopleEditor edits in place
   // and commits on blur, and saves itself on unmount, so the drawer does not
@@ -297,6 +322,45 @@ export function CompanyDrawer({
                     <Row k="Found via" v={CHANNEL_LABELS[company.discoveryChannel] ?? company.discoveryChannel} />
                   )}
                 </div>
+              </div>
+
+              {/* BLACKLIST, at the foot of everything the lead has to say.
+                  Deliberately last: it is the action you take having read the
+                  quote and decided, not one to trip over on the way in. */}
+              <div className="rounded-lg border border-gh-border p-3.5">
+                {company.status === "rejected" ? (
+                  <>
+                    <p className="text-xs text-gh-ink-secondary">
+                      Cut from your lists, and skipped by future searches.
+                    </p>
+                    <button
+                      type="button"
+                      disabled={blacklisting}
+                      onClick={() => void setBlacklisted("restore")}
+                      className="mt-2 cursor-pointer rounded-lg border border-gh-border px-3 py-1.5 text-[11px] font-semibold text-gh-ink-secondary transition-colors hover:border-gh-sky/50 hover:text-gh-ink disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+                    >
+                      {blacklisting ? "Putting it back…" : "Put it back"}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs text-gh-ink-secondary">
+                      Not one you want? Blacklisting it takes it off your lists
+                      and stops future searches finding it again.
+                    </p>
+                    <button
+                      type="button"
+                      disabled={blacklisting}
+                      onClick={() => void setBlacklisted("blacklist")}
+                      className="mt-2 cursor-pointer rounded-lg border border-gh-border px-3 py-1.5 text-[11px] font-semibold text-gh-ink-secondary transition-colors hover:border-gh-critical/50 hover:text-gh-critical disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-critical/30"
+                    >
+                      {blacklisting ? "Blacklisting…" : "Blacklist this company"}
+                    </button>
+                  </>
+                )}
+                {blacklistError && (
+                  <p className="mt-1.5 text-[11px] text-gh-critical">{blacklistError}</p>
+                )}
               </div>
 
               {(company.allContacts ?? []).length > 0 && (
