@@ -293,10 +293,27 @@ function Row({
         >
           {folder.label}
         </Link>
+        {/* THE NUMBER THAT DECIDES WHETHER TO PRESS THE BUTTON was the one
+            missing. "12 leads · 5 emails · 3 verified" tells you what has
+            happened and leaves you to subtract for what has not, which is the
+            only figure that answers "is there anything left to do here". */}
         <p className="tabular mt-0.5 text-[11px] text-gh-ink-muted">
-          {leadCount(folder)} lead{leadCount(folder) === 1 ? "" : "s"} ·{" "}
-          {folder.contactsFound} email{folder.contactsFound === 1 ? "" : "s"} ·{" "}
-          {folder.contactsVerified} verified
+          {leadCount(folder)} lead{leadCount(folder) === 1 ? "" : "s"}
+          {" · "}
+          <span className={folder.contactsFound > 0 ? "text-gh-ink-secondary" : ""}>
+            {folder.contactsFound} with an address
+          </span>
+          {" · "}
+          <span
+            className={
+              Math.max(0, leadCount(folder) - folder.contactsFound) > 0
+                ? "font-semibold text-gh-ink-secondary"
+                : ""
+            }
+          >
+            {Math.max(0, leadCount(folder) - folder.contactsFound)} still to look up
+          </span>
+          {folder.contactsVerified > 0 ? ` · ${folder.contactsVerified} verified` : ""}
         </p>
         {note && <p className="mt-1 text-[11px] text-gh-critical">{note}</p>}
       </div>

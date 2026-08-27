@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { TrashIcon } from "./icons";
+import { CheckIcon, PencilIcon, TrashIcon } from "./icons";
 
 /**
  * Who is at this company, and which one the next lookup pays for.
@@ -149,9 +149,10 @@ export function PeopleEditor({
           <button
             type="button"
             onClick={() => setEditing(true)}
-            className="shrink-0 cursor-pointer rounded-lg border border-gh-border px-2.5 py-1 text-[11px] font-semibold text-gh-ink-secondary transition-colors hover:border-gh-sky/50 hover:text-gh-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+            className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-gh-border px-2.5 py-1.5 text-[11px] font-semibold text-gh-ink-secondary transition-colors hover:border-gh-sky/50 hover:text-gh-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
           >
-            Edit
+            <PencilIcon className="h-3.5 w-3.5" />
+            Edit people
           </button>
         </div>
       </div>
@@ -160,6 +161,11 @@ export function PeopleEditor({
 
   return (
     <div className="space-y-2.5">
+      <p className="text-[11px] leading-relaxed text-gh-ink-muted">
+        Click a name to correct it. Up to {max} people. The one marked{" "}
+        <span className="font-semibold text-gh-ink">Gets the email</span> is who
+        a paid lookup buys an address for.
+      </p>
       {people.length === 0 && (
         <p className="text-xs text-gh-ink-muted">
           Nobody is named on this one yet. Add whoever you found.
@@ -176,7 +182,13 @@ export function PeopleEditor({
           busy={busy}
           onSave={(name, title) => saveEdit(p, name, title)}
           onTarget={() => send("PATCH", { target: { name: p.name, title: p.title } })}
-          onDelete={p.id ? () => send("DELETE", { contact_id: p.id }) : undefined}
+          onDelete={() =>
+            p.origin === "user" && p.id
+              ? send("DELETE", { contact_id: p.id })
+              : send("PATCH", {
+                  [`${p.origin === "founder" ? "founder" : "next_gen"}_name`]: "",
+                })
+          }
         />
       ))}
 
@@ -246,13 +258,6 @@ export function PeopleEditor({
 
       {error && <p className="text-[11px] text-gh-critical">{error}</p>}
 
-      {/* The consequence of the radio, said where the radio is. Which person
-          is ticked decides who a paid lookup is spent on. */}
-      <p className="pt-0.5 text-[11px] leading-relaxed text-gh-ink-muted">
-        Find personal emails looks up whoever is ticked. Tick a different person
-        to change who it buys an address for.
-      </p>
-
       <button
         type="button"
         onClick={() => {
@@ -262,7 +267,7 @@ export function PeopleEditor({
         }}
         className="cursor-pointer rounded-lg border border-gh-border px-2.5 py-1 text-[11px] font-semibold text-gh-ink-secondary transition-colors hover:border-gh-sky/50 hover:text-gh-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
       >
-        Done
+        Done editing
       </button>
     </div>
   );
@@ -279,7 +284,7 @@ function PersonRow({
   busy: boolean;
   onSave: (name: string, title: string) => Promise<boolean>;
   onTarget: () => void;
-  onDelete?: () => void;
+  onDelete: () => void;
 }) {
   const [name, setName] = useState(person.name);
   const [title, setTitle] = useState(person.title ?? "");
@@ -322,15 +327,30 @@ function PersonRow({
       }}
     >
       <div className="flex items-start gap-2">
-        <input
-          type="radio"
-          name={`target-${person.origin}-${person.id ?? person.name}`}
-          checked={person.isTarget}
-          onChange={onTarget}
-          disabled={busy}
-          aria-label={`Look up an email for ${person.name}`}
-          className="mt-1 h-3.5 w-3.5 shrink-0 cursor-pointer accent-gh-navy"
-        />
+        {/* WAS A BARE RADIO, and Daniel could not tell what it was for.
+            Nothing on the row said that ticking it decides who a paid lookup
+            is spent on, and a radio next to a name reads as "select this row",
+            which is a different and more ordinary thing. The control now says
+            what it does. */}
+        <button
+          type="button"
+          onClick={onTarget}
+          disabled={busy || person.isTarget}
+          aria-pressed={person.isTarget}
+          title={
+            person.isTarget
+              ? "Find personal emails will look this person up"
+              : `Look up an email for ${person.name} instead`
+          }
+          className={`mt-0.5 inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 ${
+            person.isTarget
+              ? "cursor-default bg-gh-navy text-white"
+              : "cursor-pointer border border-gh-border text-gh-ink-muted hover:border-gh-navy/40 hover:text-gh-ink"
+          }`}
+        >
+          {person.isTarget && <CheckIcon className="h-3 w-3" />}
+          {person.isTarget ? "Gets the email" : "Email this one"}
+        </button>
         <div className="min-w-0 flex-1">
           {editing ? (
             <div className="flex gap-1.5">
@@ -375,18 +395,24 @@ function PersonRow({
             </button>
           )}
         </div>
-        {onDelete && (
-          <button
-            type="button"
-            onClick={onDelete}
-            disabled={busy}
-            aria-label={`Remove ${person.name}`}
-            title="Remove"
-            className="shrink-0 cursor-pointer rounded p-1 text-gh-ink-muted transition-colors hover:bg-gh-critical/10 hover:text-gh-critical disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-critical/30"
-          >
-            <TrashIcon className="h-3.5 w-3.5" />
-          </button>
-        )}
+        {/* Labelled, not just an icon. A bin next to a name in a panel that
+            also has a delete-the-whole-folder button elsewhere is worth being
+            unambiguous about. */}
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={busy}
+          aria-label={`Remove ${person.name} from this list`}
+          title={
+            person.origin === "user"
+              ? `Remove ${person.name}`
+              : `Clear ${person.name}. Any email already found for them is kept.`
+          }
+          className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded px-1.5 py-1 text-[10px] font-semibold text-gh-ink-muted transition-colors hover:bg-gh-critical/10 hover:text-gh-critical disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-critical/30"
+        >
+          <TrashIcon className="h-3.5 w-3.5" />
+          Remove
+        </button>
       </div>
     </div>
   );
