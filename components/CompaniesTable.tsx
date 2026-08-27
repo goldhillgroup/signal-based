@@ -10,7 +10,7 @@ import { isWrongKindOfBusiness } from "@/lib/pipeline/recheck-policy";
 import { LeadCard } from "./LeadCard";
 import { LeadTable } from "./LeadTable";
 
-type Tab = "all" | "signal" | "fit" | "not_a_fit";
+type Tab = "all" | "signal" | "fit" | "not_a_fit" | "blacklisted";
 
 // FOUR TABS BECAME TWO, and they now say what the cards say.
 //
@@ -85,12 +85,22 @@ const TABS: { key: Tab; label: string; hint: string }[] = [
     hint: "Right trade, right area, family-run, no successor named on the site",
   },
   { key: "not_a_fit", label: "Not a fit", hint: "Cut by one of your gates, with the reason" },
+  {
+    key: "blacklisted",
+    label: "Blacklisted",
+    hint: "Ones you cut yourself. Future searches skip them.",
+  },
 ];
 
 // A 'filter'/'hybrid' company that fit the ICP with no signal found is
 // still status: 'qualified' in the DB (it passed every gate) — confidence:
 // null is what actually distinguishes it from a real qualified/verify
 // signal match. See orchestrator.ts's finalHasSignal.
+/** Written by app/api/company/[id]/route.ts when you blacklist one. */
+function isBlacklisted(c: Company): boolean {
+  return (c.rejectionReason ?? "").trim().toLowerCase() === "blacklisted by you";
+}
+
 function matchesTab(c: Company, tab: Tab) {
   // Every lead: the two accepted tiers together, never the cut pile.
   if (tab === "all") return c.status === "qualified";
@@ -107,8 +117,17 @@ function matchesTab(c: Company, tab: Tab) {
   // obituary sites, newspapers, a school reunion page and eight funeral homes;
   // leaving those in buries the handful actually worth a second look. They are
   // counted below, never deleted. See isWrongKindOfBusiness.
+  // YOUR OWN CUTS GET THEIR OWN TAB. Sent to "Not a fit" they landed among
+  // the model's rejections, so pressing Blacklist looked like the company had
+  // simply vanished -- there was nowhere to go and check, and no way to undo
+  // it without hunting through a list of the crawler's reasons.
+  if (tab === "blacklisted") return c.status === "rejected" && isBlacklisted(c);
   if (tab === "not_a_fit")
-    return c.status === "rejected" && !isWrongKindOfBusiness(c.rejectionReason);
+    return (
+      c.status === "rejected" &&
+      !isBlacklisted(c) &&
+      !isWrongKindOfBusiness(c.rejectionReason)
+    );
   // Signal covers confirmed AND needs-a-look. Both are a founder-and-successor
   // claim; only the confidence differs, and the card says which.
   return c.status === "qualified" && c.hasSignal === true;
@@ -308,7 +327,12 @@ export function CompaniesTable({
   return (
     <div className="rounded-xl border border-gh-border bg-gh-surface">
       <div className="flex flex-wrap items-center gap-1 border-b border-gh-border p-2">
-        {TABS.filter((t) => t.key !== "not_a_fit" || counts.not_a_fit > 0).map((t) => (
+        {/* Both cut tabs stay hidden until they hold something. A folder
+            where nothing was blacklisted should not carry an empty tab
+            inviting the question of what it is for. */}
+        {TABS.filter((t) =>
+          t.key === "not_a_fit" || t.key === "blacklisted" ? counts[t.key] > 0 : true
+        ).map((t) => (
           <button
             key={t.key}
             type="button"
@@ -410,7 +434,8 @@ export function CompaniesTable({
           said 39 were being hidden by a filter that did not exist. */}
       <p className="px-4 pt-3 text-xs text-gh-ink-muted">
         Showing <span className="font-semibold text-gh-ink-secondary">{filtered.length}</span> of{" "}
-        {counts[tab]} {tab === "not_a_fit" ? "cut" : "leads"}
+        {counts[tab]}{" "}
+        {tab === "not_a_fit" ? "cut" : tab === "blacklisted" ? "blacklisted" : "leads"}
         {/* NEVER a silent filter. The wrong-kind rows are left out because
             arguing with them is pointless, but a list that quietly shrinks is
             worse than a cluttered one — say how many and why. */}
