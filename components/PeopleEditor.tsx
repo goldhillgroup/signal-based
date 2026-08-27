@@ -49,6 +49,14 @@ export function PeopleEditor({
   const [max, setMax] = useState(5);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // READ-ONLY UNTIL YOU PRESS EDIT.
+  //
+  // Every row carried its own radio, its own delete and a permanent "Add a
+  // person" button, so a panel that is mostly READ -- who runs this company --
+  // looked like a form being filled in. Daniel asked for the pattern used
+  // everywhere else: one Edit, which turns the section into an editor, and
+  // where adding somebody belongs.
+  const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState(false);
   const [draftName, setDraftName] = useState("");
   const [draftTitle, setDraftTitle] = useState("");
@@ -110,6 +118,45 @@ export function PeopleEditor({
   }
 
   const full = people.length >= max;
+
+  if (!editing) {
+    return (
+      <div className="space-y-2">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1 space-y-1.5">
+            {people.length === 0 && (
+              <p className="text-xs text-gh-ink-muted">Nobody is named on this one.</p>
+            )}
+            {people.map((p) => (
+              <div key={`${p.id ?? p.origin}-${p.name}`} className="flex items-baseline justify-between gap-2">
+                <span className="min-w-0 flex-1">
+                  <span className="text-sm font-medium text-gh-ink">{p.name}</span>
+                  <span className="ml-1.5 text-[11px] text-gh-ink-muted">
+                    {p.title ?? ROLE_LABEL[p.origin]}
+                  </span>
+                </span>
+                {/* Marked, not explained: the sentence under the editor says
+                    what the tick means, and repeating it on every row would
+                    bury the names it is meant to annotate. */}
+                {p.isTarget && (
+                  <span className="shrink-0 rounded-full bg-gh-sky/10 px-2 py-0.5 text-[10px] font-semibold text-gh-navy">
+                    gets the email
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="shrink-0 cursor-pointer rounded-lg border border-gh-border px-2.5 py-1 text-[11px] font-semibold text-gh-ink-secondary transition-colors hover:border-gh-sky/50 hover:text-gh-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+          >
+            Edit
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-2.5">
@@ -205,6 +252,18 @@ export function PeopleEditor({
         Find personal emails looks up whoever is ticked. Tick a different person
         to change who it buys an address for.
       </p>
+
+      <button
+        type="button"
+        onClick={() => {
+          setEditing(false);
+          setAdding(false);
+          setError("");
+        }}
+        className="cursor-pointer rounded-lg border border-gh-border px-2.5 py-1 text-[11px] font-semibold text-gh-ink-secondary transition-colors hover:border-gh-sky/50 hover:text-gh-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+      >
+        Done
+      </button>
     </div>
   );
 }
@@ -300,9 +359,18 @@ function PersonRow({
             >
               <span className="block truncate text-sm font-medium text-gh-ink">{person.name}</span>
               <span className="block truncate text-[11px] text-gh-ink-muted">
-                {ROLE_LABEL[person.origin]}
-                {person.title ? ` · ${person.title}` : ""}
-                {person.email ? ` · ${person.email}` : ""}
+                {/* "Founder · Founder" was what this produced whenever the
+                    title the page gave matched the slot it sits in, which for
+                    a founder is most of the time. */}
+                {[
+                  ROLE_LABEL[person.origin],
+                  person.title && person.title.toLowerCase() !== ROLE_LABEL[person.origin].toLowerCase()
+                    ? person.title
+                    : null,
+                  person.email,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
               </span>
             </button>
           )}
