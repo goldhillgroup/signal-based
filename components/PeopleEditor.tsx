@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { CheckIcon, PencilIcon, TrashIcon } from "./icons";
+import { splitName, joinName } from "@/lib/pipeline/people";
 
 /**
  * Who is at this company, and which of them a paid lookup is for.
@@ -77,7 +78,8 @@ export function PeopleEditor({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
-  const [draftName, setDraftName] = useState("");
+  const [draftFirst, setDraftFirst] = useState("");
+  const [draftLast, setDraftLast] = useState("");
   const [draftTitle, setDraftTitle] = useState("");
   const [confirmLeave, setConfirmLeave] = useState(false);
 
@@ -290,12 +292,20 @@ export function PeopleEditor({
           <div className="flex gap-1.5">
             <input
               autoFocus
-              value={draftName}
-              onChange={(e) => setDraftName(e.target.value)}
-              placeholder="Name"
+              value={draftFirst}
+              onChange={(e) => setDraftFirst(e.target.value)}
+              placeholder="First name"
               maxLength={120}
-              aria-label="New person name"
-              className="min-w-0 flex-[3] rounded-lg border border-gh-border bg-gh-surface px-2 py-1.5 text-base text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none sm:text-sm"
+              aria-label="New person first name"
+              className="min-w-0 flex-[2] rounded-lg border border-gh-border bg-gh-surface px-2 py-1.5 text-base text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none sm:text-sm"
+            />
+            <input
+              value={draftLast}
+              onChange={(e) => setDraftLast(e.target.value)}
+              placeholder="Last name"
+              maxLength={120}
+              aria-label="New person last name"
+              className="min-w-0 flex-[2] rounded-lg border border-gh-border bg-gh-surface px-2 py-1.5 text-base text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none sm:text-sm"
             />
             <input
               value={draftTitle}
@@ -309,14 +319,14 @@ export function PeopleEditor({
           <div className="mt-2 flex items-center gap-2">
             <button
               type="button"
-              disabled={draftName.trim().length === 0}
+              disabled={joinName(draftFirst, draftLast).length === 0}
               onClick={() => {
                 setDrafts((prev) => [
                   ...prev,
                   {
-                    key: `new-${prev.length}-${draftName.trim()}`,
+                    key: `new-${prev.length}-${joinName(draftFirst, draftLast)}`,
                     id: null,
-                    name: draftName.trim(),
+                    name: joinName(draftFirst, draftLast),
                     title: draftTitle.trim() || null,
                     origin: "user",
                     isTarget: false,
@@ -325,7 +335,8 @@ export function PeopleEditor({
                     isNew: true,
                   },
                 ]);
-                setDraftName("");
+                setDraftFirst("");
+                setDraftLast("");
                 setDraftTitle("");
                 setAdding(false);
               }}
@@ -337,7 +348,8 @@ export function PeopleEditor({
               type="button"
               onClick={() => {
                 setAdding(false);
-                setDraftName("");
+                setDraftFirst("");
+                setDraftLast("");
                 setDraftTitle("");
               }}
               className="cursor-pointer text-[11px] text-gh-ink-muted underline-offset-2 hover:underline"
@@ -461,14 +473,27 @@ function PersonRow({
         </button>
 
         <div className="min-w-0 flex-1">
+          {/* FIRST AND LAST, not one box. Correcting a surname in a single
+              field means retyping the forename with it, and a stray space is
+              invisible. Stored as one string still -- the split is for the
+              hands, not the database. */}
           <div className="flex gap-1.5">
             <input
-              value={draft.name}
-              onChange={(e) => onChange({ name: e.target.value })}
+              value={splitName(draft.name).first}
+              onChange={(e) => onChange({ name: joinName(e.target.value, splitName(draft.name).last) })}
+              placeholder="First name"
               maxLength={120}
-              aria-label={`${draft.name} name`}
+              aria-label={`${draft.name} first name`}
               // 16px on mobile, or iOS zooms in on focus and will not zoom back.
-              className="min-w-0 flex-[3] rounded border border-gh-border bg-gh-surface-sunken px-1.5 py-1 text-base text-gh-ink focus:border-gh-sky focus:outline-none sm:text-sm"
+              className="min-w-0 flex-[2] rounded border border-gh-border bg-gh-surface-sunken px-1.5 py-1 text-base text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none sm:text-sm"
+            />
+            <input
+              value={splitName(draft.name).last}
+              onChange={(e) => onChange({ name: joinName(splitName(draft.name).first, e.target.value) })}
+              placeholder="Last name"
+              maxLength={120}
+              aria-label={`${draft.name} last name`}
+              className="min-w-0 flex-[2] rounded border border-gh-border bg-gh-surface-sunken px-1.5 py-1 text-base text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none sm:text-sm"
             />
             <input
               value={draft.title ?? ""}

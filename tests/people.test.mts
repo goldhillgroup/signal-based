@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { peopleFrom, MAX_PEOPLE, PERSON_SOURCE, PERSON_TARGET_SOURCE } from "../lib/pipeline/people.js";
+import { peopleFrom, MAX_PEOPLE, PERSON_SOURCE, PERSON_TARGET_SOURCE, splitName, joinName } from "../lib/pipeline/people.js";
 
 const company = { founder_name: "John Hansmann", founder_title: "Founder", next_gen_name: "Steve Hansmann", next_gen_title: "Owner" };
 const row = (over: Record<string, unknown> = {}) => ({
@@ -81,4 +81,32 @@ test("more than one person can be ticked", () => {
 test("ticking nobody still falls back to the old single rule", () => {
   const people = peopleFrom(company, [row({ id: "a", name: "Dave Hansmann", find_source: PERSON_SOURCE })]);
   assert.deepEqual(people.filter((p) => p.isTarget).map((p) => p.name), ["Steve Hansmann"]);
+});
+
+test("a name splits into first and last", () => {
+  assert.deepEqual(splitName("John Hansmann"), { first: "John", last: "Hansmann" });
+  assert.deepEqual(splitName("Shari Cavallari"), { first: "Shari", last: "Cavallari" });
+});
+
+test("a generational suffix stays with the surname", () => {
+  // "Bill Madey / Jr" would give somebody a surname of Jr, and that suffix is
+  // exactly what tells a son from his father here.
+  assert.deepEqual(splitName("Bill Madey Jr"), { first: "Bill", last: "Madey Jr" });
+  assert.deepEqual(splitName("Francis Fahy Jr."), { first: "Francis", last: "Fahy Jr." });
+});
+
+test("a nickname survives the split", () => {
+  assert.deepEqual(splitName('John "Hayden" Turner'), { first: 'John "Hayden"', last: "Turner" });
+});
+
+test("one word and nothing are handled", () => {
+  assert.deepEqual(splitName("Diego"), { first: "Diego", last: "" });
+  assert.deepEqual(splitName(null), { first: "", last: "" });
+});
+
+test("joining puts it back", () => {
+  for (const n of ["John Hansmann", "Bill Madey Jr", 'John "Hayden" Turner', "Diego"]) {
+    const { first, last } = splitName(n);
+    assert.equal(joinName(first, last), n);
+  }
 });

@@ -273,3 +273,37 @@ export async function removePerson(db: Db, companyId: string, contactId: string)
   const { error } = await db.from("contacts").delete().eq("id", contactId);
   return error ? { error: error.message } : {};
 }
+
+/**
+ * A stored name split into the two boxes the editor shows.
+ *
+ * Names arrive as one string, because that is how a page writes them and how
+ * the vendor returns them. Jonathan asked to edit them as first and last,
+ * which is easier to correct and harder to get subtly wrong: retyping "John
+ * Hansmann" to fix a surname means retyping the forename too, and a stray
+ * space is invisible.
+ *
+ * The last token is the surname, EXCEPT when it is a generational suffix.
+ * "Bill Madey Jr" splits to Bill / Madey Jr, not Bill Madey / Jr, because a
+ * surname of "Jr" is nobody's, and because that suffix is exactly what tells
+ * a son from his father in this product.
+ *
+ * Everything before the surname is the forename, so 'John "Hayden" Turner'
+ * keeps its nickname rather than losing it to a tidy-up.
+ */
+const NAME_SUFFIXES = new Set(["jr", "jr.", "sr", "sr.", "ii", "iii", "iv"]);
+
+export function splitName(full: string | null | undefined): { first: string; last: string } {
+  const parts = (full ?? "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { first: "", last: "" };
+  if (parts.length === 1) return { first: parts[0], last: "" };
+
+  let cut = parts.length - 1;
+  if (NAME_SUFFIXES.has(parts[cut].toLowerCase()) && cut > 1) cut -= 1;
+  return { first: parts.slice(0, cut).join(" "), last: parts.slice(cut).join(" ") };
+}
+
+/** The inverse, tolerating either box being left empty. */
+export function joinName(first: string, last: string): string {
+  return [first.trim(), last.trim()].filter(Boolean).join(" ").replace(/\s+/g, " ");
+}
