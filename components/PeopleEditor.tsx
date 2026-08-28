@@ -72,6 +72,10 @@ export function PeopleEditor({
   onDirtyChange?: (dirty: boolean) => void;
 }) {
   const [people, setPeople] = useState<Person[] | null>(null);
+  const [loose, setLoose] = useState<{ id: string; email: string; source: string | null }[]>([]);
+  // Which loose address is being handed to somebody, and to whom.
+  const [assigning, setAssigning] = useState<string | null>(null);
+  const [assignName, setAssignName] = useState("");
   const [max, setMax] = useState(5);
   const [editing, setEditing] = useState(false);
   const [drafts, setDrafts] = useState<Draft[]>([]);
@@ -91,6 +95,7 @@ export function PeopleEditor({
       .then((json) => {
         if (cancelled) return;
         setPeople(json?.people ?? []);
+        setLoose(json?.unattached ?? []);
         if (typeof json?.max === "number") setMax(json.max);
       })
       .catch(() => {
@@ -125,6 +130,35 @@ export function PeopleEditor({
       onDirtyChange?.(dirty);
     }
   });
+
+  /**
+   * Hand a loose address to somebody. Immediate rather than drafted: it moves
+   * an address that already exists onto a person, so there is nothing to
+   * mistype and nothing to lose by it taking effect.
+   */
+  async function assign(contactId: string, name: string, title: string | null) {
+    setSaving(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/company/${companyId}/people`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assign: { contact_id: contactId, name, title } }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || "That did not work.");
+      setPeople(json.people ?? []);
+      setLoose(json.unattached ?? []);
+      if (editing) setDrafts(toDrafts(json.people ?? []));
+      setAssigning(null);
+      setAssignName("");
+      onChanged?.();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   function openEditor() {
     setDrafts(toDrafts(people ?? []));
@@ -216,6 +250,7 @@ export function PeopleEditor({
 
       const fresh = await fetch(`/api/company/${companyId}/people`).then((r) => r.json());
       setPeople(fresh?.people ?? []);
+      setLoose(fresh?.unattached ?? []);
       setDrafts([]);
       setEditing(false);
       setAdding(false);
@@ -236,6 +271,7 @@ export function PeopleEditor({
   // ── Read mode ──────────────────────────────────────────────────────────
   if (!editing) {
     return (
+      <>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1 space-y-1.5">
           {people.length === 0 && (
@@ -272,6 +308,18 @@ export function PeopleEditor({
           Edit people
         </button>
       </div>
+      <LooseEmails
+        loose={loose}
+        people={people}
+        busy={saving}
+        assigning={assigning}
+        assignName={assignName}
+        setAssigning={setAssigning}
+        setAssignName={setAssignName}
+        onAssign={assign}
+      />
+      {error && <p className="mt-1.5 text-[11px] text-gh-critical">{error}</p>}
+      </>
     );
   }
 
@@ -404,6 +452,17 @@ export function PeopleEditor({
           {full ? `${live.length} of ${max}, that is the limit` : "Add a person"}
         </button>
       )}
+
+      <LooseEmails
+        loose={loose}
+        people={live}
+        busy={saving}
+        assigning={assigning}
+        assignName={assignName}
+        setAssigning={setAssigning}
+        setAssignName={setAssignName}
+        onAssign={assign}
+      />
 
       {error && <p className="text-[11px] text-gh-critical">{error}</p>}
 
@@ -565,6 +624,112 @@ function PersonRow({
           <TrashIcon className="h-3.5 w-3.5" />
           Remove
         </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The addresses nobody owns, and a way to give one to somebody.
+ *
+ * Jonathan's ask: a sweep at Father & Son returned mattscheff@ with nobody
+ * attached, and that is plainly a person the crawler never named. Adding "Matt
+ * Scheff" and then retyping his address is two jobs for one fact.
+ *
+ * Existing people are offered as buttons because that is the common case -- an
+ * address the matcher could not spell its way to, belonging to somebody
+ * already on the list -- and a free field covers the rest.
+ */
+function LooseEmails({
+  loose,
+  people,
+  busy,
+  assigning,
+  assignName,
+  setAssigning,
+  setAssignName,
+  onAssign,
+}: {
+  loose: { id: string; email: string; source: string | null }[];
+  people: { name: string; title: string | null; email: string | null }[];
+  busy: boolean;
+  assigning: string | null;
+  assignName: string;
+  setAssigning: (v: string | null) => void;
+  setAssignName: (v: string) => void;
+  onAssign: (contactId: string, name: string, title: string | null) => void | Promise<void>;
+}) {
+  if (loose.length === 0) return null;
+  const takers = people.filter((p) => !p.email);
+
+  return (
+    <div className="mt-3 border-t border-gh-border pt-3">
+      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-gh-ink-muted">
+        General inboxes
+      </p>
+      <div className="space-y-1.5">
+        {loose.map((k) => (
+          <div key={k.id}>
+            <div className="flex items-baseline justify-between gap-2">
+              <a
+                href={`mailto:${k.email}`}
+                className="min-w-0 flex-1 truncate text-[11px] text-gh-ink-secondary hover:underline"
+              >
+                {k.email}
+              </a>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setAssigning(assigning === k.id ? null : k.id);
+                  setAssignName("");
+                }}
+                className="shrink-0 cursor-pointer text-[10px] font-semibold text-gh-ink-muted underline-offset-2 transition-colors hover:text-gh-ink hover:underline disabled:opacity-40"
+              >
+                {assigning === k.id ? "Cancel" : "Whose is this?"}
+              </button>
+            </div>
+
+            {assigning === k.id && (
+              <div className="mt-1.5 rounded-lg border border-gh-sky/40 bg-gh-surface-sunken p-2">
+                {takers.length > 0 && (
+                  <div className="mb-1.5 flex flex-wrap gap-1">
+                    {takers.map((t) => (
+                      <button
+                        key={t.name}
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void onAssign(k.id, t.name, t.title)}
+                        className="cursor-pointer rounded-full border border-gh-border px-2 py-0.5 text-[10px] font-semibold text-gh-ink-secondary transition-colors hover:border-gh-navy/40 hover:text-gh-ink disabled:opacity-40"
+                      >
+                        {t.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="flex gap-1.5">
+                  <input
+                    autoFocus
+                    value={assignName}
+                    onChange={(e) => setAssignName(e.target.value)}
+                    placeholder="Or a name not listed"
+                    maxLength={120}
+                    aria-label={`Who does ${k.email} belong to`}
+                    className="min-w-0 flex-1 rounded border border-gh-border bg-gh-surface px-1.5 py-1 text-base text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none sm:text-sm"
+                  />
+                  <button
+                    type="button"
+                    disabled={busy || assignName.trim().length === 0}
+                    onClick={() => void onAssign(k.id, assignName.trim(), null)}
+                    className="cursor-pointer rounded bg-gh-navy px-2.5 py-1 text-[10px] font-semibold text-white transition-colors hover:bg-gh-navy-2 disabled:opacity-40"
+                  >
+                    Assign
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );

@@ -72,6 +72,7 @@ interface CompanyRow {
 interface ContactRow {
   id: string;
   name: string | null;
+  name_inferred?: boolean | null;
   title: string | null;
   email: string | null;
   find_source: string | null;
@@ -112,10 +113,19 @@ export function peopleFrom(company: CompanyRow, contacts: ContactRow[]): Person[
   }
 
   for (const c of contacts) {
-    const src = c.find_source ?? "";
     if (!c.name) continue;
-    if (src !== PERSON_SOURCE && src !== PERSON_TARGET_SOURCE && src !== PERSON_TYPED_SOURCE)
-      continue;
+    // A NAMED ROW IS A PERSON, whatever wrote it.
+    //
+    // This used to admit only the user: sources, which meant assigning a
+    // vendor-found address to somebody made them disappear: the row left the
+    // loose list because it now had a name, and never joined the people list
+    // because its source was still "anymailfinder:also:unmatched". Matt Scheff
+    // existed in the database and nowhere on screen.
+    //
+    // Except an INFERRED name. Those are read off the mailbox by the vendor's
+    // fallback -- doug@ becoming "Doug" on a lookup for John Turner -- and are
+    // very often somebody else entirely. A guess is not a person.
+    if (c.name_inferred) continue;
     // A hand-added person whose name matches a crawler slot is the same human,
     // not a sixth entry. Keeps the list honest when somebody re-types a name
     // that was already there.
@@ -168,7 +178,10 @@ export async function loadPeople(db: Db, companyId: string): Promise<Person[]> {
       .select("founder_name, founder_title, next_gen_name, next_gen_title")
       .eq("id", companyId)
       .maybeSingle(),
-    db.from("contacts").select("id, name, title, email, find_source, find_status").eq("company_id", companyId),
+    db
+      .from("contacts")
+      .select("id, name, name_inferred, title, email, find_source, find_status")
+      .eq("company_id", companyId),
   ]);
   if (!company) return [];
   return peopleFrom(company as CompanyRow, (contacts ?? []) as ContactRow[]);
@@ -389,4 +402,92 @@ export async function setEmail(
     verification_status: "not_attempted",
   });
   return error ? { error: error.message } : {};
+}
+
+export interface LooseEmail {
+  id: string;
+  email: string;
+  source: string | null;
+}
+
+/**
+ * Addresses at this company that belong to nobody.
+ *
+ * A row with a name is somebody's; these are what is left. office@ off a
+ * footer, billing@ from a domain sweep. They are the front desk until
+ * somebody says otherwise, which is what assignEmail is for.
+ */
+export async function loadUnattached(db: Db, companyId: string): Promise<LooseEmail[]> {
+  const { data } = await db
+    .from("contacts")
+    .select("id, email, find_source, name")
+    .eq("company_id", companyId);
+  return (data ?? [])
+    .filter((c) => c.email && !c.name)
+    .map((c) => ({ id: c.id, email: c.email as string, source: c.find_source }));
+}
+
+/**
+ * Hand a loose address to a person.
+ *
+ * Jonathan's ask: the sweep at Father & Son returned mattscheff@ and
+ * accounting@ with nobody attached, and mattscheff@ is obviously a person the
+ * crawler never named. Adding "Matt Scheff" and then retyping his address is
+ * two jobs for one fact; this moves the address onto him instead.
+ *
+ * Because a person IS a contacts row carrying a name, attaching an address is
+ * writing that name onto the row it is already in. No copy, no second row, and
+ * the address keeps its find_source -- so a bought address still reads as
+ * bought after it has been assigned, which is the audit trail.
+ */
+export async function assignEmail(
+  db: Db,
+  companyId: string,
+  contactId: string,
+  person: { name: string; title: string | null }
+): Promise<{ error?: string }> {
+  const { data: row } = await db
+    .from("contacts")
+    .select("id, email, name")
+    .eq("id", contactId)
+    .eq("company_id", companyId)
+    .maybeSingle();
+  if (!row) return { error: "No such address here." };
+  if (!row.email) return { error: "That row has no address on it." };
+
+  const people = await loadPeople(db, companyId);
+  const existing = people.find(
+    (p) => p.name.trim().toLowerCase() === person.name.trim().toLowerCase()
+  );
+  if (!existing && people.length >= MAX_PEOPLE) {
+    return { error: `That is the limit of ${MAX_PEOPLE} people on one company.` };
+  }
+  if (existing?.email) {
+    return { error: `${existing.name} already has ${existing.email}.` };
+  }
+
+  const { error } = await db
+    .from("contacts")
+    .update({ name: person.name, title: person.title })
+    .eq("id", contactId);
+  if (error) return { error: error.message };
+
+  // A marker row created earlier to say "this person exists" or "look this
+  // person up" is now redundant: the address row carries the name. Move its
+  // ticked state across first, then remove it, so assigning an address does
+  // not silently untick somebody.
+  const { data: dupes } = await db
+    .from("contacts")
+    .select("id, find_source, email")
+    .eq("company_id", companyId)
+    .ilike("name", person.name)
+    .neq("id", contactId);
+  for (const d of dupes ?? []) {
+    if (d.email) continue;
+    if (d.find_source === PERSON_TARGET_SOURCE) {
+      await setTarget(db, companyId, person, true);
+    }
+    await db.from("contacts").delete().eq("id", d.id);
+  }
+  return {};
 }

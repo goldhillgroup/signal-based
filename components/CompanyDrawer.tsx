@@ -127,10 +127,6 @@ export function CompanyDrawer({
 
   const fit = company ? explainFit(company) : null;
   const personal = company ? personalEmail(company) : null;
-  // Addresses matched to nobody. A row with a name is shown on that person's
-  // line in the people list; these are what is left, and they are the front
-  // desk rather than a lead.
-  const unattached = (company?.allContacts ?? []).filter((c) => c.email && !c.name);
 
   async function copyEmail(email: string) {
     try {
@@ -372,43 +368,6 @@ export function CompanyDrawer({
                       }}
                       onDirtyChange={setPeopleDirty}
                     />
-                  )}
-
-                  {/* ADDRESSES THAT BELONG TO NOBODY, under the people rather
-                      than in a panel of their own.
-                      
-                      There were two sections, Leadership and Contact, and both
-                      showed people AND emails -- the same person's name in
-                      each, the same address in each, edited in one and not the
-                      other. Daniel: "why is the leadership and then the contact
-                      different, like totally different". They were never two
-                      subjects. A person and how to reach them is one thing, and
-                      what is left over is the front desk.
-                      
-                      Nobody attached means exactly name IS NULL: office@ off a
-                      footer, billing@ from a domain sweep. Anything matched to
-                      a human shows on that human's row above. */}
-                  {unattached.length > 0 && (
-                    <div className="mt-3 border-t border-gh-border pt-3">
-                      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-gh-ink-muted">
-                        General inboxes
-                      </p>
-                      <div className="space-y-1">
-                        {unattached.map((k) => (
-                          <div key={k.email} className="flex items-baseline justify-between gap-2">
-                            <a
-                              href={`mailto:${k.email}`}
-                              className="min-w-0 flex-1 truncate text-[11px] text-gh-ink-secondary hover:underline"
-                            >
-                              {k.email}
-                            </a>
-                            <span className="shrink-0 text-[10px] text-gh-ink-muted">
-                              {emailKindLabel(k)}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
                   )}
 
                   {!personal?.email && (

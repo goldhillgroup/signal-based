@@ -1,6 +1,15 @@
 import { NextResponse } from "next/server";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
-import { loadPeople, addPerson, removePerson, setTarget, setEmail, MAX_PEOPLE } from "@/lib/pipeline/people";
+import {
+  loadPeople,
+  loadUnattached,
+  addPerson,
+  removePerson,
+  setTarget,
+  setEmail,
+  assignEmail,
+  MAX_PEOPLE,
+} from "@/lib/pipeline/people";
 
 /**
  * The people at a company, and which of them the next lookup pays for.
@@ -48,8 +57,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (!(await requireUser())) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
-  const people = await loadPeople(createServiceRoleClient(), id);
-  return NextResponse.json({ people, max: MAX_PEOPLE });
+  const service = createServiceRoleClient();
+  const [people, unattached] = await Promise.all([
+    loadPeople(service, id),
+    loadUnattached(service, id),
+  ]);
+  return NextResponse.json({ people, unattached, max: MAX_PEOPLE });
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -65,7 +78,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const res = await addPerson(service, id, { name, title: cleanOptional(body.title) ?? null });
   if (res.error) return NextResponse.json({ error: res.error }, { status: 400 });
 
-  return NextResponse.json({ people: await loadPeople(service, id) });
+  return NextResponse.json({
+      people: await loadPeople(service, id),
+      unattached: await loadUnattached(service, id),
+    });
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -75,6 +91,25 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const service = createServiceRoleClient();
+
+  // HAND A LOOSE ADDRESS TO A PERSON.
+  if (body.assign && typeof body.assign === "object") {
+    const a = body.assign as Record<string, unknown>;
+    const contactId = typeof a.contact_id === "string" ? a.contact_id : null;
+    const name = cleanName(a.name);
+    if (!contactId || !name) {
+      return NextResponse.json({ error: "Which address, and to whom?" }, { status: 400 });
+    }
+    const res = await assignEmail(service, id, contactId, {
+      name,
+      title: cleanOptional(a.title) ?? null,
+    });
+    if (res.error) return NextResponse.json({ error: res.error }, { status: 400 });
+    return NextResponse.json({
+      people: await loadPeople(service, id),
+      unattached: await loadUnattached(service, id),
+    });
+  }
 
   // AN ADDRESS HE FOUND HIMSELF.
   if (body.email !== undefined && typeof body.person_name === "string") {
@@ -87,7 +122,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       typeof body.email === "string" ? body.email : null
     );
     if (res.error) return NextResponse.json({ error: res.error }, { status: 400 });
-    return NextResponse.json({ people: await loadPeople(service, id) });
+    return NextResponse.json({
+      people: await loadPeople(service, id),
+      unattached: await loadUnattached(service, id),
+    });
   }
 
   // CHOOSE WHO GETS BOUGHT FOR.
@@ -96,7 +134,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const name = cleanName(t.name);
     if (!name) return NextResponse.json({ error: "Which person?" }, { status: 400 });
     await setTarget(service, id, { name, title: cleanOptional(t.title) ?? null }, t.selected !== false);
-    return NextResponse.json({ people: await loadPeople(service, id) });
+    return NextResponse.json({
+      people: await loadPeople(service, id),
+      unattached: await loadUnattached(service, id),
+    });
   }
 
   // CORRECT A HAND-ADDED PERSON, by contacts row id.
@@ -118,7 +159,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       .eq("id", body.contact_id)
       .eq("company_id", id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ people: await loadPeople(service, id) });
+    return NextResponse.json({
+      people: await loadPeople(service, id),
+      unattached: await loadUnattached(service, id),
+    });
   }
 
   // CORRECT THE TWO CRAWLER SLOTS. The original behaviour, unchanged: these
@@ -185,5 +229,8 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   const service = createServiceRoleClient();
   const res = await removePerson(service, id, contactId);
   if (res.error) return NextResponse.json({ error: res.error }, { status: 400 });
-  return NextResponse.json({ people: await loadPeople(service, id) });
+  return NextResponse.json({
+      people: await loadPeople(service, id),
+      unattached: await loadUnattached(service, id),
+    });
 }

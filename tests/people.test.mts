@@ -57,13 +57,15 @@ test("an address already on file shows against its person", () => {
   assert.equal(people.find((p) => p.name === "Steve Hansmann")?.email, "steve@h.com");
 });
 
-test("a purchased contact is not mistaken for a hand-added person", () => {
-  // find_source 'anymailfinder' is an address, not somebody typed in, so it
-  // must not appear as a sixth name in its own right.
+test("a purchased address carrying a real name lists that person", () => {
+  // This asserted the opposite until assignment proved it wrong. A bought row
+  // only carries a name when we ASKED for that person or when the address was
+  // handed to them by hand, and both make them somebody to show. The rule that
+  // does the protecting is name_inferred, tested below.
   const people = peopleFrom(company, [
     row({ id: "e", name: "Someone Else", email: "x@h.com", find_source: "anymailfinder", find_status: "found" }),
   ]);
-  assert.deepEqual(people.map((p) => p.name), ["John Hansmann", "Steve Hansmann"]);
+  assert.deepEqual(people.map((p) => p.name), ["John Hansmann", "Steve Hansmann", "Someone Else"]);
 });
 
 test("more than one person can be ticked", () => {
@@ -109,4 +111,27 @@ test("joining puts it back", () => {
     const { first, last } = splitName(n);
     assert.equal(joinName(first, last), n);
   }
+});
+
+test("an assigned vendor address becomes a person", () => {
+  // Assigning mattscheff@ to Matt Scheff used to make him vanish: the row left
+  // the loose list because it had a name, and never joined the people list
+  // because its source was still the vendor's.
+  const people = peopleFrom(company, [
+    row({ id: "m", name: "Matt Scheff", email: "mattscheff@acme.com",
+          find_source: "anymailfinder:also:unmatched", find_status: "found" }),
+  ]);
+  const matt = people.find((p) => p.name === "Matt Scheff");
+  assert.ok(matt, "Matt Scheff should be listed");
+  assert.equal(matt?.email, "mattscheff@acme.com");
+});
+
+test("an inferred name is not promoted to a person", () => {
+  // The vendor's domain fallback reads a name off the mailbox: a lookup for
+  // John Turner returning doug@ becomes "Doug", who is somebody else.
+  const people = peopleFrom(company, [
+    { id: "d", name: "Doug", name_inferred: true, title: null,
+      email: "doug@acme.com", find_source: "anymailfinder", find_status: "found" } as never,
+  ]);
+  assert.equal(people.some((p) => p.name === "Doug"), false);
 });
