@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
-import { loadPeople, addPerson, removePerson, setTarget, MAX_PEOPLE } from "@/lib/pipeline/people";
+import { loadPeople, addPerson, removePerson, setTarget, setEmail, MAX_PEOPLE } from "@/lib/pipeline/people";
 
 /**
  * The people at a company, and which of them the next lookup pays for.
@@ -75,6 +75,20 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const service = createServiceRoleClient();
+
+  // AN ADDRESS HE FOUND HIMSELF.
+  if (body.email !== undefined && typeof body.person_name === "string") {
+    const name = cleanName(body.person_name);
+    if (!name) return NextResponse.json({ error: "Which person?" }, { status: 400 });
+    const res = await setEmail(
+      service,
+      id,
+      { name, title: cleanOptional(body.person_title) ?? null },
+      typeof body.email === "string" ? body.email : null
+    );
+    if (res.error) return NextResponse.json({ error: res.error }, { status: 400 });
+    return NextResponse.json({ people: await loadPeople(service, id) });
+  }
 
   // CHOOSE WHO GETS BOUGHT FOR.
   if (body.target && typeof body.target === "object") {

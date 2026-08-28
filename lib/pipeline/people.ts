@@ -36,6 +36,8 @@ import type { createServiceRoleClient } from "../supabase/server";
 
 export const PERSON_SOURCE = "user:person";
 export const PERSON_TARGET_SOURCE = "user:person:target";
+/** An address Jonathan typed in himself, from wherever he found it. */
+export const PERSON_TYPED_SOURCE = "user:typed";
 
 /** Room for a founder, a couple of children, and a manager. Jonathan's ask. */
 export const MAX_PEOPLE = 5;
@@ -112,7 +114,8 @@ export function peopleFrom(company: CompanyRow, contacts: ContactRow[]): Person[
   for (const c of contacts) {
     const src = c.find_source ?? "";
     if (!c.name) continue;
-    if (src !== PERSON_SOURCE && src !== PERSON_TARGET_SOURCE) continue;
+    if (src !== PERSON_SOURCE && src !== PERSON_TARGET_SOURCE && src !== PERSON_TYPED_SOURCE)
+      continue;
     // A hand-added person whose name matches a crawler slot is the same human,
     // not a sixth entry. Keeps the list honest when somebody re-types a name
     // that was already there.
@@ -306,4 +309,84 @@ export function splitName(full: string | null | undefined): { first: string; las
 /** The inverse, tolerating either box being left empty. */
 export function joinName(first: string, last: string): string {
   return [first.trim(), last.trim()].filter(Boolean).join(" ").replace(/\s+/g, " ");
+}
+
+/**
+ * Record an address Jonathan found himself.
+ *
+ * His own question: "How can I add the emails that I found for Estes Design &
+ * Manufacturing?" He had gone to their LinkedIn, then to their website, and
+ * come back with addresses the crawler had not found and the vendor did not
+ * sell. There was nowhere to put them, so the work was lost the moment he
+ * closed the tab.
+ *
+ * Stored as find_status 'found' with its own source, so the list can say where
+ * it came from. NOT verified: MillionVerifier costs money, and quietly
+ * spending it because somebody typed in a box is a surprise. He can see it is
+ * unchecked and decide.
+ */
+export async function setEmail(
+  db: Db,
+  companyId: string,
+  person: { name: string; title: string | null },
+  email: string | null
+): Promise<{ error?: string }> {
+  const clean = (email ?? "").trim().toLowerCase();
+  if (clean && !/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(clean)) {
+    return { error: `"${email}" does not look like an email address.` };
+  }
+
+  const { data: existing } = await db
+    .from("contacts")
+    .select("id, find_source, email")
+    .eq("company_id", companyId)
+    .ilike("name", person.name)
+    .limit(1);
+  const row = (existing ?? [])[0];
+
+  // Never overwrite a PURCHASED address with a typed one without saying so:
+  // that row records what was paid for and how it was found. A typed address
+  // for the same person goes in beside it.
+  const purchased =
+    row && !String(row.find_source ?? "").startsWith("user:") && row.email;
+
+  if (row && !purchased) {
+    if (!clean) {
+      // Clearing an address on a row that exists only to hold it removes the
+      // row; one that also marks a target keeps its flag.
+      const src = String(row.find_source ?? "");
+      if (src === PERSON_TYPED_SOURCE) {
+        await db.from("contacts").delete().eq("id", row.id);
+        return {};
+      }
+      await db.from("contacts").update({ email: null, find_status: "not_attempted" }).eq("id", row.id);
+      return {};
+    }
+    const { error } = await db
+      .from("contacts")
+      .update({
+        email: clean,
+        find_status: "found",
+        find_source: PERSON_TYPED_SOURCE,
+        verification_status: "not_attempted",
+        verification_source: null,
+        verified_at: null,
+      })
+      .eq("id", row.id);
+    return error ? { error: error.message } : {};
+  }
+
+  if (!clean) return {};
+
+  const { error } = await db.from("contacts").insert({
+    company_id: companyId,
+    name: person.name,
+    title: person.title,
+    email: clean,
+    name_inferred: false,
+    find_status: "found",
+    find_source: PERSON_TYPED_SOURCE,
+    verification_status: "not_attempted",
+  });
+  return error ? { error: error.message } : {};
 }

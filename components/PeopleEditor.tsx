@@ -81,6 +81,7 @@ export function PeopleEditor({
   const [draftFirst, setDraftFirst] = useState("");
   const [draftLast, setDraftLast] = useState("");
   const [draftTitle, setDraftTitle] = useState("");
+  const [draftEmail, setDraftEmail] = useState("");
   const [confirmLeave, setConfirmLeave] = useState(false);
 
   useEffect(() => {
@@ -110,6 +111,7 @@ export function PeopleEditor({
         return (
           d.name.trim() !== was.name.trim() ||
           (d.title ?? "").trim() !== (was.title ?? "").trim() ||
+          (d.email ?? "").trim() !== (was.email ?? "").trim() ||
           d.isTarget !== was.isTarget
         );
       }));
@@ -178,6 +180,13 @@ export function PeopleEditor({
         if (d.isTarget) {
           await call("PATCH", { target: { name: d.name, title: d.title, selected: true } });
         }
+        if ((d.email ?? "").trim()) {
+          await call("PATCH", {
+            person_name: d.name,
+            person_title: d.title,
+            email: (d.email ?? "").trim(),
+          });
+        }
       }
 
       for (const d of drafts.filter((x) => !x.removed && !x.isNew)) {
@@ -195,6 +204,13 @@ export function PeopleEditor({
         }
         if (d.isTarget !== was.isTarget) {
           await call("PATCH", { target: { name: d.name, title: d.title, selected: d.isTarget } });
+        }
+        if ((d.email ?? "").trim() !== (was.email ?? "").trim()) {
+          await call("PATCH", {
+            person_name: d.name,
+            person_title: d.title,
+            email: (d.email ?? "").trim(),
+          });
         }
       }
 
@@ -235,6 +251,9 @@ export function PeopleEditor({
                 <span className="ml-1.5 text-[11px] text-gh-ink-muted">
                   {p.title ?? ROLE_LABEL[p.origin]}
                 </span>
+                {p.email && (
+                  <span className="block truncate text-[11px] text-gh-sky">{p.email}</span>
+                )}
               </span>
               {p.isTarget && (
                 <span className="shrink-0 rounded-full bg-gh-sky/10 px-2 py-0.5 text-[10px] font-semibold text-gh-navy">
@@ -263,7 +282,8 @@ export function PeopleEditor({
   return (
     <div className="space-y-2.5">
       <p className="text-[11px] leading-relaxed text-gh-ink-muted">
-        Up to {max} people. Everyone marked{" "}
+        Up to {max} people, and you can type in an address you found yourself.
+        Everyone marked{" "}
         <span className="font-semibold text-gh-ink">Getting an email</span> is
         looked up when you press Find personal emails, and each is charged
         separately. Nothing is saved until you press Done editing.
@@ -316,6 +336,21 @@ export function PeopleEditor({
               className="min-w-0 flex-[2] rounded-lg border border-gh-border bg-gh-surface px-2 py-1.5 text-base text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none sm:text-sm"
             />
           </div>
+          {/* Same three fields as a row that already exists, because adding
+              somebody you found and correcting somebody the crawler found are
+              the same job. Jonathan arrives with a name AND an address, from
+              LinkedIn and then the company's own site; making him add the
+              person, save, and come back for the address is a second trip for
+              no reason. */}
+          <input
+            value={draftEmail}
+            onChange={(e) => setDraftEmail(e.target.value)}
+            placeholder="Email, if you found one"
+            maxLength={200}
+            inputMode="email"
+            aria-label="New person email"
+            className="mt-1.5 w-full rounded-lg border border-gh-border bg-gh-surface px-2 py-1.5 text-base text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none sm:text-sm"
+          />
           <div className="mt-2 flex items-center gap-2">
             <button
               type="button"
@@ -330,7 +365,7 @@ export function PeopleEditor({
                     title: draftTitle.trim() || null,
                     origin: "user",
                     isTarget: false,
-                    email: null,
+                    email: draftEmail.trim() || null,
                     removed: false,
                     isNew: true,
                   },
@@ -504,9 +539,20 @@ function PersonRow({
               className="min-w-0 flex-[2] rounded border border-gh-border bg-gh-surface-sunken px-1.5 py-1 text-base text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none sm:text-sm"
             />
           </div>
-          <p className="mt-1 text-[10px] text-gh-ink-muted">
-            {[ROLE_LABEL[draft.origin], draft.email].filter(Boolean).join(" · ")}
-          </p>
+          {/* AN ADDRESS HE FOUND HIMSELF. Jonathan went to Estes' LinkedIn,
+              then their website, and came back with addresses the crawler had
+              not found and the vendor did not sell. There was nowhere to put
+              them, so the work was lost when he closed the tab. */}
+          <input
+            value={draft.email ?? ""}
+            onChange={(e) => onChange({ email: e.target.value || null })}
+            placeholder="Email, if you found one"
+            maxLength={200}
+            inputMode="email"
+            aria-label={`${draft.name} email`}
+            className="mt-1.5 w-full rounded border border-gh-border bg-gh-surface-sunken px-1.5 py-1 text-base text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none sm:text-sm"
+          />
+          <p className="mt-1 text-[10px] text-gh-ink-muted">{ROLE_LABEL[draft.origin]}</p>
         </div>
 
         <button
