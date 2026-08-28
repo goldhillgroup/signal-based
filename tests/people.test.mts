@@ -135,3 +135,14 @@ test("an inferred name is not promoted to a person", () => {
   ]);
   assert.equal(people.some((p) => p.name === "Doug"), false);
 });
+
+test("removing somebody who has an address keeps the address", () => {
+  // The address was bought or scraped and is part of the record; the PERSON is
+  // what was asked to go. Detaching leaves it in General inboxes, which is the
+  // exact inverse of assigning one.
+  const detached = peopleFrom(company, [
+    row({ id: "m", name: null, email: "mattscheff@acme.com",
+          find_source: "anymailfinder:also:unmatched", find_status: "found" }),
+  ]);
+  assert.equal(detached.some((p) => p.email === "mattscheff@acme.com"), false);
+});

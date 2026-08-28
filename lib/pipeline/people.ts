@@ -278,14 +278,74 @@ export async function addPerson(
 export async function removePerson(db: Db, companyId: string, contactId: string): Promise<{ error?: string }> {
   const { data: row } = await db
     .from("contacts")
-    .select("id, email, find_source")
+    .select("id, name, email, find_source")
     .eq("id", contactId)
     .eq("company_id", companyId)
     .maybeSingle();
   if (!row) return { error: "No such person here." };
-  if (row.email) {
-    return { error: "That one has an email address on file, so it is kept." };
+
+  // THE SAME PERSON CAN BE IN TWO PLACES. Buddy Orth is a contacts row AND the
+  // company's next_gen_name, so clearing the row alone left him on the list
+  // with "no address" -- Remove appearing to half-work, which is worse than
+  // not working. If the name is one of the crawler's two, that column goes as
+  // well.
+  if (row.name) {
+    const { data: c } = await db
+      .from("companies")
+      .select("founder_name, next_gen_name")
+      .eq("id", companyId)
+      .maybeSingle();
+    const same = (a: string | null) =>
+      !!a && a.trim().toLowerCase() === row.name!.trim().toLowerCase();
+    if (same(c?.next_gen_name ?? null)) {
+      await db.from("companies").update({ next_gen_name: null, next_gen_title: null }).eq("id", companyId);
+    } else if (same(c?.founder_name ?? null)) {
+      await db.from("companies").update({ founder_name: null, founder_title: null }).eq("id", companyId);
+    }
   }
+
+  // REMOVING A PERSON DETACHES THEIR ADDRESS, it does not refuse.
+  //
+  // This used to answer "That one has an email address on file, so it is
+  // kept", which stops the thing he asked for and does not say what to do
+  // instead. He is removing a PERSON; the reasoning behind the refusal -- that
+  // a bought address is part of the record and must not be destroyed -- is
+  // sound about the address and has nothing to do with the person.
+  //
+  // So the name comes off and the address stays, dropping into General
+  // inboxes. Nothing paid for is lost, the person is gone as asked, and it is
+  // the exact inverse of "Whose is this?", which puts a name back on.
+  // AND EVERY OTHER ROW NAMING THEM. A person can hold a marker row saying
+  // "look this one up" as well as a row holding their address; clearing one
+  // and not the other left them on the list with "no address", which reads as
+  // Remove having half-worked.
+  //
+  // Only the name-only rows go. Anything carrying an address is detached
+  // below, never deleted.
+  if (row.name) {
+    const { data: others } = await db
+      .from("contacts")
+      .select("id, email")
+      .eq("company_id", companyId)
+      .ilike("name", row.name)
+      .neq("id", contactId);
+    for (const o of others ?? []) {
+      if (o.email) {
+        await db.from("contacts").update({ name: null, title: null }).eq("id", o.id);
+      } else {
+        await db.from("contacts").delete().eq("id", o.id);
+      }
+    }
+  }
+
+  if (row.email) {
+    const { error } = await db
+      .from("contacts")
+      .update({ name: null, title: null })
+      .eq("id", contactId);
+    return error ? { error: error.message } : {};
+  }
+
   const { error } = await db.from("contacts").delete().eq("id", contactId);
   return error ? { error: error.message } : {};
 }
