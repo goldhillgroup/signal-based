@@ -8,6 +8,7 @@ import {
   setTarget,
   setEmail,
   assignEmail,
+  deleteLooseEmail,
   MAX_PEOPLE,
 } from "@/lib/pipeline/people";
 
@@ -227,7 +228,13 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   if (!contactId) return NextResponse.json({ error: "Which person?" }, { status: 400 });
 
   const service = createServiceRoleClient();
-  const res = await removePerson(service, id, contactId);
+
+  // A loose address is thrown away; a person is removed and their address
+  // kept. Different actions on rows that happen to share a table.
+  const res =
+    body.loose === true
+      ? await deleteLooseEmail(service, id, contactId)
+      : await removePerson(service, id, contactId);
   if (res.error) return NextResponse.json({ error: res.error }, { status: 400 });
   return NextResponse.json({
       people: await loadPeople(service, id),

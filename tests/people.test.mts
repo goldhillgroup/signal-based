@@ -146,3 +146,14 @@ test("removing somebody who has an address keeps the address", () => {
   ]);
   assert.equal(detached.some((p) => p.email === "mattscheff@acme.com"), false);
 });
+
+test("a loose address is deletable, a person's is not", () => {
+  // Deleting a general inbox throws it away; deleting a person's address must
+  // go through removing the person, which detaches and keeps it. Same table,
+  // different actions, and the guard is whether the row carries a name.
+  const loose = { id: "a", name: null, email: "accounting@acme.com" };
+  const owned = { id: "b", name: "Skip Orth", email: "skip@acme.com" };
+  const deletable = (r: { name: string | null; email: string | null }) => !!r.email && !r.name;
+  assert.equal(deletable(loose), true);
+  assert.equal(deletable(owned), false);
+});

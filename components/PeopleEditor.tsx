@@ -136,6 +136,29 @@ export function PeopleEditor({
    * an address that already exists onto a person, so there is nothing to
    * mistype and nothing to lose by it taking effect.
    */
+  /** Throw a loose address away. See deleteLooseEmail for why this deletes
+   *  where removing a person only detaches. */
+  async function dropLoose(contactId: string) {
+    setSaving(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/company/${companyId}/people`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contact_id: contactId, loose: true }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || "That did not work.");
+      setPeople(json.people ?? []);
+      setLoose(json.unattached ?? []);
+      onChanged?.();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function assign(contactId: string, name: string, title: string | null) {
     setSaving(true);
     setError("");
@@ -317,6 +340,7 @@ export function PeopleEditor({
         setAssigning={setAssigning}
         setAssignName={setAssignName}
         onAssign={assign}
+        onDrop={dropLoose}
       />
       {error && <p className="mt-1.5 text-[11px] text-gh-critical">{error}</p>}
       </>
@@ -462,6 +486,7 @@ export function PeopleEditor({
         setAssigning={setAssigning}
         setAssignName={setAssignName}
         onAssign={assign}
+        onDrop={dropLoose}
       />
 
       {error && <p className="text-[11px] text-gh-critical">{error}</p>}
@@ -649,6 +674,7 @@ function LooseEmails({
   setAssigning,
   setAssignName,
   onAssign,
+  onDrop,
 }: {
   loose: { id: string; email: string; source: string | null }[];
   people: { name: string; title: string | null; email: string | null }[];
@@ -658,6 +684,7 @@ function LooseEmails({
   setAssigning: (v: string | null) => void;
   setAssignName: (v: string) => void;
   onAssign: (contactId: string, name: string, title: string | null) => void | Promise<void>;
+  onDrop: (contactId: string) => void | Promise<void>;
 }) {
   if (loose.length === 0) return null;
   const takers = people.filter((p) => !p.email);
@@ -677,17 +704,33 @@ function LooseEmails({
               >
                 {k.email}
               </a>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => {
-                  setAssigning(assigning === k.id ? null : k.id);
-                  setAssignName("");
-                }}
-                className="shrink-0 cursor-pointer text-[10px] font-semibold text-gh-ink-muted underline-offset-2 transition-colors hover:text-gh-ink hover:underline disabled:opacity-40"
-              >
-                {assigning === k.id ? "Cancel" : "Whose is this?"}
-              </button>
+              <span className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    setAssigning(assigning === k.id ? null : k.id);
+                    setAssignName("");
+                  }}
+                  className="cursor-pointer text-[10px] font-semibold text-gh-ink-muted underline-offset-2 transition-colors hover:text-gh-ink hover:underline disabled:opacity-40"
+                >
+                  {assigning === k.id ? "Cancel" : "Whose is this?"}
+                </button>
+                {/* Deleted, not detached: what is left here after the useful
+                    ones have been assigned is billing@ and accounting@, and
+                    keeping those forever makes the panel longer without making
+                    it more useful. */}
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void onDrop(k.id)}
+                  aria-label={`Delete ${k.email}`}
+                  title={`Delete ${k.email} from this lead`}
+                  className="cursor-pointer rounded p-0.5 text-gh-ink-muted transition-colors hover:bg-gh-critical/10 hover:text-gh-critical disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-critical/30"
+                >
+                  <TrashIcon className="h-3 w-3" />
+                </button>
+              </span>
             </div>
 
             {assigning === k.id && (

@@ -551,3 +551,36 @@ export async function assignEmail(
   }
   return {};
 }
+
+/**
+ * Delete a loose address outright.
+ *
+ * Unlike removing a PERSON, which detaches their address and keeps it, this
+ * throws the address away. That is the right shape here: what is left in
+ * General inboxes after the useful ones have been assigned is billing@,
+ * accounting@ and whatever else a domain sweep dragged in, and keeping them
+ * forever makes the panel longer without making it more useful.
+ *
+ * Only a row with an address and NO NAME. Anything belonging to somebody is
+ * removed through that person, so a mis-aimed request cannot quietly take a
+ * bought contact off a lead.
+ */
+export async function deleteLooseEmail(
+  db: Db,
+  companyId: string,
+  contactId: string
+): Promise<{ error?: string }> {
+  const { data: row } = await db
+    .from("contacts")
+    .select("id, name, email")
+    .eq("id", contactId)
+    .eq("company_id", companyId)
+    .maybeSingle();
+  if (!row) return { error: "No such address here." };
+  if (!row.email) return { error: "That row has no address on it." };
+  if (row.name) {
+    return { error: `That one belongs to ${row.name}. Remove them instead.` };
+  }
+  const { error } = await db.from("contacts").delete().eq("id", contactId);
+  return error ? { error: error.message } : {};
+}
