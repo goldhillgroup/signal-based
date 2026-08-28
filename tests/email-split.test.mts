@@ -120,3 +120,20 @@ test("names without a suffix are unaffected", () => {
   assert.equal(localMatchesName("buddy", "Buddy Orth"), true);
   assert.equal(localMatchesName("accounting", "Skip Orth"), false);
 });
+
+test("a swept address does not claim to be on the company's page", () => {
+  // billing@ came back with a paid lookup for somebody else at the same
+  // company. Calling that "On the page" says the wrong thing about where it
+  // came from, and "on the page" is checkable in a way the other is not.
+  const swept: Contact = { name: null, nameInferred: false, title: null,
+    email: "billing@acme.com", findStatus: "found",
+    findSource: "anymailfinder:also:unmatched", verificationStatus: "not_attempted" };
+  assert.equal(emailKindLabel(swept), "Bought, nobody matched");
+});
+
+test("an address typed in by hand says so", () => {
+  const typed: Contact = { name: "Larry Estes", nameInferred: false, title: null,
+    email: "larry@estesdm.com", findStatus: "found",
+    findSource: "user:typed", verificationStatus: "not_attempted" };
+  assert.equal(emailKindLabel(typed), "Added by you");
+});

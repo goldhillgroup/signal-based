@@ -103,6 +103,13 @@ export function emailKindLabel(c: Contact): string {
     return c.nameInferred ? "Bought, company address" : "Bought, named person";
   }
   if (src === "reused-known-domain") return "Found earlier for this domain";
+  // The domain sweep. These came back with a paid lookup for somebody else at
+  // the same company, so "On the page" -- which is what the fallthrough below
+  // used to call them -- said the wrong thing about where they came from, and
+  // "on the page" is checkable in a way "the vendor listed it" is not.
+  if (src === "anymailfinder:also") return "Bought, same lookup";
+  if (src === "anymailfinder:also:unmatched") return "Bought, nobody matched";
+  if (src === "user:typed") return "Added by you";
   if (src.startsWith("company-page:")) {
     switch (src.slice("company-page:".length)) {
       case "person_match":
@@ -115,6 +122,8 @@ export function emailKindLabel(c: Contact): string {
         return "Free mail account";
     }
   }
+  // Anything unlabelled predates the sources above and was scraped from the
+  // company's own site, which is what that era wrote.
   return "On the page";
 }
 

@@ -1,15 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { PeopleEditor } from "./PeopleEditor";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { Company, personalEmail, lookupCameBackEmpty, emailKindLabel, reachesAPerson } from "@/lib/company";
+import { Company, personalEmail, lookupCameBackEmpty, emailKindLabel } from "@/lib/company";
 import { INDUSTRY_META } from "@/lib/signal-meta";
 import {
   ConfidenceBadge,
   StatusBadge,
-  FindStatusBadge,
   VerificationBadge,
 } from "./badges";
 import { XIcon, BuildingIcon } from "./icons";
@@ -128,6 +127,10 @@ export function CompanyDrawer({
 
   const fit = company ? explainFit(company) : null;
   const personal = company ? personalEmail(company) : null;
+  // Addresses matched to nobody. A row with a name is shown on that person's
+  // line in the people list; these are what is left, and they are the front
+  // desk rather than a lead.
+  const unattached = (company?.allContacts ?? []).filter((c) => c.email && !c.name);
 
   async function copyEmail(email: string) {
     try {
@@ -356,7 +359,7 @@ export function CompanyDrawer({
               <div>
                 <div className="mb-2 flex items-center justify-between">
                   <p className="text-xs font-semibold uppercase tracking-wide text-gh-ink-muted">
-                    Leadership
+                    Contacts
                   </p>
                 </div>
                 <div className="space-y-2.5 rounded-lg border border-gh-border p-3.5 text-sm">
@@ -369,6 +372,51 @@ export function CompanyDrawer({
                       }}
                       onDirtyChange={setPeopleDirty}
                     />
+                  )}
+
+                  {/* ADDRESSES THAT BELONG TO NOBODY, under the people rather
+                      than in a panel of their own.
+                      
+                      There were two sections, Leadership and Contact, and both
+                      showed people AND emails -- the same person's name in
+                      each, the same address in each, edited in one and not the
+                      other. Daniel: "why is the leadership and then the contact
+                      different, like totally different". They were never two
+                      subjects. A person and how to reach them is one thing, and
+                      what is left over is the front desk.
+                      
+                      Nobody attached means exactly name IS NULL: office@ off a
+                      footer, billing@ from a domain sweep. Anything matched to
+                      a human shows on that human's row above. */}
+                  {unattached.length > 0 && (
+                    <div className="mt-3 border-t border-gh-border pt-3">
+                      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-gh-ink-muted">
+                        General inboxes
+                      </p>
+                      <div className="space-y-1">
+                        {unattached.map((k) => (
+                          <div key={k.email} className="flex items-baseline justify-between gap-2">
+                            <a
+                              href={`mailto:${k.email}`}
+                              className="min-w-0 flex-1 truncate text-[11px] text-gh-ink-secondary hover:underline"
+                            >
+                              {k.email}
+                            </a>
+                            <span className="shrink-0 text-[10px] text-gh-ink-muted">
+                              {emailKindLabel(k)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {!personal?.email && (
+                    <p className="mt-2 text-[11px] leading-relaxed text-gh-ink-muted">
+                      {lookupCameBackEmpty(company)
+                        ? "The lookup ran and found no personal address for this company."
+                        : "No personal address yet. Find personal emails will look one up, or type one in above if you have it."}
+                    </p>
                   )}
                   {/* Facts about the company rather than judgements about who
                       runs it, so they stay put in both modes. */}
@@ -430,71 +478,7 @@ export function CompanyDrawer({
                 )}
               </div>
 
-              {(company.allContacts ?? []).length > 0 && (
-                <div>
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gh-ink-muted">
-                    Contact
-                  </p>
-                  <div className="space-y-3 rounded-lg border border-gh-border p-3.5">
-                    {/* The panel now renders when EITHER address exists, so
-                        the header describes whichever contact row is leading.
-                        Prefer the personal one: its status is the one that
-                        answers "can I write to this person". */}
-                    {(() => {
-                      const head = personal ?? company.contact ?? company.backupContact;
-                      if (!head) return null;
-                      return (
-                        <>
-                          <div className="flex items-center justify-between">
-                            <FindStatusBadge status={head.findStatus} />
-                            {head.findStatus === "found" && (
-                              <VerificationBadge status={head.verificationStatus} />
-                            )}
-                          </div>
-                          {head.name && (
-                            <Row
-                              k="Name"
-                              v={`${head.name}${head.nameInferred ? " (inferred from email)" : ""}${
-                                head.title ? `, ${head.title}` : ""
-                              }`}
-                            />
-                          )}
-                        </>
-                      );
-                    })()}
-                    {/* EVERY ADDRESS, EACH SAYING WHAT IT IS.
-                        This printed the best personal one and the best general
-                        one, which is fine when a company has two and quietly
-                        wrong when it has four: the other two simply were not
-                        mentioned. Jonathan asked the question outright, "maybe
-                        there are three emails, which one is which", and the
-                        crawler already knew -- it classified each address when
-                        it read the page and then kept the answer to itself. */}
-                    {(company.allContacts ?? []).filter((c) => c.email).map((c) => (
-                      <div key={c.email} className="flex items-start justify-between gap-3 text-sm">
-                        <span className="shrink-0 text-gh-ink-muted">{emailKindLabel(c)}</span>
-                        <button
-                          type="button"
-                          onClick={() => copyEmail(c.email!)}
-                          className={`break-all text-right font-medium hover:underline ${
-                            reachesAPerson(c) ? "text-gh-sky" : "text-gh-ink-secondary"
-                          }`}
-                        >
-                          {copied === c.email ? "Copied ✓" : c.email}
-                        </button>
-                      </div>
-                    ))}
-                    {!personal?.email && (
-                      <p className="text-xs text-gh-ink-muted">
-                        {lookupCameBackEmpty(company)
-                          ? "The lookup ran and found no personal address for this company."
-                          : "No personal address on their site yet. Find personal emails will look one up."}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
+</div>
           </div>
         )}
       </aside>
