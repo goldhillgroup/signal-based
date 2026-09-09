@@ -80,15 +80,23 @@ export function LeadMarks({ company }: { company: Company }) {
   return (
     <div className="space-y-3">
       <div>
-        <div className="mb-1.5 flex items-baseline justify-between gap-2">
+        {/* THE SYSTEM'S NUMBER, LEGIBLE, AND OUT OF FIVE.
+            It was 11px inline text reading "System says 4", which is both easy
+            to miss and ambiguous -- 4 out of what? The scale has to be on the
+            number or the number means nothing. */}
+        <div className="mb-2 flex items-start justify-between gap-3">
           <span className="text-[11px] font-semibold uppercase tracking-wide text-gh-ink-muted">
             Your score
           </span>
-          <span className="text-[11px] text-gh-ink-muted">
-            {/* Shown, not hidden. A disagreement between the two is
-                information about the scoring, not an embarrassment. */}
-            System says <strong className="font-semibold text-gh-ink">{system}</strong> ·{" "}
-            {STAR_LABEL[system]}
+          <span className="shrink-0 text-right">
+            <span className="block text-[10px] font-semibold uppercase tracking-wide text-gh-ink-muted">
+              System says
+            </span>
+            <span className="tabular font-display text-xl font-semibold leading-none text-gh-ink">
+              {system}
+              <span className="text-sm font-normal text-gh-ink-muted"> / 5</span>
+            </span>
+            <span className="mt-0.5 block text-[10px] text-gh-ink-muted">{STAR_LABEL[system]}</span>
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-1">
@@ -111,7 +119,7 @@ export function LeadMarks({ company }: { company: Company }) {
           ))}
           {grade !== null && (
             <span className="ml-1.5 text-[11px] font-semibold text-gh-navy">
-              Yours wins ({grade})
+              Yours wins: {grade} / 5
             </span>
           )}
           {grade === null && (
