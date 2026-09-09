@@ -67,10 +67,15 @@ export function CompanyDrawer({
   // without a word, which is the exact thing the explicit-save rewrite exists
   // to prevent, so the close is refused and says why.
   const [peopleDirty, setPeopleDirty] = useState(false);
+  const [marksDirty, setMarksDirty] = useState(false);
+  // EITHER panel having unsaved work blocks the close. Two editors in one
+  // drawer, and a guard that only knew about one of them would throw the
+  // other's work away without a word.
+  const unsaved = peopleDirty || marksDirty;
   const [blockedClose, setBlockedClose] = useState(false);
 
   function closeUnlessEditing() {
-    if (peopleDirty) {
+    if (unsaved) {
       setBlockedClose(true);
       return;
     }
@@ -85,7 +90,7 @@ export function CompanyDrawer({
     function onKey(e: KeyboardEvent) {
       if (e.key !== "Escape") return;
       e.preventDefault();
-      if (peopleDirty) {
+      if (unsaved) {
         setBlockedClose(true);
         return;
       }
@@ -266,14 +271,18 @@ export function CompanyDrawer({
               {blockedClose && (
                 <div className="rounded-lg border border-gh-warning/40 bg-gh-warning/10 px-3 py-2">
                   <p className="text-[11px] leading-relaxed text-gh-ink-secondary">
-                    You have unsaved changes to the people on this lead. Press
-                    Done editing to keep them, or Cancel to drop them.
+                    {peopleDirty && marksDirty
+                      ? "You have unsaved changes to the people and to your notes on this lead."
+                      : peopleDirty
+                        ? "You have unsaved changes to the people on this lead. Press Done editing to keep them, or Cancel to drop them."
+                        : "You have unsaved changes to your score or notes on this lead. Press Save to keep them, or Cancel to drop them."}
                   </p>
                   <button
                     type="button"
                     onClick={() => {
                       setBlockedClose(false);
                       setPeopleDirty(false);
+                      setMarksDirty(false);
                       onClose();
                     }}
                     className="mt-1.5 cursor-pointer text-[11px] font-semibold text-gh-critical underline-offset-2 hover:underline"
@@ -406,7 +415,7 @@ export function CompanyDrawer({
                   Your take
                 </p>
                 <div className="rounded-lg border border-gh-border p-3.5">
-                  <LeadMarks company={company} />
+                  <LeadMarks company={company} onDirtyChange={setMarksDirty} />
                 </div>
               </div>
 

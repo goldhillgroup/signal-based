@@ -13,14 +13,28 @@ import type { Company } from "@/lib/company";
  * legible rather than silently overwritten -- if he keeps marking 5s where the
  * system says 2, that is worth knowing about the scoring.
  *
- * SAVED ON BLUR, unlike the people editor, which holds a draft until Done.
- * The difference is what a mistake costs. A half-typed name gets bought an
- * email address; a half-typed note is a half-typed note, and losing one
- * because he clicked away is the worse failure here.
+ * NOTHING SAVES UNTIL YOU PRESS SAVE, matching the people editor.
+ *
+ * This saved on blur for a day, on the argument that losing a half-typed note
+ * to a stray click is worse than saving one too eagerly. Daniel asked for the
+ * explicit version here too, and consistency is the stronger argument: two
+ * panels in the same drawer, one committing silently and one holding a draft,
+ * is a coin flip every time somebody types. Leaving with unsaved work asks,
+ * the way it does upstairs.
  */
-export function LeadMarks({ company }: { company: Company }) {
+export function LeadMarks({
+  company,
+  onDirtyChange,
+}: {
+  company: Company;
+  onDirtyChange?: (dirty: boolean) => void;
+}) {
+  // Draft and saved, kept apart, so "is there unsaved work" is answerable and
+  // Cancel can mean something.
   const [note, setNote] = useState("");
   const [grade, setGrade] = useState<number | null>(null);
+  const [savedNote, setSavedNote] = useState("");
+  const [savedGrade, setSavedGrade] = useState<number | null>(null);
   // WHICH lead the loaded values belong to, rather than a boolean flipped
   // synchronously inside the effect. Setting state in an effect body triggers
   // a cascading render, and the question being asked is "are these values for
@@ -29,7 +43,6 @@ export function LeadMarks({ company }: { company: Company }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const savedAt = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const original = useRef("");
 
   const system = starsFor(company);
 
@@ -39,9 +52,12 @@ export function LeadMarks({ company }: { company: Company }) {
       .then((r) => r.json())
       .then((j) => {
         if (off) return;
-        setNote(j?.note ?? "");
-        original.current = j?.note ?? "";
-        setGrade(typeof j?.grade === "number" ? j.grade : null);
+        const n = j?.note ?? "";
+        const g = typeof j?.grade === "number" ? j.grade : null;
+        setNote(n);
+        setSavedNote(n);
+        setGrade(g);
+        setSavedGrade(g);
         setLoadedFor(company.id);
       })
       .catch(() => setLoadedFor(company.id));
@@ -50,19 +66,22 @@ export function LeadMarks({ company }: { company: Company }) {
     };
   }, [company.id]);
 
-  async function save(patch: { note?: string | null; grade?: number | null }) {
+  async function save() {
     setSaving(true);
     try {
       const res = await fetch(`/api/company/${company.id}/marks`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
+        body: JSON.stringify({ note, grade }),
       });
       const j = await res.json();
       if (res.ok) {
-        setNote(j?.note ?? "");
-        original.current = j?.note ?? "";
-        setGrade(typeof j?.grade === "number" ? j.grade : null);
+        const n = j?.note ?? "";
+        const g = typeof j?.grade === "number" ? j.grade : null;
+        setNote(n);
+        setSavedNote(n);
+        setGrade(g);
+        setSavedGrade(g);
         setSaved(true);
         if (savedAt.current) clearTimeout(savedAt.current);
         savedAt.current = setTimeout(() => setSaved(false), 2500);
@@ -72,7 +91,22 @@ export function LeadMarks({ company }: { company: Company }) {
     }
   }
 
+  function discard() {
+    setNote(savedNote);
+    setGrade(savedGrade);
+  }
+
   const loaded = loadedFor === company.id;
+  const dirty = loaded && (note.trim() !== savedNote.trim() || grade !== savedGrade);
+
+  // The drawer refuses to close on unsaved work, and it needs telling.
+  const dirtyRef = useRef(false);
+  useEffect(() => {
+    if (dirtyRef.current !== dirty) {
+      dirtyRef.current = dirty;
+      onDirtyChange?.(dirty);
+    }
+  });
   if (!loaded) {
     return <p className="text-xs text-gh-ink-muted">Reading your notes…</p>;
   }
@@ -105,7 +139,7 @@ export function LeadMarks({ company }: { company: Company }) {
               key={n}
               type="button"
               disabled={saving}
-              onClick={() => void save({ grade: grade === n ? null : n })}
+              onClick={() => setGrade(grade === n ? null : n)}
               aria-pressed={grade === n}
               title={grade === n ? "Click again to go back to the system's score" : `Score this ${n}`}
               className={`h-7 w-7 cursor-pointer rounded-lg border text-xs font-semibold transition-colors disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 ${
@@ -144,10 +178,6 @@ export function LeadMarks({ company }: { company: Company }) {
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          onBlur={() => {
-            if (note.trim() === original.current.trim()) return;
-            void save({ note });
-          }}
           rows={3}
           maxLength={4000}
           placeholder="What you know about this one that the page does not say."
@@ -155,9 +185,31 @@ export function LeadMarks({ company }: { company: Company }) {
           // 16px on mobile, or iOS zooms in on focus and will not zoom back.
           className="w-full resize-y rounded-lg border border-gh-border bg-gh-surface-sunken px-2.5 py-2 text-base leading-relaxed text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none focus:ring-2 focus:ring-gh-sky/25 sm:text-sm"
         />
-        <p className="mt-1 text-[10px] text-gh-ink-muted">
-          Saves when you click away. Exports with the lead.
-        </p>
+        <p className="mt-1 text-[10px] text-gh-ink-muted">Exports with the lead.</p>
+
+        <div className="mt-2.5 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={saving || !dirty}
+            onClick={() => void save()}
+            className="cursor-pointer rounded-lg bg-gh-navy px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-gh-navy-2 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+          >
+            {saving ? "Saving…" : saved && !dirty ? "Saved ✓" : "Save"}
+          </button>
+          {dirty && (
+            <>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={discard}
+                className="cursor-pointer text-[11px] text-gh-ink-muted underline-offset-2 hover:underline"
+              >
+                Cancel
+              </button>
+              <span className="text-[10px] font-semibold text-gh-warning">unsaved changes</span>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
