@@ -10,7 +10,6 @@ import {
   RUNG_ORDER,
   nextStep,
   DEFAULT_RULES,
-  type ScoreRules,
 } from "./lead-score";
 import { personalEmail, generalEmail } from "./company";
 
@@ -48,7 +47,6 @@ import { personalEmail, generalEmail } from "./company";
  */
 export type Exportable = Company & {
   /** The scoring rules in force, so an export matches the screen. */
-  rules?: ScoreRules;
   listName?: string;
   /** Jonathan's own 1-5, which beats the system's. */
   ownGrade?: number | null;
@@ -85,14 +83,13 @@ export const COLUMNS: { header: string; get: (c: Exportable) => string }[] = [
   {
     header: "verdict_from_you_or_system",
     get: (c) => {
-      const rules = c.rules ?? DEFAULT_RULES;
-      if (!c.ownGrade) return starMeaning(c, rules);
+      if (!c.ownGrade) return starMeaning(c);
       const k = RUNG_ORDER[RUNG_ORDER.length - c.ownGrade];
-      return k ? rules[k] : starMeaning(c, rules);
+      return k ? DEFAULT_RULES[k] : starMeaning(c);
     },
   },
   { header: "verdict_by", get: (c) => (c.ownGrade ? "you" : "system") },
-  { header: "system_verdict", get: (c) => starMeaning(c, c.rules ?? DEFAULT_RULES) },
+  { header: "system_verdict", get: (c) => starMeaning(c) },
   // "4 of 5", not "4". A bare number in a column called rank leaves the reader
   // to guess the scale, and the screen already says "System says 4 / 5" -- the
   // sheet disagreeing with the page is how a number stops being trusted.

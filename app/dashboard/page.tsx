@@ -1,6 +1,7 @@
 import { SearchHome } from "@/components/SearchHome";
 import { getSuggestions } from "@/lib/pipeline/suggestions";
 import { DEFAULT_ICP } from "@/lib/pipeline/icp-types";
+import { resolveSetting } from "@/lib/settings";
 
 // Computed on the server so the search form opens with real suggestions
 // already in it, rather than flashing hardcoded examples and replacing them.
@@ -11,7 +12,10 @@ export default async function DashboardPage() {
   // are a convenience, and the form works perfectly without them.
   const suggestions = await getSuggestions().catch(() => []);
   // The saved ideal client is what a blank Signal focus falls back to, so the
-  // form has to be able to SAY that rather than leaving him to guess.
-  const icp = DEFAULT_ICP;
+  // form has to be able to SAY that rather than leaving him to guess -- and it
+  // has to be the sentence he actually saved in Settings, or the placeholder
+  // promises one thing and the search does another.
+  const described = (await resolveSetting("LEAD_DESCRIPTION", undefined))?.trim();
+  const icp = described ? { ...DEFAULT_ICP, signalFocus: described } : DEFAULT_ICP;
   return <SearchHome suggestions={suggestions} icp={icp} />;
 }

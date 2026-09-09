@@ -5,6 +5,7 @@ import { isSharedInbox } from "@/lib/pipeline/page-email";
 import { toLead, SIGNAL_TYPE_META, leadPeople } from "@/lib/lead-signal";
 import { formatRelativeDate } from "@/lib/stats";
 import { VerificationBadge, ConfidenceBadge } from "./badges";
+import { ScorePill, type Verdict } from "./ScorePill";
 import { BuildingIcon, UsersIcon } from "./icons";
 
 /**
@@ -24,12 +25,15 @@ export function LeadCard({
   onOpen,
   picked = null,
   onTogglePick,
+  verdict,
 }: {
   company: Company;
   onOpen: () => void;
   /** null turns the checkbox off entirely. */
   picked?: boolean | null;
   onTogglePick?: () => void;
+  /** His 1-5 if he has given one, else the system's. Omitted on cut rows. */
+  verdict?: Verdict | null;
 }) {
   const lead = toLead(company);
   const meta = SIGNAL_TYPE_META[lead.signalType];
@@ -59,9 +63,12 @@ export function LeadCard({
       } ${picked ? "ring-2 ring-gh-sky/50" : ""}`}
     >
       <div className="flex-1 p-4 sm:p-5">
-        {/* No flex row any more: it existed to push the score to the right,
-            and with the score gone the header is a single column. */}
-        <div className="min-w-0">
+        {/* THE FLEX ROW IS BACK, and so is the thing it existed for. Taking
+            the score off the card left the drawer as the only place a lead's
+            1-5 lived, so a list of thirty said nothing about which to open
+            first. The pill carries the sentence as its tooltip. */}
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               {selectable && (
                 <input
@@ -115,6 +122,8 @@ export function LeadCard({
             </p>
           )}
 
+          </div>
+          {verdict && <ScorePill verdict={verdict} size="md" />}
         </div>
 
         {/* THE SIGNAL — the company's own words where there are any. Omitted

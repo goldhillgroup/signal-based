@@ -1,14 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Company } from "@/lib/company";
 import { INDUSTRY_META } from "@/lib/signal-meta";
 import type { Industry } from "@/lib/supabase/types";
 import { scoreFactors, signalTypeOf, SIGNAL_TYPE_META, type SignalType } from "@/lib/lead-signal";
+import { rankFor } from "@/lib/lead-score";
 import { SearchIcon, GridIcon, RowsIcon } from "./icons";
 import { isWrongKindOfBusiness } from "@/lib/pipeline/recheck-policy";
 import { LeadCard } from "./LeadCard";
 import { LeadTable } from "./LeadTable";
+import { verdictFor } from "./ScorePill";
+import { useMarks } from "@/lib/use-marks";
 
 type Tab = "all" | "signal" | "fit" | "not_a_fit" | "parked" | "blacklisted";
 
@@ -301,6 +304,16 @@ export function CompaniesTable({
     [companies]
   );
 
+  // The same marks the drawer writes, from one shared cache -- so his own 1-5
+  // is what the list shows the moment he saves it, not after a reload.
+  const { marks } = useMarks();
+  // A cut company keeps its number out of the list. It is a 1 by definition
+  // and printing that on every row of the Not-a-fit tab is a column of 1s.
+  const getVerdict = useCallback(
+    (c: Company) => (c.status === "rejected" ? null : verdictFor(c, marks[c.id]?.grade ?? null)),
+    [marks]
+  );
+
   const filtered = useMemo(() => {
     const query = q.trim().toLowerCase();
     return companies
@@ -319,11 +332,19 @@ export function CompaniesTable({
       // anything about the companies — the strongest lead in a folder could
       // sit at the bottom for no reason. Ties break on recency so a fresh
       // find outranks an identical older one.
+      // THE ORDER MATCHES THE NUMBER ON THE ROW. The list now prints a 1-5,
+      // and sorting on a different score than the one displayed puts a 3 above
+      // a 4 for reasons nobody can see. His own grade leads, because his own
+      // grade is the whole point of having one; the signal score breaks ties
+      // within a rung, and recency breaks those.
       .sort((a, b) => {
+        const va = marks[a.id]?.grade ?? rankFor(a);
+        const vb = marks[b.id]?.grade ?? rankFor(b);
+        if (va !== vb) return vb - va;
         const d = scoreFactors(b).score - scoreFactors(a).score;
         return d !== 0 ? d : b.lastCrawledAt.localeCompare(a.lastCrawledAt);
       });
-  }, [companies, tab, industry, q]);
+  }, [companies, tab, industry, q, marks]);
 
   const groups = useMemo(() => buildGroups(filtered, groupBy), [filtered, groupBy]);
 
@@ -488,6 +509,7 @@ export function CompaniesTable({
             onOpen={onRowClick}
             picked={selectable ? picked : null}
             onTogglePick={selectable ? togglePick : undefined}
+            getVerdict={getVerdict}
           />
         </div>
       ) : (
@@ -523,6 +545,7 @@ export function CompaniesTable({
                       onOpen={() => onRowClick(c)}
                       picked={selectable ? picked.has(c.id) : null}
                       onTogglePick={selectable ? () => togglePick(c.id) : undefined}
+                      verdict={getVerdict(c)}
                     />
                   </div>
                 ))}

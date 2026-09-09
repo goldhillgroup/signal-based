@@ -59,9 +59,8 @@ test("every rung is a sentence, never a bare number", () => {
   }
 });
 
-test("the label follows the wording you set", () => {
-  const mine = { ...DEFAULT_RULES, pairQuoted: "Call this one today" };
-  assert.equal(starMeaning(base, mine), "Call this one today");
+test("the label says what the rung means", () => {
+  assert.equal(starMeaning(base), DEFAULT_RULES.pairQuoted);
 });
 
 test("the rank still orders best first", () => {

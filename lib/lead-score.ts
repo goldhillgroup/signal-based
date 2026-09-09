@@ -40,15 +40,17 @@ import { personalEmail } from "./company";
  * already sorts against them. Only the number each situation lands on moves.
  */
 /**
- * WORDS, NOT DIGITS. "1 to 5" describes how many rungs there are, not what a
- * lead should be labelled. A 3 beside a company name says nothing on its own
- * and has to be decoded against a legend somebody has to remember; the
- * sentence says it outright. The numbers survive only as sort order, and are
- * never shown.
+ * WHAT EACH RUNG MEANS. Fixed text, not a setting.
  *
- * Editable, because these are descriptions of HIS leads. The one the pipeline
- * cannot express is not a wording problem, so the five situations are fixed --
- * only how each is described moves.
+ * These were editable for a while, one text field per rung in Settings. That
+ * was the third version of a card that kept asking him to configure the SCALE,
+ * and the scale was never what he wanted to change: "he gives a description,
+ * and based on the lead's info, from his description it's a 1 2 3 4 or 5,
+ * nothing complex". The description is the setting; these five sentences just
+ * say how completely a company matched it, which is arithmetic, not taste.
+ *
+ * The number is what gets shown and sorted on, and these ride along with it so
+ * a 3 is never a digit nobody can decode.
  */
 export interface ScoreRules {
   /** Both generations named, quoted in their own words, wording firm. */
@@ -87,28 +89,6 @@ export function rungFor(c: Company): keyof ScoreRules {
   if (grade.quality === "confirmed") return "pairQuoted";
   if (grade.quality === "unconfirmed") return "pairThin";
   return c.founderName || c.nextGenName ? "fitNamed" : "fitUnnamed";
-}
-
-/** Shown in Settings, so each row says which lead it is talking about. */
-/** What each situation IS, so Settings can say which lead is being described. */
-export const RULE_LABELS: { key: keyof ScoreRules; hint: string }[] = [
-  { key: "pairQuoted", hint: "The page shows what your sentence describes, in their own words, and the wording is firm." },
-  { key: "pairThin", hint: "The page reads that way with nothing quoted, or wording the classifier was not sure about." },
-  { key: "fitNamed", hint: "Right trade and area, family-run, but the page does not show what your sentence describes. Somebody is named." },
-  { key: "fitUnnamed", hint: "Right trade and area, and the site names nobody at all." },
-  { key: "outside", hint: "Cut by one of your gates." },
-];
-
-/** Anything missing or out of range falls back rather than scoring as zero. */
-export function parseRules(raw: unknown): ScoreRules {
-  if (!raw || typeof raw !== "object") return DEFAULT_RULES;
-  const out = { ...DEFAULT_RULES };
-  for (const k of Object.keys(DEFAULT_RULES) as (keyof ScoreRules)[]) {
-    const v = (raw as Record<string, unknown>)[k];
-    // A blank wording falls back rather than labelling a lead with nothing.
-    if (typeof v === "string" && v.trim()) out[k] = v.trim().slice(0, 80);
-  }
-  return out;
 }
 
 export type SignalQuality = "confirmed" | "unconfirmed" | "none";
@@ -186,9 +166,9 @@ export function rankFor(c: Company): number {
  * which they can, if he decides a thin pair and a named fit are both a 3 --
  * a lookup keyed on the score alone would name only one of them.
  */
-/** The score, as the sentence he wrote for that situation. */
-export function starMeaning(c: Company, rules: ScoreRules = DEFAULT_RULES): string {
-  return rules[rungFor(c)];
+/** The score, said in words. */
+export function starMeaning(c: Company): string {
+  return DEFAULT_RULES[rungFor(c)];
 }
 
 /** The same thing in words, for a column heading somebody has to read. */

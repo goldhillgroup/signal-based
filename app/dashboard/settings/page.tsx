@@ -1,5 +1,5 @@
 import { getSetting, SETTINGS_KEYS } from "@/lib/settings";
-import { ScoreRulesCard } from "@/components/ScoreRules";
+import { LeadDescription } from "@/components/LeadDescription";
 import { ReplayTourButton } from "@/components/DashboardTour";
 import { SettingsForm } from "@/components/SettingsForm";
 
@@ -79,7 +79,7 @@ export default async function SettingsPage() {
         <SettingsForm rows={rows} />
       </section>
 
-      <ScoreRulesCard />
+      <LeadDescription />
       {/* Somebody who skipped the tour, or a second person on the shared
           login, needs a way back to it. The flag it clears is per-browser. */}
       <div className="mt-8 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gh-border bg-gh-surface px-4 py-3.5">

@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { starMeaning, rungFor, RUNG_ORDER, type ScoreRules } from "@/lib/lead-score";
-import { useScoreRules } from "@/lib/use-score-rules";
+import { rankFor, RUNG_ORDER, DEFAULT_RULES } from "@/lib/lead-score";
+import { ScorePill, verdictFor } from "./ScorePill";
+import { setLocalMark } from "@/lib/use-marks";
 import type { Company } from "@/lib/company";
 
 /**
@@ -54,8 +55,7 @@ export function LeadMarks({
   const [saved, setSaved] = useState(false);
   const savedAt = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const rules = useScoreRules();
-  const systemRung = rungFor(company);
+  const systemScore = rankFor(company);
 
   useEffect(() => {
     let off = false;
@@ -93,6 +93,11 @@ export function LeadMarks({
         setSavedNote(n);
         setGrade(g);
         setSavedGrade(g);
+        // The list behind the drawer holds the same marks. Without this it
+        // keeps showing the system's score until the page is reloaded, which
+        // is the exact "I changed it and nothing moved" the shared store
+        // exists to prevent.
+        setLocalMark(company.id, { note: n || null, grade: g });
         setSaved(true);
         if (savedAt.current) clearTimeout(savedAt.current);
         savedAt.current = setTimeout(() => setSaved(false), 2500);
@@ -122,29 +127,33 @@ export function LeadMarks({
     return <p className="text-xs text-gh-ink-muted">Reading your notes…</p>;
   }
 
+  const shown = grade ?? systemScore;
+  const meaning = DEFAULT_RULES[RUNG_ORDER[RUNG_ORDER.length - shown]] ?? "";
+
   return (
     <div className="space-y-3">
       <div>
-        {/* THE SYSTEM'S NUMBER, LEGIBLE, AND OUT OF FIVE.
-            It was 11px inline text reading "System says 4", which is both easy
-            to miss and ambiguous -- 4 out of what? The scale has to be on the
-            number or the number means nothing. */}
+        {/* THE NUMBER, OUT OF FIVE, WITH WHAT IT MEANS UNDER IT.
+            This has been a digit, then a sentence with the digit taken away,
+            and neither on its own worked: "4" needs a legend, and a sentence
+            alone cannot be scanned down a list or sorted. Both, always, and
+            the same pair the lead list now shows. */}
         <div className="mb-2">
           <span className="text-[11px] font-semibold uppercase tracking-wide text-gh-ink-muted">
             Your verdict
           </span>
-          {/* THE SENTENCE, NOT A DIGIT. "1 to 5" is how many rungs there are,
-              not what a lead should be called. A 3 beside a company name says
-              nothing without a legend to decode it against. */}
-          <p className="mt-1.5 rounded-lg border border-gh-border bg-gh-surface-sunken px-2.5 py-2 text-sm font-medium leading-snug text-gh-ink">
-            {starMeaning(company, rules)}
-            <span className="mt-0.5 block text-[10px] font-normal uppercase tracking-wide text-gh-ink-muted">
-              What the system found
+          <div className="mt-1.5 flex items-center gap-2.5 rounded-lg border border-gh-border bg-gh-surface-sunken px-2.5 py-2">
+            <ScorePill verdict={verdictFor(company, grade)} size="md" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium leading-snug text-gh-ink">{meaning}</span>
+              <span className="mt-0.5 block text-[10px] uppercase tracking-wide text-gh-ink-muted">
+                {grade === null ? "What the system found" : "Your call"}
+              </span>
             </span>
-          </p>
+          </div>
         </div>
         {/* THE SENTENCE THE SCORE CAME FROM. It always came from this -- the
-            classifier's verdict on his signal focus is what has_signal means --
+            classifier's verdict on his description is what has_signal means --
             and the panel never said so, which left the number looking like an
             opinion of its own rather than an answer to his own question. */}
         {judgedAgainst && (
@@ -155,34 +164,43 @@ export function LeadMarks({
         )}
         <p className="mb-1.5 text-[11px] text-gh-ink-muted">
           {grade === null
-            ? "Disagree? Pick the one that fits. Yours then stands instead."
-            : "Yours stands. Click it again to hand the lead back to the system."}
+            ? "Disagree? Give it your own 1 to 5. Yours then stands instead."
+            : "Yours stands. Press it again to hand the lead back to the system."}
         </p>
-        <div className="space-y-1">
-          {RUNG_ORDER.map((k, i) => {
-            const n = RUNG_ORDER.length - i;
+        {/* FIVE BUTTONS, ONE PER NUMBER. They were five sentences, which made
+            the panel a paragraph to read before you could disagree with it --
+            and it is the number he is disagreeing with. The meaning of
+            whichever is selected prints above, so nothing is lost. */}
+        <div className="flex gap-1.5">
+          {[5, 4, 3, 2, 1].map((n) => {
             const chosen = grade === n;
+            const isSystem = grade === null && n === systemScore;
             return (
               <button
-                key={k}
+                key={n}
                 type="button"
                 disabled={saving}
                 onClick={() => setGrade(chosen ? null : n)}
                 aria-pressed={chosen}
-                className={`block w-full cursor-pointer rounded-lg border px-2.5 py-1.5 text-left text-xs transition-colors disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 ${
+                title={DEFAULT_RULES[RUNG_ORDER[RUNG_ORDER.length - n]]}
+                className={`tabular flex-1 cursor-pointer rounded-lg border py-2 text-sm font-semibold transition-colors disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 ${
                   chosen
-                    ? "border-gh-navy bg-gh-navy font-semibold text-white"
-                    : "border-gh-border text-gh-ink-secondary hover:border-gh-navy/40 hover:text-gh-ink"
+                    ? "border-gh-navy bg-gh-navy text-white"
+                    : isSystem
+                      ? "border-gh-navy/40 text-gh-ink"
+                      : "border-gh-border text-gh-ink-secondary hover:border-gh-navy/40 hover:text-gh-ink"
                 }`}
               >
-                {(rules as ScoreRules)[k]}
-                {k === systemRung && !chosen && (
-                  <span className="ml-1.5 text-[10px] text-gh-ink-muted">what the system said</span>
-                )}
+                {n}
               </button>
             );
           })}
         </div>
+        {grade === null && (
+          <p className="mt-1 text-[10px] text-gh-ink-muted">
+            {systemScore} is what the system gave it.
+          </p>
+        )}
       </div>
 
       <div>

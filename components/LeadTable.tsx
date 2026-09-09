@@ -4,6 +4,7 @@ import { Fragment } from "react";
 import type { Company } from "@/lib/company";
 import { personalEmail, generalEmail, lookupCameBackEmpty } from "@/lib/company";
 import { toLead, SIGNAL_TYPE_META, leadPeople } from "@/lib/lead-signal";
+import { ScorePill, type Verdict } from "./ScorePill";
 
 /**
  * A spreadsheet, not a layout.
@@ -40,9 +41,9 @@ export interface LeadGroup {
   rows: Company[];
 }
 
-/** Grows to 11 when the pick column is on. Used by the group separator rows,
+/** Grows to 13 when the pick column is on. Used by the group separator rows,
  *  which span the whole sheet and would leave a hole if this were wrong. */
-const BASE_COLS = 11;
+const BASE_COLS = 12;
 
 /** Short enough for a column. Full wording lives in the drawer. */
 const CREWS: Record<string, string> = {
@@ -58,6 +59,7 @@ export function LeadTable({
   onOpen,
   picked = null,
   onTogglePick,
+  getVerdict,
 }: {
   groups: LeadGroup[];
   /** False when grouping is off — one flat sheet, no separator rows. */
@@ -66,6 +68,8 @@ export function LeadTable({
   /** null turns the pick column off entirely. */
   picked?: Set<string> | null;
   onTogglePick?: (id: string) => void;
+  /** His 1-5 if he has given one, else the system's. null hides the pill. */
+  getVerdict?: (c: Company) => Verdict | null;
 }) {
   const total = groups.reduce((n, g) => n + g.rows.length, 0);
   const selectable = picked !== null && typeof onTogglePick === "function";
@@ -85,12 +89,17 @@ export function LeadTable({
         <thead className="sticky top-0 z-10">
           <tr className="bg-gh-surface-sunken text-xs font-semibold uppercase tracking-wide text-gh-ink-secondary">
             {selectable && <Th className="w-[3%]"><span className="sr-only">Pick</span></Th>}
-            <Th className="w-[14%]">Company</Th>
+            <Th className="w-[13%]">Company</Th>
+            {/* THE VERDICT, WHERE THE SCANNING HAPPENS. It only existed in the
+                drawer, so a sheet of thirty rows said nothing about which to
+                open first -- the one job a list has. Its 4% came out of the
+                four widest columns; the budget below still sums to 100. */}
+            <Th className="w-[4%]">Score</Th>
             <Th className="w-[3%]">State</Th>
             <Th className="w-[8%]">Signal</Th>
             <Th className="w-[7%]">Size</Th>
             <Th className="w-[3%]">Crews</Th>
-            <Th className="w-[12%]">What the site says</Th>
+            <Th className="w-[11%]">What the site says</Th>
             <Th className="w-[11%]">Who to reach</Th>
             {/* TWO COLUMNS, because they are two different leads.
                 One column meant a company that printed office@ in its footer
@@ -98,8 +107,8 @@ export function LeadTable({
                 drawer -- the table contradicting the panel behind it. And the
                 two are not interchangeable: office@ reaches whoever screens
                 the mail, buddy@ reaches Buddy. */}
-            <Th className="w-[16%]">Email</Th>
-            <Th className="w-[14%]">General inbox</Th>
+            <Th className="w-[15%]">Email</Th>
+            <Th className="w-[13%]">General inbox</Th>
             <Th className="w-[5%]">Deliverable</Th>
             <Th className="w-[4%]">Source</Th>
           </tr>
@@ -162,6 +171,12 @@ export function LeadTable({
                           cut
                         </span>
                       )}
+                    </Td>
+                    <Td>
+                      {(() => {
+                        const v = getVerdict?.(c) ?? null;
+                        return v ? <ScorePill verdict={v} /> : <span className="text-gh-ink-muted">-</span>;
+                      })()}
                     </Td>
                     <Td>{c.state && c.state !== "-" ? c.state : "-"}</Td>
                     <Td title={`${meta.label} — ${meta.blurb}`}>

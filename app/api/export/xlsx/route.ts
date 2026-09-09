@@ -3,8 +3,6 @@ import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { companiesToXlsx } from "@/lib/xlsx-export";
 import { folderTitle } from "@/lib/folder-title";
 import { loadMarks } from "@/lib/lead-notes";
-import { resolveSetting } from "@/lib/settings";
-import { parseRules } from "@/lib/lead-score";
 import type { Exportable } from "@/lib/csv-export";
 
 /**
@@ -65,8 +63,7 @@ interface Row {
 function toCompany(
   r: Row,
   listName: string,
-  marks?: { note: string | null; grade: number | null },
-  rules?: ReturnType<typeof parseRules>
+  marks?: { note: string | null; grade: number | null }
 ): Exportable {
   const contacts = (r.contacts ?? []).map((c) => ({
     name: c.name,
@@ -117,7 +114,6 @@ function toCompany(
     listName,
     ownGrade: marks?.grade ?? null,
     note: marks?.note ?? null,
-    rules,
   } as unknown as Exportable;
 }
 
@@ -148,19 +144,10 @@ export async function POST(req: Request) {
 
   const rows = (data ?? []) as unknown as Row[];
   const marks = await loadMarks(service);
-  // The spreadsheet must score the way the screen does, or the same lead reads
-  // 4 in the app and 3 in the file somebody forwards.
-  let rules;
-  try {
-    const raw = await resolveSetting("SCORE_RULES", undefined);
-    rules = parseRules(raw ? JSON.parse(raw) : null);
-  } catch {
-    rules = parseRules(null);
-  }
   // The list column only earns its place on a combined export; a single folder
   // already knows which one it is.
   const companies = rows.map((r) =>
-    toCompany(r, body.searchId ? "" : (names.get(r.search_id ?? "") ?? ""), marks[r.id], rules)
+    toCompany(r, body.searchId ? "" : (names.get(r.search_id ?? "") ?? ""), marks[r.id])
   );
 
   const label = body.searchId ? (names.get(body.searchId) ?? "Leads") : "All leads";

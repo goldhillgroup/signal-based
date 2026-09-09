@@ -6,6 +6,7 @@ import { DEFAULT_ICP } from "@/lib/pipeline/icp-types";
 import { industryLabel, VALID_INDUSTRIES } from "@/lib/pipeline/intake-types";
 import { stateNameFor, US_STATES, NATIONWIDE } from "@/lib/pipeline/us-states";
 import { creditBlockerFor } from "@/lib/pipeline/preflight";
+import { resolveSetting } from "@/lib/settings";
 import type { Industry, SearchMode } from "@/lib/supabase/types";
 
 // 300s, the default ceiling on EVERY Vercel plan.
@@ -127,7 +128,13 @@ export async function POST(req: Request) {
   // from the same definition of a good lead. An explicit focus always wins;
   // this only fills a blank.
   const icp = DEFAULT_ICP;
-  const refinement = ((body.refinement ?? "").trim() || icp.signalFocus).trim();
+  // HIS DESCRIPTION IS THE DEFAULT FOCUS. Settings holds one sentence saying
+  // what a good lead looks like, and this is where it takes effect: it is what
+  // every site gets read against, which is what has_signal means, which is
+  // what the 1-5 on the lead list counts. Without this line the setting would
+  // be a caption on a number it had no part in producing.
+  const described = (await resolveSetting("LEAD_DESCRIPTION", undefined))?.trim();
+  const refinement = ((body.refinement ?? "").trim() || described || icp.signalFocus).trim();
 
   const mode = VALID_MODES.includes(body.mode as SearchMode) ? (body.mode as SearchMode) : "hybrid";
 
