@@ -87,13 +87,13 @@ const TABS: { key: Tab; label: string; hint: string }[] = [
   { key: "not_a_fit", label: "Not a fit", hint: "Cut by one of your gates, with the reason" },
   {
     key: "parked",
-    label: "Parked",
-    hint: "Set aside for now. Future searches still consider them.",
+    label: "Set aside",
+    hint: "Off your lists for now. A future search can still find them.",
   },
   {
     key: "blacklisted",
-    label: "Blacklisted",
-    hint: "Ones you cut yourself. Future searches skip them.",
+    label: "Never show",
+    hint: "Cut by you, and no future search will surface them again.",
   },
 ];
 

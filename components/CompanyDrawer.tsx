@@ -427,8 +427,8 @@ export function CompanyDrawer({
                   <>
                     <p className="text-xs text-gh-ink-secondary">
                       {company.rejectionReason === "Parked by you"
-                        ? "Parked. Off your lists, but future searches still consider it."
-                        : "Cut from your lists, and skipped by future searches."}
+                        ? "Set aside. Off your lists, but a future search can still find it."
+                        : "Cut from your lists, and no future search will surface it."}
                     </p>
                     <button
                       type="button"
@@ -445,10 +445,23 @@ export function CompanyDrawer({
                         different answers and only one of them was available.
                         Park keeps the company in play for future searches;
                         blacklist takes it out of them for good. */}
-                    <p className="text-xs text-gh-ink-secondary">
-                      Not one for now? Park it and it leaves your lists but
-                      stays in play. Blacklist stops future searches finding it
-                      at all.
+                    {/* "Park it for now" was not enough on its own -- Daniel
+                        had to ask what it meant, which is the answer. The
+                        difference is not how strongly you dislike the company,
+                        it is whether a future search should find it again, and
+                        that has to be said rather than implied. */}
+                    <p className="text-xs leading-relaxed text-gh-ink-secondary">
+                      <strong className="font-semibold text-gh-ink">Set aside</strong> takes it off
+                      your lists, and future searches can still find it. For one you have just
+                      called, or do not want this quarter.
+                    </p>
+                    <p className="mt-1.5 text-xs leading-relaxed text-gh-ink-secondary">
+                      <strong className="font-semibold text-gh-ink">Never show again</strong> also
+                      stops it appearing in any future search. For a competitor, a client you
+                      already have, or a row that is simply wrong.
+                    </p>
+                    <p className="mt-1.5 text-[11px] text-gh-ink-muted">
+                      Both are reversible, and neither deletes anything.
                     </p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       <button
@@ -457,7 +470,7 @@ export function CompanyDrawer({
                         onClick={() => void setBlacklisted("park")}
                         className="cursor-pointer rounded-lg border border-gh-border px-3 py-1.5 text-[11px] font-semibold text-gh-ink-secondary transition-colors hover:border-gh-sky/50 hover:text-gh-ink disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
                       >
-                        {blacklisting ? "Working…" : "Park it for now"}
+                        {blacklisting ? "Working…" : "Set aside for now"}
                       </button>
                       <button
                         type="button"
@@ -465,7 +478,7 @@ export function CompanyDrawer({
                         onClick={() => void setBlacklisted("blacklist")}
                         className="cursor-pointer rounded-lg border border-gh-border px-3 py-1.5 text-[11px] font-semibold text-gh-ink-secondary transition-colors hover:border-gh-critical/50 hover:text-gh-critical disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-critical/30"
                       >
-                        {blacklisting ? "" : "Blacklist"}
+                        {blacklisting ? "" : "Never show again"}
                       </button>
                     </div>
                   </>
