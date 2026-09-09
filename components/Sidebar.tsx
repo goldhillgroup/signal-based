@@ -6,11 +6,11 @@ import { usePathname } from "next/navigation";
 import { useEffect, useCallback, useSyncExternalStore } from "react";
 import { useSearches } from "@/lib/searches-store";
 import { useMobileNav } from "@/lib/mobile-nav";
-import { RadarIcon, FolderIcon, SettingsIcon, GridIcon, UsersIcon, XIcon, ArrowLeftIcon } from "./icons";
+import { RadarIcon, FolderIcon, SettingsIcon, GridIcon, UsersIcon, XIcon, ArrowLeftIcon, ClockIcon } from "./icons";
 import { SignOutButton } from "./SignOutButton";
 import { TourButton } from "./DashboardTour";
-import { ActivityPanel } from "./ActivityPanel";
 import { SidebarStatus } from "./SidebarStatus";
+import { useActivity } from "@/lib/activity";
 
 // Two real destinations — "Crawl Runs" and "Reports" were placeholders from
 // an earlier design (a standing continuous-crawl model) that never got
@@ -40,6 +40,12 @@ const NAV_ITEMS = [
   { label: "Signal Radar", icon: RadarIcon, href: "/dashboard" },
   { label: "Enrichment", icon: UsersIcon, href: "/dashboard/enrichment" },
   { label: "Lead Lists", icon: FolderIcon, href: "/dashboard/all-leads" },
+  // WHERE FINISHED WORK CAN BE LOOKED UP. The toasts stay, but a toast is gone
+  // in four seconds and a run that finishes while the tab is closed announced
+  // itself to nobody. This was briefly a drawer hung off a button below the
+  // nav, which hid the lookup behind a control the rail never named; it is a
+  // destination, so it is a row like everything else you can open.
+  { label: "History", icon: ClockIcon, href: "/dashboard/history" },
   { label: "Settings", icon: SettingsIcon, href: "/dashboard/settings" },
 ];
 
@@ -63,6 +69,9 @@ function SidebarBody({
 }) {
   const pathname = usePathname();
   const { folders } = useSearches();
+  // Same hook the History page uses, so the number on the rail can never mean
+  // something different from the list it opens.
+  const { unread } = useActivity();
 
   // Live counts on the nav itself. A sidebar of five identical text rows makes
   // you open a page to find out whether anything is there; a number next to
@@ -91,6 +100,7 @@ function SidebarBody({
   const badges: Record<string, number> = {
     "/dashboard/all-leads": listsWithLeads,
     "/dashboard/enrichment": readyToEnrich,
+    "/dashboard/history": unread,
   };
 
   return (
@@ -206,12 +216,18 @@ function SidebarBody({
                      comes back the moment the rail is expanded. */
                   <span
                     aria-label={`${badge}`}
-                    className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-gh-sky"
+                    className={`absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full ${
+                      href === "/dashboard/history" ? "bg-gh-orange" : "bg-gh-sky"
+                    }`}
                   />
                 ) : (
                   <span
                     className={`tabular rounded-full px-1.5 py-0.5 text-[10px] font-semibold transition-colors ${
-                      active ? "bg-white/20 text-white" : "bg-white/10 text-white/60"
+                      href === "/dashboard/history"
+                        ? "bg-gh-orange text-white"
+                        : active
+                          ? "bg-white/20 text-white"
+                          : "bg-white/10 text-white/60"
                     }`}
                   >
                     {badge}
@@ -221,13 +237,6 @@ function SidebarBody({
           );
         })}
       </nav>
-
-      {/* WHERE FINISHED WORK CAN BE LOOKED UP. The toasts stay, but a toast
-          is gone in four seconds and a run that finishes while the tab is
-          closed announced itself to nobody. */}
-      <div className="px-3 pb-1">
-        <ActivityPanel collapsed={collapsed} />
-      </div>
 
       {/* The tour lives with the navigation it points AT, not in the top bar.
           Every stop highlights one of the five rows above it, so the way in

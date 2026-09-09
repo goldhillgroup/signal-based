@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import { RadarIcon, UsersIcon, FolderIcon, GridIcon, SettingsIcon, HelpIcon } from "./icons";
+import { RadarIcon, UsersIcon, FolderIcon, GridIcon, SettingsIcon, HelpIcon, ClockIcon } from "./icons";
 
 /**
  * A first-run tour of the five screens.
@@ -110,6 +110,14 @@ const STOPS: Stop[] = [
     headline: "Tracked and consolidated data",
     body:
       "The consolidated list of all the leads from each search within. There are three categories: a confirmed founder and successor pair, a within-ICP family-owned business with no publicly named successor, and the leads that were deemed outside ICP so you can make your own decision after seeing the data.",
+  },
+  {
+    icon: ClockIcon,
+    target: "/dashboard/history",
+    screen: "History",
+    headline: "What has already run",
+    body:
+      "Every search and every email run that has finished, newest first. The pop-ups in the corner fade after a few seconds; this is where you go to check one afterwards, including anything that finished while the tab was closed.",
   },
   {
     icon: SettingsIcon,

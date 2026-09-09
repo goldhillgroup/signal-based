@@ -292,3 +292,13 @@ export function HelpIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+/** History. A clock rather than a list, because the axis here is time. */
+export function ClockIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden>
+      <circle cx="10" cy="10" r="7.25" stroke="currentColor" strokeWidth={base} />
+      <path d="M10 6V10.25L12.75 12" stroke="currentColor" strokeWidth={base} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
