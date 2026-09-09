@@ -154,6 +154,8 @@ export default function AllLeadsPage() {
   // "Not a fit" tab inside a folder. The headline is about LEADS, and counting
   // the cut ones there would restate the exact confusion this page just had.
   const leadCount = leads.length;
+  /** Which list each lead came from, so a combined export can say. */
+  const folderName = new Map(folders.map((f) => [f.id, folderTitle(f.label)]));
   const openFolder = contributing.find((f) => f.id === openFolderId) ?? null;
 
   const leadsByFolder = new Map<string, Company[]>();
@@ -418,6 +420,28 @@ export default function AllLeadsPage() {
               : `${contributing.length} list${contributing.length === 1 ? "" : "s"}, ${leadCount} lead${leadCount === 1 ? "" : "s"}. Open one to see inside.`}
           </p>
           <div className="flex items-center gap-2">
+            {/* ONE FILE FOR EVERY LIST.
+                Each folder already exports its own, which is right when you
+                are working one search. It is the wrong shape when the question
+                is "who have I got", because that answer is spread across eight
+                files with eight headers. The folder name rides along as a
+                column so the combined sheet can still be grouped back. */}
+            {leads.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  const named = leads.map((c) => ({
+                    ...c,
+                    listName: folderName.get(c.searchId ?? "") ?? "",
+                  }));
+                  downloadCompaniesCsv(named, "all-leads");
+                }}
+                className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-gh-border bg-gh-surface px-3 py-1.5 text-xs font-semibold text-gh-ink-secondary transition-colors hover:border-gh-sky/40 hover:text-gh-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+              >
+                <DownloadIcon className="h-3.5 w-3.5" />
+                Download all {leads.length}
+              </button>
+            )}
             {contributing.length > 0 && (
               <div className="flex shrink-0 rounded-lg border border-gh-border bg-gh-surface-sunken p-0.5">
                 {(["cards", "list"] as const).map((k) => (

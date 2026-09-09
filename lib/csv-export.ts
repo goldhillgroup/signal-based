@@ -29,7 +29,19 @@ import { personalEmail, generalEmail } from "./company";
 // Second column rather than last because a spreadsheet is sorted and filtered
 // on its left-hand columns, and "is this a lead or not" outranks every other
 // question you can ask of this file.
-const COLUMNS: { header: string; get: (c: Company) => string }[] = [
+/**
+ * A lead carrying the name of the list it came from.
+ *
+ * Only set by the combined export on Lead Lists. A per-folder download already
+ * knows which folder it is, and would carry the same value on every row.
+ */
+type Exportable = Company & { listName?: string };
+
+const COLUMNS: { header: string; get: (c: Exportable) => string }[] = [
+  // FIRST, so a combined sheet sorts and groups by it without being rearranged.
+  // Empty on a single-folder export, where the column is noise, and the header
+  // is dropped in that case below.
+  { header: "list", get: (c) => c.listName ?? "" },
   { header: "company", get: (c) => c.name },
   { header: "verdict", get: (c) => (c.status === "rejected" ? "NOT A FIT" : "lead") },
   { header: "not_a_fit_reason", get: (c) => (c.status === "rejected" ? (c.rejectionReason ?? "") : "") },
@@ -95,13 +107,19 @@ function csvCell(value: string): string {
   return value;
 }
 
-export function companiesToCsv(companies: Company[]): string {
-  const header = COLUMNS.map((c) => csvCell(c.header)).join(",");
-  const rows = companies.map((c) => COLUMNS.map((col) => csvCell(col.get(c))).join(","));
+export function companiesToCsv(companies: Exportable[]): string {
+  // The "list" column is dropped when nothing fills it. A per-folder export
+  // already knows which folder it is, and an empty first column on every row
+  // is a question the reader has to answer for themselves.
+  const used = COLUMNS.filter(
+    (c) => c.header !== "list" || companies.some((x) => (x.listName ?? "").length > 0)
+  );
+  const header = used.map((c) => csvCell(c.header)).join(",");
+  const rows = companies.map((c) => used.map((col) => csvCell(col.get(c))).join(","));
   return [header, ...rows].join("\r\n");
 }
 
-export function downloadCompaniesCsv(companies: Company[], filename: string) {
+export function downloadCompaniesCsv(companies: Exportable[], filename: string) {
   const csv = companiesToCsv(companies);
   // BOM so Excel (still the most likely destination) reads UTF-8 correctly
   // instead of mangling accented characters/em-dashes.
