@@ -25,7 +25,7 @@ const as = (patch: Record<string, unknown>) => ({ ...base, ...patch }) as unknow
 
 test("a pair quoted in their own words is a 5", () => {
   assert.equal(rungFor(base), "pairQuoted");
-  assert.equal(gradeSignal(base).quality, "good");
+  assert.equal(gradeSignal(base).quality, "confirmed");
 });
 
 test("a pair with nothing quoted is a 4", () => {
@@ -91,5 +91,5 @@ test("a fit never reads as needing an email it cannot use", () => {
 test("a fit-only company is never called bad", () => {
   // 86% of the database. Calling that "not good" would be calling most of his
   // list bad, and it is an absence of evidence rather than a verdict.
-  assert.equal(gradeSignal(as({ hasSignal: false })).quality, "no signal");
+  assert.equal(gradeSignal(as({ hasSignal: false })).quality, "none");
 });

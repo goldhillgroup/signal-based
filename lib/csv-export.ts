@@ -3,6 +3,8 @@ import { toLead, SIGNAL_TYPE_META } from "./lead-signal";
 import { isSharedInbox } from "./pipeline/page-email";
 import {
   gradeSignal,
+  QUALITY_LABEL,
+  OUTSIDE_LABEL,
   starMeaning,
   rankFor,
   RUNG_ORDER,
@@ -91,12 +93,29 @@ export const COLUMNS: { header: string; get: (c: Exportable) => string }[] = [
   },
   { header: "verdict_by", get: (c) => (c.ownGrade ? "you" : "system") },
   { header: "system_verdict", get: (c) => starMeaning(c, c.rules ?? DEFAULT_RULES) },
-  { header: "rank", get: (c) => String(c.ownGrade ?? rankFor(c)) },
+  // "4 of 5", not "4". A bare number in a column called rank leaves the reader
+  // to guess the scale, and the screen already says "System says 4 / 5" -- the
+  // sheet disagreeing with the page is how a number stops being trusted.
+  //
+  // "of" rather than "4/5" ON PURPOSE: Google Sheets reads "4/5" as the 5th of
+  // April and silently turns the column into dates. This is the export that
+  // exists to be pasted into Sheets, so it has to survive the paste. Sorting
+  // still works -- "1 of 5" through "5 of 5" order the same way the numbers do.
+  { header: "rank", get: (c) => `${c.ownGrade ?? rankFor(c)} of 5` },
   { header: "next_step", get: (c) => (c.status === "qualified" ? nextStep(c) : "") },
   // How good the SIGNAL is, which is a different axis from what the lead
   // needs. Both are wanted: one ranks the evidence, the other says what to do.
-  { header: "signal_quality", get: (c) => (c.status === "qualified" ? gradeSignal(c).quality : "") },
-  { header: "signal_quality_why", get: (c) => (c.status === "qualified" ? gradeSignal(c).why : "") },
+  {
+    header: "signal_quality",
+    get: (c) =>
+      c.status === "qualified" ? QUALITY_LABEL[gradeSignal(c).quality] : OUTSIDE_LABEL,
+  },
+  {
+    header: "signal_quality_why",
+    // A cut row now says "Outside ICP" above, so leaving this blank would put
+    // a verdict in one column and its reason nowhere near it.
+    get: (c) => (c.status === "qualified" ? gradeSignal(c).why : (c.rejectionReason ?? "")),
+  },
   { header: "company", get: (c) => c.name },
   { header: "verdict", get: (c) => (c.status === "rejected" ? "NOT A FIT" : "lead") },
   { header: "not_a_fit_reason", get: (c) => (c.status === "rejected" ? (c.rejectionReason ?? "") : "") },

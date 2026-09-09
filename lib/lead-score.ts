@@ -84,8 +84,8 @@ export const RUNG_ORDER: (keyof ScoreRules)[] = [
 export function rungFor(c: Company): keyof ScoreRules {
   if (c.status !== "qualified") return "outside";
   const grade = gradeSignal(c);
-  if (grade.quality === "good") return "pairQuoted";
-  if (grade.quality === "meh") return "pairThin";
+  if (grade.quality === "confirmed") return "pairQuoted";
+  if (grade.quality === "unconfirmed") return "pairThin";
   return c.founderName || c.nextGenName ? "fitNamed" : "fitUnnamed";
 }
 
@@ -111,7 +111,30 @@ export function parseRules(raw: unknown): ScoreRules {
   return out;
 }
 
-export type SignalQuality = "good" | "meh" | "no signal";
+export type SignalQuality = "confirmed" | "unconfirmed" | "none";
+
+/**
+ * What each grade is CALLED in a sheet Jonathan forwards.
+ *
+ * These read "good", "meh" and "no signal", which is fine in a code path and
+ * wrong in a column somebody else's assistant opens: "meh" is a shrug, not a
+ * finding, and it was sitting next to a real company's name. The replacements
+ * come from the vocabulary the rest of the app already uses -- signal, fit,
+ * outside -- so the sheet and the screen say the same words.
+ *
+ * "Fit only" rather than "none": the absence is of a NAMED successor on their
+ * own website, not of a reason to call. That distinction is Christian's catch
+ * and it is carried everywhere else (see SIGNAL_TYPE_META); a column that
+ * flattens it back to "none" undoes it in the one artefact that gets sent on.
+ */
+export const QUALITY_LABEL: Record<SignalQuality, string> = {
+  confirmed: "Signal confirmed",
+  unconfirmed: "Signal, unconfirmed",
+  none: "Fit only, no signal",
+};
+
+/** Cut by a gate. Not a grade of signal, but the sheet's column needs a word. */
+export const OUTSIDE_LABEL = "Outside ICP";
 
 export interface SignalGrade {
   quality: SignalQuality;
@@ -125,7 +148,7 @@ export function gradeSignal(c: Company): SignalGrade {
     // that simply does not print a successor -- 86% of the database, and
     // calling that bad would be calling most of his list bad. It is an absence
     // of evidence, and the words should say so.
-    return { quality: "no signal", why: "No successor named on their own site" };
+    return { quality: "none", why: "No successor named on their own site" };
   }
 
   const hasQuote = !!c.evidence?.quote;
@@ -134,15 +157,15 @@ export function gradeSignal(c: Company): SignalGrade {
 
   if (hasQuote && bothNamed && firm) {
     return {
-      quality: "good",
+      quality: "confirmed",
       why: c.evidence?.disproveNotes
         ? "Both named, quoted in their own words, and it survived the disprove pass"
         : "Both named and quoted in their own words",
     };
   }
-  if (!hasQuote) return { quality: "meh", why: "Reads as a handover but nothing is quoted" };
-  if (!bothNamed) return { quality: "meh", why: "Quoted, but only one generation is named" };
-  return { quality: "meh", why: "Quoted, but the wording is not airtight" };
+  if (!hasQuote) return { quality: "unconfirmed", why: "Reads as a handover but nothing is quoted" };
+  if (!bothNamed) return { quality: "unconfirmed", why: "Quoted, but only one generation is named" };
+  return { quality: "unconfirmed", why: "Quoted, but the wording is not airtight" };
 }
 
 /**
