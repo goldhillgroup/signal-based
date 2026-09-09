@@ -1,6 +1,7 @@
 import { settledContact, type Company } from "./company";
 import { toLead, SIGNAL_TYPE_META } from "./lead-signal";
 import { isSharedInbox } from "./pipeline/page-email";
+import { scoreLead, gradeSignal } from "./lead-score";
 import { personalEmail, generalEmail } from "./company";
 
 // The "sheet" — a plain CSV download, opens directly in Excel/Google Sheets/
@@ -35,13 +36,29 @@ import { personalEmail, generalEmail } from "./company";
  * Only set by the combined export on Lead Lists. A per-folder download already
  * knows which folder it is, and would carry the same value on every row.
  */
-type Exportable = Company & { listName?: string };
+export type Exportable = Company & { listName?: string };
 
-const COLUMNS: { header: string; get: (c: Exportable) => string }[] = [
+export const COLUMNS: { header: string; get: (c: Exportable) => string }[] = [
   // FIRST, so a combined sheet sorts and groups by it without being rearranged.
   // Empty on a single-folder export, where the column is noise, and the header
   // is dropped in that case below.
   { header: "list", get: (c) => c.listName ?? "" },
+  // THE BAND, NOT THE NUMBER, and that is a decision with evidence behind it.
+  //
+  // Measured on the real database: median 15 out of 100, 86% of 448 leads in
+  // the bottom band. An earlier 1-10 score was pulled from this export for the
+  // same reason, recorded in tests/lead.test.mts -- "30 of 33 leads scored 4
+  // or below, so printing it told the client his own leads were failures".
+  //
+  // The number is real and still sorts the table in the app. What it is not is
+  // something to print beside a company's name in a sheet Jonathan sends on,
+  // because 15/100 reads as a verdict on the lead when it mostly means an
+  // address has not been bought yet. The words say what to do instead.
+  { header: "next_step", get: (c) => (c.status === "qualified" ? scoreLead(c).band : "") },
+  // How good the SIGNAL is, which is a different axis from what the lead
+  // needs. Both are wanted: one ranks the evidence, the other says what to do.
+  { header: "signal_quality", get: (c) => (c.status === "qualified" ? gradeSignal(c).quality : "") },
+  { header: "signal_quality_why", get: (c) => (c.status === "qualified" ? gradeSignal(c).why : "") },
   { header: "company", get: (c) => c.name },
   { header: "verdict", get: (c) => (c.status === "rejected" ? "NOT A FIT" : "lead") },
   { header: "not_a_fit_reason", get: (c) => (c.status === "rejected" ? (c.rejectionReason ?? "") : "") },
@@ -95,7 +112,23 @@ const COLUMNS: { header: string; get: (c: Exportable) => string }[] = [
   { header: "industry", get: (c) => (c.industry === "landscaping" ? "Landscaping" : "Home Builder") },
   { header: "revenue_band", get: (c) => c.revenueBand },
   { header: "source_url", get: (c) => toLead(c).sourceUrl ?? "" },
+  // LAST, AND ALWAYS EMPTY. Jonathan asked for somewhere to keep remarks. A
+  // notes column in the database needs a migration this app cannot run from
+  // here, and the sheet is where he is writing them anyway -- so the export
+  // leaves him the column instead of making him insert one every time.
+  { header: "remarks", get: () => "" },
 ];
+
+/**
+ * Which columns carry a verdict, so the styled copy can colour them.
+ *
+ * Kept as data rather than a switch inside the renderer: a new column that
+ * needs colouring is a line here, not a branch in the HTML builder.
+ */
+const VERDICT_COLOUR: Record<string, string> = {
+  lead: "#0b7a0b",
+  "NOT A FIT": "#a3272a",
+};
 
 function csvCell(value: string): string {
   // Quote every cell containing a comma, quote, or newline; escape internal
@@ -107,13 +140,19 @@ function csvCell(value: string): string {
   return value;
 }
 
-export function companiesToCsv(companies: Exportable[]): string {
-  // The "list" column is dropped when nothing fills it. A per-folder export
-  // already knows which folder it is, and an empty first column on every row
-  // is a question the reader has to answer for themselves.
-  const used = COLUMNS.filter(
+/**
+ * The "list" column is dropped when nothing fills it. A per-folder export
+ * already knows which folder it is, and an empty first column on every row is
+ * a question the reader has to answer for themselves.
+ */
+export function usedColumns(companies: Exportable[]) {
+  return COLUMNS.filter(
     (c) => c.header !== "list" || companies.some((x) => (x.listName ?? "").length > 0)
   );
+}
+
+export function companiesToCsv(companies: Exportable[]): string {
+  const used = usedColumns(companies);
   const header = used.map((c) => csvCell(c.header)).join(",");
   const rows = companies.map((c) => used.map((col) => csvCell(col.get(c))).join(","));
   return [header, ...rows].join("\r\n");
@@ -167,8 +206,86 @@ function companiesToTsv(companies: Company[]): string {
  * both do without a user gesture or outside a secure context. The caller shows
  * the CSV download instead rather than a button that silently does nothing.
  */
-export async function copyCompaniesForSheets(companies: Company[]): Promise<boolean> {
+/**
+ * The same rows as a formatted table.
+ *
+ * WHY HTML. Google Sheets and Excel both read a `text/html` clipboard flavour
+ * and keep its formatting on paste -- bold headers, fills, colours, links --
+ * where tab-separated text arrives as grey rows somebody then has to style by
+ * hand every time. The plain-text flavour is written alongside, so anything
+ * that cannot read HTML still gets the columns.
+ *
+ * Inline styles only. A clipboard fragment has no stylesheet to reach.
+ */
+function companiesToHtml(companies: Exportable[]): string {
+  const used = usedColumns(companies);
+  const th = (h: string) =>
+    `<th style="background:#0b1220;color:#ffffff;font-family:Arial,sans-serif;` +
+    `font-size:11px;font-weight:700;text-align:left;padding:6px 8px;` +
+    `border:1px solid #26324a;white-space:nowrap">${escapeHtml(h.replace(/_/g, " "))}</th>`;
+
+  const rows = companies.map((c, i) => {
+    const stripe = i % 2 === 0 ? "#ffffff" : "#f5f7fa";
+    const cells = used.map((col) => {
+      const raw = col.get(c);
+      const base =
+        `font-family:Arial,sans-serif;font-size:11px;padding:5px 8px;` +
+        `border:1px solid #dfe4ec;background:${stripe};vertical-align:top`;
+      // The verdict is the column the eye goes to first, so it carries the
+      // colour rather than the whole row: a red row reads as an error.
+      const colour = VERDICT_COLOUR[raw];
+      if (colour) {
+        return `<td style="${base};color:${colour};font-weight:700">${escapeHtml(raw)}</td>`;
+      }
+      if (/^https?:\/\//.test(raw)) {
+        return `<td style="${base}"><a href="${escapeHtml(raw)}" style="color:#0b5e85">${escapeHtml(raw)}</a></td>`;
+      }
+      if (raw.includes("@") && !raw.includes(" ")) {
+        return `<td style="${base};color:#0b5e85">${escapeHtml(raw)}</td>`;
+      }
+      // The empty remarks column, given room so it is obviously for writing in.
+      if (col.header === "remarks") {
+        return `<td style="${base};min-width:220px;background:#fffdf3"></td>`;
+      }
+      return `<td style="${base}">${escapeHtml(raw)}</td>`;
+    });
+    return `<tr>${cells.join("")}</tr>`;
+  });
+
+  return (
+    `<table style="border-collapse:collapse">` +
+    `<thead><tr>${used.map((c) => th(c.header)).join("")}</tr></thead>` +
+    `<tbody>${rows.join("")}</tbody></table>`
+  );
+}
+
+function escapeHtml(v: string): string {
+  return v
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+export async function copyCompaniesForSheets(companies: Exportable[]): Promise<boolean> {
   const tsv = companiesToTsv(companies);
+  const html = companiesToHtml(companies);
+  // BOTH FLAVOURS, HTML first. Sheets takes the richest one it understands and
+  // falls back on its own; writing only text would throw the formatting away,
+  // and writing only HTML would break every plain-text destination.
+  try {
+    if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "text/html": new Blob([html], { type: "text/html" }),
+          "text/plain": new Blob([tsv], { type: "text/plain" }),
+        }),
+      ]);
+      return true;
+    }
+  } catch {
+    // Fall through to plain text rather than failing the copy outright.
+  }
   try {
     await navigator.clipboard.writeText(tsv);
     return true;

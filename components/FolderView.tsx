@@ -26,6 +26,7 @@ import { ENRICH_CEILING_PER_COMPANY_USD } from "@/lib/pipeline/pricing";
 import { enrichScopesFor } from "@/lib/enrich-scopes";
 import { EnrichScopeDialog } from "./EnrichScopeDialog";
 import { SheetsButton } from "./SheetsButton";
+import { XlsxButton } from "./XlsxButton";
 
 export function FolderView({ folder: folderProp, companies: companiesProp }: { folder: SearchFolder; companies: Company[] }) {
   const { fetchFolder, fetchCompanies, startEnrichment } = useSearches();
@@ -333,6 +334,7 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
             {/* Beside the CSV, not instead of it. The download is the archive;
                 this is the one you use when a sheet is already open. */}
             <SheetsButton companies={exportable} className="mt-2 ml-2" />
+            <XlsxButton searchId={folder.id} count={stats.accepted} className="mt-2 ml-2" />
           </div>
         </div>
 

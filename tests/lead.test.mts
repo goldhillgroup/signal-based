@@ -171,12 +171,15 @@ ok("the CSV puts a shared inbox in general_inbox", sharedCsv.includes("info@acme
 ok("the CSV marks a person named_person",
    companiesToCsv([personVerified]).split("\r\n")[1].includes("named_person"));
 ok("the CSV has a phone column", companiesToCsv([personVerified]).split("\r\n")[0].includes("phone"));
-// The 1-10 score is a sort key now, never a rendered or exported figure: on
-// real data 30 of 33 leads scored 4 or below, so printing it told the client
-// his own leads were failures.
+// The score is a sort key, never a rendered or exported FIGURE: on real data
+// 30 of 33 leads scored 4 or below, so printing it told the client his own
+// leads were failures. Re-measured later on 448 leads with a 0-100 scale and
+// the shape held -- median 15, 86% in the bottom band. What the sheet carries
+// instead is the next action in words.
 const hdr = companiesToCsv([personVerified]).split("\r\n")[0];
-ok("the CSV does not export a score", !hdr.includes("score"));
+ok("the CSV exports no numeric score", !/(^|,)"?score"?(,|$)/.test(hdr));
 ok("nor the score reasons", !hdr.includes("score_reasons"));
+ok("but it does say what to do next", hdr.includes("next_step"));
 ok("but the ranking still orders leads",
    scoreFactors(personVerified).score > scoreFactors(make({})).score);
 
