@@ -1,7 +1,14 @@
 import { settledContact, type Company } from "./company";
 import { toLead, SIGNAL_TYPE_META } from "./lead-signal";
 import { isSharedInbox } from "./pipeline/page-email";
-import { gradeSignal, starsFor, STAR_LABEL, nextStep } from "./lead-score";
+import {
+  gradeSignal,
+  starsFor,
+  starMeaning,
+  nextStep,
+  DEFAULT_RULES,
+  type ScoreRules,
+} from "./lead-score";
 import { personalEmail, generalEmail } from "./company";
 
 // The "sheet" — a plain CSV download, opens directly in Excel/Google Sheets/
@@ -37,6 +44,8 @@ import { personalEmail, generalEmail } from "./company";
  * knows which folder it is, and would carry the same value on every row.
  */
 export type Exportable = Company & {
+  /** The scoring rules in force, so an export matches the screen. */
+  rules?: ScoreRules;
   listName?: string;
   /** Jonathan's own 1-5, which beats the system's. */
   ownGrade?: number | null;
@@ -67,10 +76,10 @@ export const COLUMNS: { header: string; get: (c: Exportable) => string }[] = [
   // The system's number is kept in its own column rather than overwritten, so
   // a disagreement stays legible -- if he keeps marking 5s where the system
   // says 2, that is worth knowing about the scoring.
-  { header: "score", get: (c) => String(c.ownGrade ?? starsFor(c)) },
-  { header: "score_means", get: (c) => STAR_LABEL[c.ownGrade ?? starsFor(c)] },
+  { header: "score", get: (c) => String(c.ownGrade ?? starsFor(c, c.rules ?? DEFAULT_RULES)) },
+  { header: "score_means", get: (c) => starMeaning(c, c.rules ?? DEFAULT_RULES) },
   { header: "scored_by", get: (c) => (c.ownGrade ? "you" : "system") },
-  { header: "system_score", get: (c) => String(starsFor(c)) },
+  { header: "system_score", get: (c) => String(starsFor(c, c.rules ?? DEFAULT_RULES)) },
   { header: "next_step", get: (c) => (c.status === "qualified" ? nextStep(c) : "") },
   // How good the SIGNAL is, which is a different axis from what the lead
   // needs. Both are wanted: one ranks the evidence, the other says what to do.

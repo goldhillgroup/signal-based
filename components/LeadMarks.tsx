@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { starsFor, STAR_LABEL } from "@/lib/lead-score";
+import { starsFor, starMeaning } from "@/lib/lead-score";
+import { useScoreRules } from "@/lib/use-score-rules";
 import type { Company } from "@/lib/company";
 
 /**
@@ -44,7 +45,8 @@ export function LeadMarks({
   const [saved, setSaved] = useState(false);
   const savedAt = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const system = starsFor(company);
+  const rules = useScoreRules();
+  const system = starsFor(company, rules);
 
   useEffect(() => {
     let off = false;
@@ -130,7 +132,7 @@ export function LeadMarks({
               {system}
               <span className="text-sm font-normal text-gh-ink-muted"> / 5</span>
             </span>
-            <span className="mt-0.5 block text-[10px] text-gh-ink-muted">{STAR_LABEL[system]}</span>
+            <span className="mt-0.5 block text-[10px] text-gh-ink-muted">{starMeaning(company, rules)}</span>
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-1">

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { Exportable } from "./csv-export";
 import type { Company } from "./company";
+import { useScoreRules } from "./use-score-rules";
 
 /**
  * Notes and grades for every lead, so a client-side export carries them.
@@ -13,6 +14,7 @@ import type { Company } from "./company";
  */
 export function useMarks() {
   const [marks, setMarks] = useState<Record<string, { note: string | null; grade: number | null }>>({});
+  const rules = useScoreRules();
 
   useEffect(() => {
     let off = false;
@@ -33,6 +35,7 @@ export function useMarks() {
       ...c,
       note: marks[c.id]?.note ?? null,
       ownGrade: marks[c.id]?.grade ?? null,
+      rules,
       ...(listName ? { listName: listName(c) } : {}),
     })) as Exportable[];
   }

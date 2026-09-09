@@ -27,6 +27,59 @@ import { personalEmail } from "./company";
  * answered separately by `nextStep`.
  */
 
+/**
+ * What each rung is worth.
+ *
+ * ADJUSTABLE, but only five numbers. An earlier version made twelve separate
+ * weights settable and that was machinery around the judgement rather than the
+ * judgement -- rightly cut. What is worth setting is not how many points a
+ * phone number earns; it is whether a pair with no quote is a 4 or a 3, which
+ * is a real disagreement somebody can have with the scoring.
+ *
+ * The RULES are fixed, because they are his qualification and the pipeline
+ * already sorts against them. Only the number each situation lands on moves.
+ */
+export interface ScoreRules {
+  /** Both generations named, quoted in their own words, wording firm. */
+  pairQuoted: number;
+  /** A pair, but no quote or the wording is arguable. */
+  pairThin: number;
+  /** Fits the ICP, no successor, but somebody is named. */
+  fitNamed: number;
+  /** Fits the ICP, and nobody is named on the site. */
+  fitUnnamed: number;
+  /** Cut by one of the gates. */
+  outside: number;
+}
+
+export const DEFAULT_RULES: ScoreRules = {
+  pairQuoted: 5,
+  pairThin: 4,
+  fitNamed: 3,
+  fitUnnamed: 2,
+  outside: 1,
+};
+
+/** Shown in Settings, so each row says which lead it is talking about. */
+export const RULE_LABELS: { key: keyof ScoreRules; label: string; hint: string }[] = [
+  { key: "pairQuoted", label: "Founder and successor, quoted", hint: "Both named, in their own words, wording firm. The thing you are looking for." },
+  { key: "pairThin", label: "A pair, but thin evidence", hint: "Reads as a handover with nothing quoted, or wording the classifier was unsure about." },
+  { key: "fitNamed", label: "Fits, somebody named", hint: "Right trade and area, family-run, no successor, but there is a person to ask for." },
+  { key: "fitUnnamed", label: "Fits, nobody named", hint: "Right trade and area, and the site names nobody at all." },
+  { key: "outside", label: "Outside the ICP", hint: "Cut by one of your gates." },
+];
+
+/** Anything missing or out of range falls back rather than scoring as zero. */
+export function parseRules(raw: unknown): ScoreRules {
+  if (!raw || typeof raw !== "object") return DEFAULT_RULES;
+  const out = { ...DEFAULT_RULES };
+  for (const k of Object.keys(DEFAULT_RULES) as (keyof ScoreRules)[]) {
+    const v = (raw as Record<string, unknown>)[k];
+    if (typeof v === "number" && Number.isFinite(v) && v >= 1 && v <= 5) out[k] = Math.round(v);
+  }
+  return out;
+}
+
 export type SignalQuality = "good" | "meh" | "no signal";
 
 export interface SignalGrade {
@@ -62,12 +115,28 @@ export function gradeSignal(c: Company): SignalGrade {
 }
 
 /** The score. 1 to 5, off the qualification the pipeline already applies. */
-export function starsFor(c: Company): 1 | 2 | 3 | 4 | 5 {
-  if (c.status !== "qualified") return 1;
+export function starsFor(c: Company, rules: ScoreRules = DEFAULT_RULES): number {
+  if (c.status !== "qualified") return rules.outside;
   const grade = gradeSignal(c);
-  if (grade.quality === "good") return 5;
-  if (grade.quality === "meh") return 4;
-  return c.founderName || c.nextGenName ? 3 : 2;
+  if (grade.quality === "good") return rules.pairQuoted;
+  if (grade.quality === "meh") return rules.pairThin;
+  return c.founderName || c.nextGenName ? rules.fitNamed : rules.fitUnnamed;
+}
+
+/**
+ * What the number means, given the rules in force.
+ *
+ * Derived rather than a fixed map: once two situations can share a number --
+ * which they can, if he decides a thin pair and a named fit are both a 3 --
+ * a lookup keyed on the score alone would name only one of them.
+ */
+export function starMeaning(c: Company, rules: ScoreRules = DEFAULT_RULES): string {
+  if (c.status !== "qualified") return "Outside the ICP";
+  const grade = gradeSignal(c);
+  if (grade.quality === "good") return "Pair, quoted";
+  if (grade.quality === "meh") return "Pair, thin evidence";
+  void rules;
+  return c.founderName || c.nextGenName ? "Fits, someone named" : "Fits, nobody named";
 }
 
 /** The same thing in words, for a column heading somebody has to read. */
