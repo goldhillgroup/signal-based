@@ -9,6 +9,7 @@ import { useMobileNav } from "@/lib/mobile-nav";
 import { RadarIcon, FolderIcon, SettingsIcon, GridIcon, UsersIcon, XIcon, ArrowLeftIcon } from "./icons";
 import { SignOutButton } from "./SignOutButton";
 import { TourButton } from "./DashboardTour";
+import { ActivityPanel } from "./ActivityPanel";
 import { SidebarStatus } from "./SidebarStatus";
 
 // Two real destinations — "Crawl Runs" and "Reports" were placeholders from
@@ -220,6 +221,13 @@ function SidebarBody({
           );
         })}
       </nav>
+
+      {/* WHERE FINISHED WORK CAN BE LOOKED UP. The toasts stay, but a toast
+          is gone in four seconds and a run that finishes while the tab is
+          closed announced itself to nobody. */}
+      <div className="px-3 pb-1">
+        <ActivityPanel collapsed={collapsed} />
+      </div>
 
       {/* The tour lives with the navigation it points AT, not in the top bar.
           Every stop highlights one of the five rows above it, so the way in
