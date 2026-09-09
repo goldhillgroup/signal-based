@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { scoreLead, scoreOf } from "../lib/lead-score.js";
+import { DEFAULT_WEIGHTS, parseWeights } from "../lib/score-weights.js";
 import type { Company } from "../lib/company.js";
 
 const base = {
@@ -77,4 +78,32 @@ test("the score never leaves 0-100", () => {
   const bare = { ...base, hasSignal: false, evidence: null, founderName: null,
                  nextGenName: null, phone: null, state: "-", city: "-" } as unknown as Company;
   assert.ok(scoreLead(bare).score >= 0);
+});
+
+test("every kept lead starts above zero", () => {
+  // The harshness that had to be fixed: a real family-owned business in the
+  // right trade and territory, read and judged and KEPT, scored 15 out of 100
+  // because nobody had bought an address for it. Median across 448 leads was
+  // 15 and 86% sat in the bottom band, which reads as "your list is rubbish"
+  // when it means "your list is not enriched".
+  const bare = { ...base, hasSignal: false, evidence: null, founderName: null,
+                 nextGenName: null, phone: null, state: "-", city: "-" } as unknown as Company;
+  assert.ok(scoreLead(bare).score >= 25, `a kept lead scored ${scoreLead(bare).score}`);
+});
+
+test("weights change the score", () => {
+  const heavier = scoreLead(base, { ...DEFAULT_WEIGHTS, phone: 20 });
+  assert.ok(heavier.score > scoreLead(base).score);
+});
+
+test("a zeroed weight removes its factor entirely", () => {
+  const noPhone = scoreLead(base, { ...DEFAULT_WEIGHTS, phone: 0 });
+  assert.equal(noPhone.factors.some((f) => /phone/i.test(f.label)), false);
+});
+
+test("nonsense weights fall back rather than zeroing every lead", () => {
+  assert.deepEqual(parseWeights(null), DEFAULT_WEIGHTS);
+  assert.deepEqual(parseWeights({ phone: "lots" }), DEFAULT_WEIGHTS);
+  assert.equal(parseWeights({ phone: 900 }).phone, DEFAULT_WEIGHTS.phone);
+  assert.equal(parseWeights({ phone: 12 }).phone, 12);
 });

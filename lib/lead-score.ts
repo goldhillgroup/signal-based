@@ -1,5 +1,6 @@
 import type { Company } from "./company";
 import { personalEmail, generalEmail } from "./company";
+import { DEFAULT_WEIGHTS, type ScoreWeights } from "./score-weights";
 
 /**
  * How strong a lead is, and why.
@@ -72,17 +73,28 @@ function bandFor(c: Company, hasPersonalEmail: boolean): LeadScore["band"] {
   return hasPersonalEmail ? "ready to call" : "needs an email";
 }
 
-export function scoreLead(c: Company): LeadScore {
+export function scoreLead(c: Company, w: ScoreWeights = DEFAULT_WEIGHTS): LeadScore {
+  // A WEIGHT OF ZERO MEANS "I DO NOT COUNT THIS", so the factor is left out of
+  // the reasons entirely. Listing "Phone number on file  0" is noise dressed
+  // up as a reason, and the reasons are the only thing that makes the score
+  // arguable.
   const factors: ScoreFactor[] = [];
   const missing: string[] = [];
+
+  // EVERY KEPT LEAD STARTS ABOVE ZERO. It was read, judged against the trade,
+  // the territory, the size band and the family-owned test, and it survived
+  // all of them. Scoring that at nothing was the harshness: a good fit with no
+  // address came out at 15 out of 100, which reads as a verdict on the company
+  // when it means nobody has pressed Find emails.
+  if (w.base > 0) factors.push({ label: "Passed every gate you set", points: w.base });
 
   // THE SIGNAL, worth more than everything else combined. A confirmed
   // founder-and-successor pair is the product; the rest is how easy that lead
   // is to act on.
   if (c.hasSignal === true && c.confidence !== "verify") {
-    factors.push({ label: "Both generations named and running it today", points: 40 });
+    factors.push({ label: "Both generations named and running it today", points: w.signalFirm });
   } else if (c.hasSignal === true) {
-    factors.push({ label: "Reads as a handover, wording not airtight", points: 25 });
+    factors.push({ label: "Reads as a handover, wording not airtight", points: w.signalVerify });
   } else {
     missing.push("No succession signal on the page");
   }
@@ -90,19 +102,19 @@ export function scoreLead(c: Company): LeadScore {
   // The evidence. A pair with no quote cannot be checked, and this product's
   // claim is that it can be.
   if (c.evidence?.quote) {
-    factors.push({ label: "Carries a verbatim quote you can check", points: 15 });
+    factors.push({ label: "Carries a verbatim quote you can check", points: w.quote });
   } else {
     missing.push("No quote on file");
   }
-  if (c.evidence?.disproveNotes) {
-    factors.push({ label: "Survived the disprove pass", points: 5 });
+  if (c.evidence?.disproveNotes && w.disproved > 0) {
+    factors.push({ label: "Survived the disprove pass", points: w.disproved });
   }
 
   // Who to call.
   if (c.founderName && c.nextGenName) {
-    factors.push({ label: "Both people named", points: 10 });
+    factors.push({ label: "Both people named", points: w.bothNamed });
   } else if (c.founderName || c.nextGenName) {
-    factors.push({ label: "One person named", points: 5 });
+    factors.push({ label: "One person named", points: w.oneNamed });
     missing.push("Only one generation named");
   } else {
     missing.push("Nobody named on the site");
@@ -112,22 +124,22 @@ export function scoreLead(c: Company): LeadScore {
   // a company you know about.
   const personal = personalEmail(c);
   if (personal?.verificationStatus === "valid") {
-    factors.push({ label: "Personal address, confirmed deliverable", points: 20 });
+    factors.push({ label: "Personal address, confirmed deliverable", points: w.emailValid });
   } else if (personal?.email) {
-    factors.push({ label: "Personal address, not yet confirmed", points: 14 });
+    factors.push({ label: "Personal address, not yet confirmed", points: w.emailUnverified });
   } else if (generalEmail(c)?.email) {
-    factors.push({ label: "Office inbox only", points: 4 });
+    factors.push({ label: "Office inbox only", points: w.emailGeneral });
     missing.push("No personal address yet");
   } else {
     missing.push("No email address at all");
   }
 
-  if (c.phone) factors.push({ label: "Phone number on file", points: 5 });
+  if (c.phone && w.phone > 0) factors.push({ label: "Phone number on file", points: w.phone });
 
   // Location, because he works territories and a lead he cannot place is a
   // lead he cannot plan a week around.
-  if (c.state && c.state !== "-" && c.city && c.city !== "-") {
-    factors.push({ label: "Town and state known", points: 5 });
+  if (c.state && c.state !== "-" && c.city && c.city !== "-" && w.location > 0) {
+    factors.push({ label: "Town and state known", points: w.location });
   } else if (!c.state || c.state === "-") {
     missing.push("No location");
   }
@@ -187,6 +199,6 @@ export function gradeSignal(c: Company): SignalGrade {
 }
 
 /** A cut company has no score: it is not a lead, and ranking it would imply otherwise. */
-export function scoreOf(c: Company): number | null {
-  return c.status === "qualified" ? scoreLead(c).score : null;
+export function scoreOf(c: Company, w?: ScoreWeights): number | null {
+  return c.status === "qualified" ? scoreLead(c, w).score : null;
 }
