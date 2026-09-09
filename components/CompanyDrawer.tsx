@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { PeopleEditor } from "./PeopleEditor";
+import { LeadMarks } from "./LeadMarks";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { Company, personalEmail, lookupCameBackEmpty, emailKindLabel } from "@/lib/company";
@@ -395,6 +396,17 @@ export function CompanyDrawer({
                   {company.discoveryChannel && (
                     <Row k="Found via" v={CHANNEL_LABELS[company.discoveryChannel] ?? company.discoveryChannel} />
                   )}
+                </div>
+              </div>
+
+              {/* HIS OWN VERDICT, above the park/blacklist controls: what he
+                  thinks comes before what he does about it. */}
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gh-ink-muted">
+                  Your take
+                </p>
+                <div className="rounded-lg border border-gh-border p-3.5">
+                  <LeadMarks company={company} />
                 </div>
               </div>
 

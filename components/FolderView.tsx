@@ -26,10 +26,12 @@ import { ENRICH_CEILING_PER_COMPANY_USD } from "@/lib/pipeline/pricing";
 import { enrichScopesFor } from "@/lib/enrich-scopes";
 import { EnrichScopeDialog } from "./EnrichScopeDialog";
 import { SheetsButton } from "./SheetsButton";
+import { useMarks } from "@/lib/use-marks";
 import { XlsxButton } from "./XlsxButton";
 
 export function FolderView({ folder: folderProp, companies: companiesProp }: { folder: SearchFolder; companies: Company[] }) {
   const { fetchFolder, fetchCompanies, startEnrichment } = useSearches();
+  const { withMarks } = useMarks();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // Two-step flow: discovery is already done by the time this renders (see
   // app/dashboard/lists/[id]/page.tsx), but enrichment is a separate,
@@ -320,7 +322,7 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
                 attention. A hidden row is hidden everywhere or nowhere. */}
             <button
               type="button"
-              onClick={() => downloadCompaniesCsv(exportable, folderTitle(folder.label))}
+              onClick={() => downloadCompaniesCsv(withMarks(exportable), folderTitle(folder.label))}
               className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-gh-border bg-gh-surface px-3 py-1.5 text-xs font-semibold text-gh-ink-secondary transition-colors hover:border-gh-sky/40 hover:text-gh-ink"
             >
               <DownloadIcon className="h-3.5 w-3.5" />
@@ -333,7 +335,7 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
             </button>
             {/* Beside the CSV, not instead of it. The download is the archive;
                 this is the one you use when a sheet is already open. */}
-            <SheetsButton companies={exportable} className="mt-2 ml-2" />
+            <SheetsButton companies={withMarks(exportable)} className="mt-2 ml-2" />
             <XlsxButton searchId={folder.id} count={stats.accepted} className="mt-2 ml-2" />
           </div>
         </div>

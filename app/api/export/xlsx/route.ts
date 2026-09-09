@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { companiesToXlsx } from "@/lib/xlsx-export";
 import { folderTitle } from "@/lib/folder-title";
+import { loadMarks } from "@/lib/lead-notes";
 import type { Exportable } from "@/lib/csv-export";
 
 /**
@@ -59,7 +60,7 @@ interface Row {
 }
 
 /** The same shape lib/searches-store builds, so the exporters see what the app sees. */
-function toCompany(r: Row, listName: string): Exportable {
+function toCompany(r: Row, listName: string, marks?: { note: string | null; grade: number | null }): Exportable {
   const contacts = (r.contacts ?? []).map((c) => ({
     name: c.name,
     nameInferred: c.name_inferred,
@@ -107,6 +108,8 @@ function toCompany(r: Row, listName: string): Exportable {
     backupContact: contacts[1] ?? null,
     allContacts: contacts,
     listName,
+    ownGrade: marks?.grade ?? null,
+    note: marks?.note ?? null,
   } as unknown as Exportable;
 }
 
@@ -136,10 +139,11 @@ export async function POST(req: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const rows = (data ?? []) as unknown as Row[];
+  const marks = await loadMarks(service);
   // The list column only earns its place on a combined export; a single folder
   // already knows which one it is.
   const companies = rows.map((r) =>
-    toCompany(r, body.searchId ? "" : (names.get(r.search_id ?? "") ?? ""))
+    toCompany(r, body.searchId ? "" : (names.get(r.search_id ?? "") ?? ""), marks[r.id])
   );
 
   const label = body.searchId ? (names.get(body.searchId) ?? "Leads") : "All leads";

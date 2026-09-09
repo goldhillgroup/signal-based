@@ -8,6 +8,7 @@ import { Company } from "@/lib/company";
 
 import { downloadCompaniesCsv } from "@/lib/csv-export";
 import { XlsxButton } from "@/components/XlsxButton";
+import { useMarks } from "@/lib/use-marks";
 import { CompaniesTable } from "@/components/CompaniesTable";
 import { CompanyDrawer } from "@/components/CompanyDrawer";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -110,6 +111,9 @@ export default function AllLeadsPage() {
   // Here the only real question is whether nine folders are easier to scan as
   // tiles or as rows, and past about six the answer changes.
   const [folderView, setFolderView] = useState<"cards" | "list">("cards");
+  // Loaded here rather than beside the export button: hooks cannot sit after
+  // an early return, and this component has one.
+  const { withMarks } = useMarks();
   const [pendingDelete, setPendingDelete] = useState<SearchFolder | null>(null);
   /** Company ids picked for an email lookup, awaiting confirmation. */
   const [pendingPick, setPendingPick] = useState<string[] | null>(null);
@@ -431,11 +435,12 @@ export default function AllLeadsPage() {
               <button
                 type="button"
                 onClick={() => {
-                  const named = leads.map((c) => ({
-                    ...c,
-                    listName: folderName.get(c.searchId ?? "") ?? "",
-                  }));
-                  downloadCompaniesCsv(named, "all-leads");
+                  // His notes and his own grade travel with the rows, so the
+                  // CSV and the spreadsheet say the same thing.
+                  downloadCompaniesCsv(
+                    withMarks(leads, (c) => folderName.get(c.searchId ?? "") ?? ""),
+                    "all-leads"
+                  );
                 }}
                 className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-gh-border bg-gh-surface px-3 py-1.5 text-xs font-semibold text-gh-ink-secondary transition-colors hover:border-gh-sky/40 hover:text-gh-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
               >

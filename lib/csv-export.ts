@@ -36,7 +36,13 @@ import { personalEmail, generalEmail } from "./company";
  * Only set by the combined export on Lead Lists. A per-folder download already
  * knows which folder it is, and would carry the same value on every row.
  */
-export type Exportable = Company & { listName?: string };
+export type Exportable = Company & {
+  listName?: string;
+  /** Jonathan's own 1-5, which beats the system's. */
+  ownGrade?: number | null;
+  /** Jonathan's own note. */
+  note?: string | null;
+};
 
 export const COLUMNS: { header: string; get: (c: Exportable) => string }[] = [
   // FIRST, so a combined sheet sorts and groups by it without being rearranged.
@@ -55,8 +61,16 @@ export const COLUMNS: { header: string; get: (c: Exportable) => string }[] = [
   // because 15/100 reads as a verdict on the lead when it mostly means an
   // address has not been bought yet. The words say what to do instead.
   // 1-5, which is a judgement anybody can read, unlike the 0-100 sort key.
-  { header: "score", get: (c) => String(starsFor(c)) },
-  { header: "score_means", get: (c) => STAR_LABEL[starsFor(c)] },
+  //
+  // HIS WINS. That was the ask, and it is the right way round: the system
+  // grades what it could read off a page, and he has spoken to these people.
+  // The system's number is kept in its own column rather than overwritten, so
+  // a disagreement stays legible -- if he keeps marking 5s where the system
+  // says 2, that is worth knowing about the scoring.
+  { header: "score", get: (c) => String(c.ownGrade ?? starsFor(c)) },
+  { header: "score_means", get: (c) => STAR_LABEL[c.ownGrade ?? starsFor(c)] },
+  { header: "scored_by", get: (c) => (c.ownGrade ? "you" : "system") },
+  { header: "system_score", get: (c) => String(starsFor(c)) },
   { header: "next_step", get: (c) => (c.status === "qualified" ? scoreLead(c).band : "") },
   // How good the SIGNAL is, which is a different axis from what the lead
   // needs. Both are wanted: one ranks the evidence, the other says what to do.
@@ -119,6 +133,10 @@ export const COLUMNS: { header: string; get: (c: Exportable) => string }[] = [
   // notes column in the database needs a migration this app cannot run from
   // here, and the sheet is where he is writing them anyway -- so the export
   // leaves him the column instead of making him insert one every time.
+  // His own note, then a blank column for whatever he adds in the sheet
+  // itself. Both, because one is what he has already written in the app and
+  // the other is room to write while reading.
+  { header: "your_notes", get: (c) => c.note ?? "" },
   { header: "remarks", get: () => "" },
 ];
 
