@@ -25,9 +25,18 @@ import type { Company } from "@/lib/company";
  */
 export function LeadMarks({
   company,
+  judgedAgainst,
   onDirtyChange,
 }: {
   company: Company;
+  /**
+   * The signal-focus sentence this lead was judged against.
+   *
+   * The score has always come from it -- has_signal IS the classifier's
+   * verdict on that sentence -- and the panel never said so, which made the
+   * number look like an opinion of its own.
+   */
+  judgedAgainst?: string | null;
   onDirtyChange?: (dirty: boolean) => void;
 }) {
   // Draft and saved, kept apart, so "is there unsaved work" is answerable and
@@ -135,6 +144,16 @@ export function LeadMarks({
             <span className="mt-0.5 block text-[10px] text-gh-ink-muted">{starMeaning(company, rules)}</span>
           </span>
         </div>
+        {/* THE SENTENCE THE SCORE CAME FROM. It always came from this -- the
+            classifier's verdict on his signal focus is what has_signal means --
+            and the panel never said so, which left the number looking like an
+            opinion of its own rather than an answer to his own question. */}
+        {judgedAgainst && (
+          <p className="mb-2 rounded-lg bg-gh-surface-sunken px-2.5 py-1.5 text-[11px] leading-relaxed text-gh-ink-muted">
+            Scored against what you asked for:{" "}
+            <span className="text-gh-ink-secondary">&ldquo;{judgedAgainst}&rdquo;</span>
+          </p>
+        )}
         <div className="flex flex-wrap items-center gap-1">
           {[1, 2, 3, 4, 5].map((n) => (
             <button

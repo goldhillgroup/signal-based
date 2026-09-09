@@ -62,10 +62,10 @@ export const DEFAULT_RULES: ScoreRules = {
 
 /** Shown in Settings, so each row says which lead it is talking about. */
 export const RULE_LABELS: { key: keyof ScoreRules; label: string; hint: string }[] = [
-  { key: "pairQuoted", label: "Founder and successor, quoted", hint: "Both named, in their own words, wording firm. The thing you are looking for." },
-  { key: "pairThin", label: "A pair, but thin evidence", hint: "Reads as a handover with nothing quoted, or wording the classifier was unsure about." },
-  { key: "fitNamed", label: "Fits, somebody named", hint: "Right trade and area, family-run, no successor, but there is a person to ask for." },
-  { key: "fitUnnamed", label: "Fits, nobody named", hint: "Right trade and area, and the site names nobody at all." },
+  { key: "pairQuoted", label: "Matches what you asked for, and quoted", hint: "The page shows what your sentence describes, in their own words, and the wording is firm." },
+  { key: "pairThin", label: "Matches, but the evidence is thin", hint: "The page reads that way with nothing quoted, or wording the classifier was not sure about." },
+  { key: "fitNamed", label: "Right kind of company, no match", hint: "Right trade and area, family-run, but the page does not show what your sentence describes. Somebody is named." },
+  { key: "fitUnnamed", label: "Right kind of company, nobody named", hint: "Right trade and area, and the site names nobody at all." },
   { key: "outside", label: "Outside the ICP", hint: "Cut by one of your gates." },
 ];
 
@@ -131,20 +131,29 @@ export function starsFor(c: Company, rules: ScoreRules = DEFAULT_RULES): number 
  * a lookup keyed on the score alone would name only one of them.
  */
 export function starMeaning(c: Company, rules: ScoreRules = DEFAULT_RULES): string {
+  void rules;
   if (c.status !== "qualified") return "Outside the ICP";
   const grade = gradeSignal(c);
-  if (grade.quality === "good") return "Pair, quoted";
-  if (grade.quality === "meh") return "Pair, thin evidence";
-  void rules;
-  return c.founderName || c.nextGenName ? "Fits, someone named" : "Fits, nobody named";
+  // THE SCORE IS ABOUT HIS SENTENCE. has_signal is the classifier's verdict
+  // against the signal focus he wrote, so these words say that rather than
+  // naming a tier only the build team would recognise.
+  if (grade.quality === "good") return "Matches what you asked for, quoted";
+  if (grade.quality === "meh") return "Matches, evidence is thin";
+  return c.founderName || c.nextGenName
+    ? "Right kind of company, no match"
+    : "Right kind of company, nobody named";
 }
 
 /** The same thing in words, for a column heading somebody has to read. */
+/**
+ * Kept for anywhere that only has a number. Prefer starMeaning, which knows
+ * the company and therefore what the number actually meant.
+ */
 export const STAR_LABEL: Record<number, string> = {
-  5: "Pair, quoted",
-  4: "Pair, thin evidence",
-  3: "Fits, someone named",
-  2: "Fits, nobody named",
+  5: "Matches what you asked for, quoted",
+  4: "Matches, evidence is thin",
+  3: "Right kind of company, no match",
+  2: "Right kind of company, nobody named",
   1: "Outside the ICP",
 };
 

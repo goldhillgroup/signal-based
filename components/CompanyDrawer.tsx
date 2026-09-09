@@ -45,6 +45,7 @@ export function CompanyDrawer({
   company,
   onClose,
   onDataChanged,
+  judgedAgainst,
 }: {
   company: Company | null;
   onClose: () => void;
@@ -57,6 +58,8 @@ export function CompanyDrawer({
    * it sitting on screen until the page was reloaded by hand.
    */
   onDataChanged?: () => void | Promise<void>;
+  /** The signal-focus sentence the folder searched for. */
+  judgedAgainst?: string | null;
 }) {
   const open = company !== null;
   // Which address was copied, not merely that one was: with two buttons a
@@ -415,7 +418,11 @@ export function CompanyDrawer({
                   Your take
                 </p>
                 <div className="rounded-lg border border-gh-border p-3.5">
-                  <LeadMarks company={company} onDirtyChange={setMarksDirty} />
+                  <LeadMarks
+                    company={company}
+                    judgedAgainst={judgedAgainst}
+                    onDirtyChange={setMarksDirty}
+                  />
                 </div>
               </div>
 

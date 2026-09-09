@@ -491,6 +491,15 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
       <CompanyDrawer
         company={selected}
         onClose={() => setSelectedId(null)}
+        judgedAgainst={(() => {
+          // The refinement, which is the part of the query that is not the
+          // trade-and-states preamble the form built.
+          const q = folder.query.trim();
+          const l = folder.label.trim();
+          return q.toLowerCase().startsWith(l.toLowerCase())
+            ? q.slice(l.length).replace(/^[\s,;.]+/, "")
+            : q;
+        })()}
         onDataChanged={async () => {
           const c = await fetchCompanies(folder.id);
           setCompanies(c);
