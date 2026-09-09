@@ -1,7 +1,7 @@
 import { settledContact, type Company } from "./company";
 import { toLead, SIGNAL_TYPE_META } from "./lead-signal";
 import { isSharedInbox } from "./pipeline/page-email";
-import { scoreLead, gradeSignal, starsFor, STAR_LABEL } from "./lead-score";
+import { gradeSignal, starsFor, STAR_LABEL, nextStep } from "./lead-score";
 import { personalEmail, generalEmail } from "./company";
 
 // The "sheet" — a plain CSV download, opens directly in Excel/Google Sheets/
@@ -71,7 +71,7 @@ export const COLUMNS: { header: string; get: (c: Exportable) => string }[] = [
   { header: "score_means", get: (c) => STAR_LABEL[c.ownGrade ?? starsFor(c)] },
   { header: "scored_by", get: (c) => (c.ownGrade ? "you" : "system") },
   { header: "system_score", get: (c) => String(starsFor(c)) },
-  { header: "next_step", get: (c) => (c.status === "qualified" ? scoreLead(c).band : "") },
+  { header: "next_step", get: (c) => (c.status === "qualified" ? nextStep(c) : "") },
   // How good the SIGNAL is, which is a different axis from what the lead
   // needs. Both are wanted: one ranks the evidence, the other says what to do.
   { header: "signal_quality", get: (c) => (c.status === "qualified" ? gradeSignal(c).quality : "") },
