@@ -3,8 +3,9 @@ import { toLead, SIGNAL_TYPE_META } from "./lead-signal";
 import { isSharedInbox } from "./pipeline/page-email";
 import {
   gradeSignal,
-  starsFor,
   starMeaning,
+  rankFor,
+  RUNG_ORDER,
   nextStep,
   DEFAULT_RULES,
   type ScoreRules,
@@ -76,10 +77,21 @@ export const COLUMNS: { header: string; get: (c: Exportable) => string }[] = [
   // The system's number is kept in its own column rather than overwritten, so
   // a disagreement stays legible -- if he keeps marking 5s where the system
   // says 2, that is worth knowing about the scoring.
-  { header: "score", get: (c) => String(c.ownGrade ?? starsFor(c, c.rules ?? DEFAULT_RULES)) },
-  { header: "score_means", get: (c) => starMeaning(c, c.rules ?? DEFAULT_RULES) },
-  { header: "scored_by", get: (c) => (c.ownGrade ? "you" : "system") },
-  { header: "system_score", get: (c) => String(starsFor(c, c.rules ?? DEFAULT_RULES)) },
+  // THE SENTENCE FIRST. A sheet sorts on whatever column it is told to; a
+  // reader only ever reads the words. The rank is there so a sort puts the
+  // best at the top, and is not something anybody has to interpret.
+  {
+    header: "verdict_from_you_or_system",
+    get: (c) => {
+      const rules = c.rules ?? DEFAULT_RULES;
+      if (!c.ownGrade) return starMeaning(c, rules);
+      const k = RUNG_ORDER[RUNG_ORDER.length - c.ownGrade];
+      return k ? rules[k] : starMeaning(c, rules);
+    },
+  },
+  { header: "verdict_by", get: (c) => (c.ownGrade ? "you" : "system") },
+  { header: "system_verdict", get: (c) => starMeaning(c, c.rules ?? DEFAULT_RULES) },
+  { header: "rank", get: (c) => String(c.ownGrade ?? rankFor(c)) },
   { header: "next_step", get: (c) => (c.status === "qualified" ? nextStep(c) : "") },
   // How good the SIGNAL is, which is a different axis from what the lead
   // needs. Both are wanted: one ranks the evidence, the other says what to do.

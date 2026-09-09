@@ -60,9 +60,9 @@ export function ScoreRulesCard() {
     <section>
       <h2 className="font-display text-lg font-semibold text-gh-ink">Lead scoring</h2>
       <p className="mt-1 max-w-2xl text-sm leading-relaxed text-gh-ink-secondary">
-        Every lead gets a 1 to 5 from what the crawler could show about it. These
-        are the five situations and what each one scores. Your own score on a
-        lead always beats this.
+        Five situations, described below. A lead is labelled with whatever you
+        write for the one it lands in, so change the wording and every lead
+        re-labels. Your own verdict on a lead always beats this.
       </p>
 
       <div className="mt-3 rounded-xl border border-gh-border bg-gh-surface p-4">
@@ -70,34 +70,19 @@ export function ScoreRulesCard() {
           <p className="text-xs text-gh-ink-muted">Reading your settings…</p>
         ) : (
           <>
-            <div className="space-y-2.5">
-              {RULE_LABELS.map(({ key, label, hint }) => (
-                <div key={key} className="flex items-start justify-between gap-3">
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-xs font-semibold text-gh-ink">{label}</span>
-                    <span className="mt-0.5 block text-[11px] leading-relaxed text-gh-ink-muted">
-                      {hint}
-                    </span>
-                  </span>
-                  <span className="flex shrink-0 gap-1">
-                    {[1, 2, 3, 4, 5].map((n) => (
-                      <button
-                        key={n}
-                        type="button"
-                        disabled={saving}
-                        aria-pressed={rules[key] === n}
-                        aria-label={`${label}: ${n}`}
-                        onClick={() => setRules((r) => ({ ...r, [key]: n }))}
-                        className={`h-7 w-7 cursor-pointer rounded-lg border text-xs font-semibold transition-colors disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 ${
-                          rules[key] === n
-                            ? "border-gh-navy bg-gh-navy text-white"
-                            : "border-gh-border text-gh-ink-secondary hover:border-gh-navy/40 hover:text-gh-ink"
-                        }`}
-                      >
-                        {n}
-                      </button>
-                    ))}
-                  </span>
+            <div className="space-y-3">
+              {RULE_LABELS.map(({ key, hint }) => (
+                <div key={key}>
+                  <p className="mb-1 text-[11px] leading-relaxed text-gh-ink-muted">{hint}</p>
+                  <input
+                    value={rules[key]}
+                    onChange={(e) => setRules((r) => ({ ...r, [key]: e.target.value }))}
+                    maxLength={80}
+                    aria-label={hint}
+                    // 16px on mobile, or iOS zooms in on focus and will not
+                    // zoom back.
+                    className="w-full rounded-lg border border-gh-border bg-gh-surface-sunken px-2.5 py-1.5 text-base text-gh-ink focus:border-gh-sky focus:outline-none focus:ring-2 focus:ring-gh-sky/25 sm:text-sm"
+                  />
                 </div>
               ))}
             </div>
@@ -117,7 +102,7 @@ export function ScoreRulesCard() {
                 onClick={() => void save({ reset: true })}
                 className="cursor-pointer text-xs font-semibold text-gh-ink-muted underline-offset-2 transition-colors hover:text-gh-ink hover:underline disabled:opacity-40"
               >
-                Back to 5 4 3 2 1
+                Back to the default wording
               </button>
             </div>
           </>

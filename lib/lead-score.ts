@@ -39,34 +39,64 @@ import { personalEmail } from "./company";
  * The RULES are fixed, because they are his qualification and the pipeline
  * already sorts against them. Only the number each situation lands on moves.
  */
+/**
+ * WORDS, NOT DIGITS. "1 to 5" describes how many rungs there are, not what a
+ * lead should be labelled. A 3 beside a company name says nothing on its own
+ * and has to be decoded against a legend somebody has to remember; the
+ * sentence says it outright. The numbers survive only as sort order, and are
+ * never shown.
+ *
+ * Editable, because these are descriptions of HIS leads. The one the pipeline
+ * cannot express is not a wording problem, so the five situations are fixed --
+ * only how each is described moves.
+ */
 export interface ScoreRules {
   /** Both generations named, quoted in their own words, wording firm. */
-  pairQuoted: number;
+  pairQuoted: string;
   /** A pair, but no quote or the wording is arguable. */
-  pairThin: number;
+  pairThin: string;
   /** Fits the ICP, no successor, but somebody is named. */
-  fitNamed: number;
+  fitNamed: string;
   /** Fits the ICP, and nobody is named on the site. */
-  fitUnnamed: number;
+  fitUnnamed: string;
   /** Cut by one of the gates. */
-  outside: number;
+  outside: string;
 }
 
 export const DEFAULT_RULES: ScoreRules = {
-  pairQuoted: 5,
-  pairThin: 4,
-  fitNamed: 3,
-  fitUnnamed: 2,
-  outside: 1,
+  pairQuoted: "Matches what you asked for, quoted",
+  pairThin: "Matches, evidence is thin",
+  fitNamed: "Right kind of company, no match",
+  fitUnnamed: "Right kind of company, nobody named",
+  outside: "Outside the ICP",
 };
 
+/** Best first. Used for sorting and for the order the choices appear in. */
+export const RUNG_ORDER: (keyof ScoreRules)[] = [
+  "pairQuoted",
+  "pairThin",
+  "fitNamed",
+  "fitUnnamed",
+  "outside",
+];
+
+/** Which rung a lead sits on. Internal: this is sort order, never a label. */
+export function rungFor(c: Company): keyof ScoreRules {
+  if (c.status !== "qualified") return "outside";
+  const grade = gradeSignal(c);
+  if (grade.quality === "good") return "pairQuoted";
+  if (grade.quality === "meh") return "pairThin";
+  return c.founderName || c.nextGenName ? "fitNamed" : "fitUnnamed";
+}
+
 /** Shown in Settings, so each row says which lead it is talking about. */
-export const RULE_LABELS: { key: keyof ScoreRules; label: string; hint: string }[] = [
-  { key: "pairQuoted", label: "Matches what you asked for, and quoted", hint: "The page shows what your sentence describes, in their own words, and the wording is firm." },
-  { key: "pairThin", label: "Matches, but the evidence is thin", hint: "The page reads that way with nothing quoted, or wording the classifier was not sure about." },
-  { key: "fitNamed", label: "Right kind of company, no match", hint: "Right trade and area, family-run, but the page does not show what your sentence describes. Somebody is named." },
-  { key: "fitUnnamed", label: "Right kind of company, nobody named", hint: "Right trade and area, and the site names nobody at all." },
-  { key: "outside", label: "Outside the ICP", hint: "Cut by one of your gates." },
+/** What each situation IS, so Settings can say which lead is being described. */
+export const RULE_LABELS: { key: keyof ScoreRules; hint: string }[] = [
+  { key: "pairQuoted", hint: "The page shows what your sentence describes, in their own words, and the wording is firm." },
+  { key: "pairThin", hint: "The page reads that way with nothing quoted, or wording the classifier was not sure about." },
+  { key: "fitNamed", hint: "Right trade and area, family-run, but the page does not show what your sentence describes. Somebody is named." },
+  { key: "fitUnnamed", hint: "Right trade and area, and the site names nobody at all." },
+  { key: "outside", hint: "Cut by one of your gates." },
 ];
 
 /** Anything missing or out of range falls back rather than scoring as zero. */
@@ -75,7 +105,8 @@ export function parseRules(raw: unknown): ScoreRules {
   const out = { ...DEFAULT_RULES };
   for (const k of Object.keys(DEFAULT_RULES) as (keyof ScoreRules)[]) {
     const v = (raw as Record<string, unknown>)[k];
-    if (typeof v === "number" && Number.isFinite(v) && v >= 1 && v <= 5) out[k] = Math.round(v);
+    // A blank wording falls back rather than labelling a lead with nothing.
+    if (typeof v === "string" && v.trim()) out[k] = v.trim().slice(0, 80);
   }
   return out;
 }
@@ -114,13 +145,15 @@ export function gradeSignal(c: Company): SignalGrade {
   return { quality: "meh", why: "Quoted, but the wording is not airtight" };
 }
 
-/** The score. 1 to 5, off the qualification the pipeline already applies. */
-export function starsFor(c: Company, rules: ScoreRules = DEFAULT_RULES): number {
-  if (c.status !== "qualified") return rules.outside;
-  const grade = gradeSignal(c);
-  if (grade.quality === "good") return rules.pairQuoted;
-  if (grade.quality === "meh") return rules.pairThin;
-  return c.founderName || c.nextGenName ? rules.fitNamed : rules.fitUnnamed;
+/**
+ * Sort order only, best first. Never rendered.
+ *
+ * Kept because a hundred leads still have to be put in an order, and "which
+ * of five rungs" is exactly that. It is the LABEL that had to stop being a
+ * digit, not the ranking underneath.
+ */
+export function rankFor(c: Company): number {
+  return RUNG_ORDER.length - RUNG_ORDER.indexOf(rungFor(c));
 }
 
 /**
@@ -130,32 +163,13 @@ export function starsFor(c: Company, rules: ScoreRules = DEFAULT_RULES): number 
  * which they can, if he decides a thin pair and a named fit are both a 3 --
  * a lookup keyed on the score alone would name only one of them.
  */
+/** The score, as the sentence he wrote for that situation. */
 export function starMeaning(c: Company, rules: ScoreRules = DEFAULT_RULES): string {
-  void rules;
-  if (c.status !== "qualified") return "Outside the ICP";
-  const grade = gradeSignal(c);
-  // THE SCORE IS ABOUT HIS SENTENCE. has_signal is the classifier's verdict
-  // against the signal focus he wrote, so these words say that rather than
-  // naming a tier only the build team would recognise.
-  if (grade.quality === "good") return "Matches what you asked for, quoted";
-  if (grade.quality === "meh") return "Matches, evidence is thin";
-  return c.founderName || c.nextGenName
-    ? "Right kind of company, no match"
-    : "Right kind of company, nobody named";
+  return rules[rungFor(c)];
 }
 
 /** The same thing in words, for a column heading somebody has to read. */
-/**
- * Kept for anywhere that only has a number. Prefer starMeaning, which knows
- * the company and therefore what the number actually meant.
- */
-export const STAR_LABEL: Record<number, string> = {
-  5: "Matches what you asked for, quoted",
-  4: "Matches, evidence is thin",
-  3: "Right kind of company, no match",
-  2: "Right kind of company, nobody named",
-  1: "Outside the ICP",
-};
+
 
 /**
  * What the lead NEEDS, which is a different question from how good it is.

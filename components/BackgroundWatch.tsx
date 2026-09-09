@@ -49,6 +49,14 @@ export function BackgroundWatch() {
   // TRANSITION, never on a state: without this, a folder sitting at "complete"
   // would re-announce itself on every poll for as long as the tab was open.
   const seen = useRef<Map<string, string>>(new Map());
+
+  // How many addresses a folder held when its run STARTED.
+  //
+  // contactsFound is a cumulative total, so a second pass over a folder that
+  // already had 3 and found 2 more announced "5 email addresses found". The
+  // number people read after pressing a button is how many arrived, not how
+  // many exist -- and on a retry the difference is the entire point.
+  const countAtStart = useRef<Map<string, number>>(new Map());
   // First pass records where everything already stands and announces nothing.
   // Otherwise opening the dashboard would toast every enrichment ever run.
   const primed = useRef(false);
@@ -60,6 +68,9 @@ export function BackgroundWatch() {
     for (const f of folders) {
       const key = `${f.status}:${f.enrichmentStatus}`;
       next.set(f.id, key);
+      if (f.enrichmentStatus === "running" && !countAtStart.current.has(f.id)) {
+        countAtStart.current.set(f.id, f.contactsFound ?? 0);
+      }
       const before = seen.current.get(f.id);
       if (!primed.current || before === undefined || before === key) continue;
 
@@ -67,7 +78,9 @@ export function BackgroundWatch() {
       const nowSettled =
         f.enrichmentStatus === "complete" || f.enrichmentStatus === "failed";
       if (wasEnriching && nowSettled) {
-        const n = f.contactsFound ?? 0;
+        const started = countAtStart.current.get(f.id) ?? 0;
+        const n = Math.max(0, (f.contactsFound ?? 0) - started);
+        countAtStart.current.delete(f.id);
         fresh.push({
           id: f.id,
           label: f.label,
@@ -78,7 +91,7 @@ export function BackgroundWatch() {
               ? f.enrichmentError || "Something went wrong."
               : n === 0
                 ? "No addresses found this time. You were not charged."
-                : `${n} email address${n === 1 ? "" : "es"} found.`,
+                : `${n} new email address${n === 1 ? "" : "es"}. Open the list to see who.`,
         });
       }
 

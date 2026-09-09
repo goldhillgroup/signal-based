@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { starsFor, starMeaning } from "@/lib/lead-score";
+import { starMeaning, rungFor, RUNG_ORDER, type ScoreRules } from "@/lib/lead-score";
 import { useScoreRules } from "@/lib/use-score-rules";
 import type { Company } from "@/lib/company";
 
@@ -55,7 +55,7 @@ export function LeadMarks({
   const savedAt = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const rules = useScoreRules();
-  const system = starsFor(company, rules);
+  const systemRung = rungFor(company);
 
   useEffect(() => {
     let off = false;
@@ -129,20 +129,19 @@ export function LeadMarks({
             It was 11px inline text reading "System says 4", which is both easy
             to miss and ambiguous -- 4 out of what? The scale has to be on the
             number or the number means nothing. */}
-        <div className="mb-2 flex items-start justify-between gap-3">
+        <div className="mb-2">
           <span className="text-[11px] font-semibold uppercase tracking-wide text-gh-ink-muted">
-            Your score
+            Your verdict
           </span>
-          <span className="shrink-0 text-right">
-            <span className="block text-[10px] font-semibold uppercase tracking-wide text-gh-ink-muted">
-              System says
+          {/* THE SENTENCE, NOT A DIGIT. "1 to 5" is how many rungs there are,
+              not what a lead should be called. A 3 beside a company name says
+              nothing without a legend to decode it against. */}
+          <p className="mt-1.5 rounded-lg border border-gh-border bg-gh-surface-sunken px-2.5 py-2 text-sm font-medium leading-snug text-gh-ink">
+            {starMeaning(company, rules)}
+            <span className="mt-0.5 block text-[10px] font-normal uppercase tracking-wide text-gh-ink-muted">
+              What the system found
             </span>
-            <span className="tabular font-display text-xl font-semibold leading-none text-gh-ink">
-              {system}
-              <span className="text-sm font-normal text-gh-ink-muted"> / 5</span>
-            </span>
-            <span className="mt-0.5 block text-[10px] text-gh-ink-muted">{starMeaning(company, rules)}</span>
-          </span>
+          </p>
         </div>
         {/* THE SENTENCE THE SCORE CAME FROM. It always came from this -- the
             classifier's verdict on his signal focus is what has_signal means --
@@ -154,34 +153,35 @@ export function LeadMarks({
             <span className="text-gh-ink-secondary">&ldquo;{judgedAgainst}&rdquo;</span>
           </p>
         )}
-        <div className="flex flex-wrap items-center gap-1">
-          {[1, 2, 3, 4, 5].map((n) => (
-            <button
-              key={n}
-              type="button"
-              disabled={saving}
-              onClick={() => setGrade(grade === n ? null : n)}
-              aria-pressed={grade === n}
-              title={grade === n ? "Click again to go back to the system's score" : `Score this ${n}`}
-              className={`h-7 w-7 cursor-pointer rounded-lg border text-xs font-semibold transition-colors disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 ${
-                grade === n
-                  ? "border-gh-navy bg-gh-navy text-white"
-                  : "border-gh-border text-gh-ink-secondary hover:border-gh-navy/40 hover:text-gh-ink"
-              }`}
-            >
-              {n}
-            </button>
-          ))}
-          {grade !== null && (
-            <span className="ml-1.5 text-[11px] font-semibold text-gh-navy">
-              Yours wins: {grade} / 5
-            </span>
-          )}
-          {grade === null && (
-            <span className="ml-1.5 text-[11px] text-gh-ink-muted">
-              Not scored, so the system&rsquo;s stands
-            </span>
-          )}
+        <p className="mb-1.5 text-[11px] text-gh-ink-muted">
+          {grade === null
+            ? "Disagree? Pick the one that fits. Yours then stands instead."
+            : "Yours stands. Click it again to hand the lead back to the system."}
+        </p>
+        <div className="space-y-1">
+          {RUNG_ORDER.map((k, i) => {
+            const n = RUNG_ORDER.length - i;
+            const chosen = grade === n;
+            return (
+              <button
+                key={k}
+                type="button"
+                disabled={saving}
+                onClick={() => setGrade(chosen ? null : n)}
+                aria-pressed={chosen}
+                className={`block w-full cursor-pointer rounded-lg border px-2.5 py-1.5 text-left text-xs transition-colors disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 ${
+                  chosen
+                    ? "border-gh-navy bg-gh-navy font-semibold text-white"
+                    : "border-gh-border text-gh-ink-secondary hover:border-gh-navy/40 hover:text-gh-ink"
+                }`}
+              >
+                {(rules as ScoreRules)[k]}
+                {k === systemRung && !chosen && (
+                  <span className="ml-1.5 text-[10px] text-gh-ink-muted">what the system said</span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 

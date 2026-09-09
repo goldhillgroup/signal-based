@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { starsFor, STAR_LABEL, gradeSignal, nextStep } from "../lib/lead-score.js";
+import { rungFor, rankFor, starMeaning, gradeSignal, nextStep, DEFAULT_RULES, RUNG_ORDER } from "../lib/lead-score.js";
 import type { Company } from "../lib/company.js";
 
 /**
@@ -24,34 +24,49 @@ const base = {
 const as = (patch: Record<string, unknown>) => ({ ...base, ...patch }) as unknown as Company;
 
 test("a pair quoted in their own words is a 5", () => {
-  assert.equal(starsFor(base), 5);
+  assert.equal(rungFor(base), "pairQuoted");
   assert.equal(gradeSignal(base).quality, "good");
 });
 
 test("a pair with nothing quoted is a 4", () => {
-  assert.equal(starsFor(as({ evidence: null })), 4);
+  assert.equal(rungFor(as({ evidence: null })), "pairThin");
 });
 
 test("a pair whose wording is arguable is a 4", () => {
-  assert.equal(starsFor(as({ confidence: "verify" })), 4);
+  assert.equal(rungFor(as({ confidence: "verify" })), "pairThin");
 });
 
 test("a fit with somebody named is a 3", () => {
-  assert.equal(starsFor(as({ hasSignal: false, evidence: null })), 3);
+  assert.equal(rungFor(as({ hasSignal: false, evidence: null })), "fitNamed");
 });
 
 test("a fit with nobody named is a 2", () => {
-  assert.equal(starsFor(as({ hasSignal: false, evidence: null, founderName: null, nextGenName: null })), 2);
+  assert.equal(rungFor(as({ hasSignal: false, evidence: null, founderName: null, nextGenName: null })), "fitUnnamed");
 });
 
 test("a cut company is a 1", () => {
-  assert.equal(starsFor(as({ status: "rejected" })), 1);
+  assert.equal(rungFor(as({ status: "rejected" })), "outside");
 });
 
-test("every rung has words a person can read", () => {
-  for (const n of [1, 2, 3, 4, 5]) {
-    assert.ok(STAR_LABEL[n] && STAR_LABEL[n].length > 8, `rung ${n} has no label`);
+test("every rung is a sentence, never a bare number", () => {
+  // "1 to 5" is how many rungs there are, not what a lead should be called. A
+  // 3 beside a company name needs a legend to decode; the sentence does not.
+  for (const k of RUNG_ORDER) {
+    const words = DEFAULT_RULES[k];
+    assert.ok(words.length > 8, `${k} has no wording`);
+    assert.ok(/[a-z] [a-z]/.test(words), `${k} is not a phrase: ${words}`);
+    assert.ok(!/^\d+$/.test(words.trim()), `${k} is a bare number`);
   }
+});
+
+test("the label follows the wording you set", () => {
+  const mine = { ...DEFAULT_RULES, pairQuoted: "Call this one today" };
+  assert.equal(starMeaning(base, mine), "Call this one today");
+});
+
+test("the rank still orders best first", () => {
+  assert.ok(rankFor(base) > rankFor(as({ hasSignal: false, evidence: null })));
+  assert.ok(rankFor(as({ hasSignal: false, evidence: null })) > rankFor(as({ status: "rejected" })));
 });
 
 test("buying an address does not change the score", () => {
@@ -64,7 +79,7 @@ test("buying an address does not change the score", () => {
     allContacts: [{ name: "Ben Acme", nameInferred: false, title: "VP", email: "ben@acme.com",
                findStatus: "found", findSource: "anymailfinder", verificationStatus: "valid" }],
   });
-  assert.equal(starsFor(withEmail), starsFor(base));
+  assert.equal(rungFor(withEmail), rungFor(base));
   assert.equal(nextStep(withEmail), "ready to call");
   assert.equal(nextStep(base), "needs an email");
 });

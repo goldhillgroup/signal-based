@@ -177,16 +177,16 @@ ok("the CSV has a phone column", companiesToCsv([personVerified]).split("\r\n")[
 // the shape held -- median 15, 86% in the bottom band. What the sheet carries
 // instead is the next action in words.
 const hdr = companiesToCsv([personVerified]).split("\r\n")[0];
-// WHICH score is exported now matters more than whether one is. The 0-100 is
-// a sort key and stays out: median 38, and a number beside a company name
-// reads as a verdict on the company. The 1-5 Jon asked for is a different
-// scale on a different question -- signal, fit, or outside -- and measured
-// across 448 leads it lands 28/36/209/175/0, which is a usable spread rather
-// than the "30 of 33 scored 4 or below" that sank the first attempt.
-ok("the CSV exports no 0-100 sort key", !hdr.includes("score_100"));
-ok("nor the score reasons", !hdr.includes("score_reasons"));
-ok("it exports the 1-5 instead", /(^|,)"?score"?(,|$)/.test(hdr));
-ok("and says what that number means", hdr.includes("score_means"));
+// WORDS, NOT A NUMBER. Two attempts at exporting a score failed for the same
+// reason: a digit beside a company name is a verdict the reader cannot decode
+// without a legend, and on real data most leads land low. What the sheet
+// carries is the sentence, plus a rank column that exists so a sort puts the
+// best at the top and is not meant to be read.
+ok("the CSV carries the verdict in words", hdr.includes("verdict_from_you_or_system"));
+ok("and says who decided it", hdr.includes("verdict_by"));
+ok("and keeps the system's for comparison", hdr.includes("system_verdict"));
+ok("the rank is there to sort by", /(^|,)"?rank"?(,|$)/.test(hdr));
+ok("no bare score column", !/(^|,)"?score"?(,|$)/.test(hdr));
 ok("and what to do next", hdr.includes("next_step"));
 ok("but the ranking still orders leads",
    scoreFactors(personVerified).score > scoreFactors(make({})).score);

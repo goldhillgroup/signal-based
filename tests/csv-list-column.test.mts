@@ -25,5 +25,5 @@ test("a single-folder export has no list column at all", () => {
   // for themselves, and the folder name is already on the page they came from.
   const csv = companiesToCsv([base]);
   assert.equal(csv.split("\r\n")[0].startsWith("list,"), false);
-  assert.equal(csv.split("\r\n")[0].split(",")[0], "score");
+  assert.equal(csv.split("\r\n")[0].split(",")[0], "verdict_from_you_or_system");
 });
