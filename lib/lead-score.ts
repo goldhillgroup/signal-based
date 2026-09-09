@@ -202,3 +202,41 @@ export function gradeSignal(c: Company): SignalGrade {
 export function scoreOf(c: Company, w?: ScoreWeights): number | null {
   return c.status === "qualified" ? scoreLead(c, w).score : null;
 }
+
+/**
+ * The 1-to-5 Jon asked for, off the spine he named: signal, fit, outside.
+ *
+ * WHY A SECOND SCALE. The 0-100 is a sort key -- fine for ordering a hundred
+ * rows, wrong to print, because measured on the real database its median is
+ * 38 and a number beside a company name reads as a verdict on the company. A
+ * 1-to-5 is a judgement people already know how to read, and it maps onto the
+ * three tiers the product already sorts into rather than inventing a fourth
+ * vocabulary.
+ *
+ *   5  a pair, quoted in their own words, wording firm
+ *   4  a pair, but something is thin: no quote, or the wording is arguable
+ *   3  fits the ICP, no successor named, and there is somebody to ask for
+ *   2  fits the ICP, but nobody is named on the site
+ *   1  outside the ICP: cut by one of the gates
+ *
+ * Nothing here depends on whether an address has been bought. That is what the
+ * 0-100 is for and what `band` says out loud; a lead is not a worse COMPANY
+ * because nobody has pressed Find emails yet, and conflating the two is the
+ * mistake the 0-100 had to be softened to undo.
+ */
+export function starsFor(c: Company): 1 | 2 | 3 | 4 | 5 {
+  if (c.status !== "qualified") return 1;
+  const grade = gradeSignal(c);
+  if (grade.quality === "good") return 5;
+  if (grade.quality === "meh") return 4;
+  return c.founderName || c.nextGenName ? 3 : 2;
+}
+
+/** The same thing in words, for a column heading somebody has to read. */
+export const STAR_LABEL: Record<number, string> = {
+  5: "Pair, quoted",
+  4: "Pair, thin evidence",
+  3: "Fits, someone named",
+  2: "Fits, nobody named",
+  1: "Outside the ICP",
+};

@@ -1,7 +1,7 @@
 import { settledContact, type Company } from "./company";
 import { toLead, SIGNAL_TYPE_META } from "./lead-signal";
 import { isSharedInbox } from "./pipeline/page-email";
-import { scoreLead, gradeSignal } from "./lead-score";
+import { scoreLead, gradeSignal, starsFor, STAR_LABEL } from "./lead-score";
 import { personalEmail, generalEmail } from "./company";
 
 // The "sheet" — a plain CSV download, opens directly in Excel/Google Sheets/
@@ -54,6 +54,9 @@ export const COLUMNS: { header: string; get: (c: Exportable) => string }[] = [
   // something to print beside a company's name in a sheet Jonathan sends on,
   // because 15/100 reads as a verdict on the lead when it mostly means an
   // address has not been bought yet. The words say what to do instead.
+  // 1-5, which is a judgement anybody can read, unlike the 0-100 sort key.
+  { header: "score", get: (c) => String(starsFor(c)) },
+  { header: "score_means", get: (c) => STAR_LABEL[starsFor(c)] },
   { header: "next_step", get: (c) => (c.status === "qualified" ? scoreLead(c).band : "") },
   // How good the SIGNAL is, which is a different axis from what the lead
   // needs. Both are wanted: one ranks the evidence, the other says what to do.

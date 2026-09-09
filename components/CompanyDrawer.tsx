@@ -97,7 +97,7 @@ export function CompanyDrawer({
   const [blacklisting, setBlacklisting] = useState(false);
   const [blacklistError, setBlacklistError] = useState("");
 
-  async function setBlacklisted(action: "blacklist" | "restore") {
+  async function setBlacklisted(action: "blacklist" | "restore" | "park") {
     if (!company) return;
     setBlacklisting(true);
     setBlacklistError("");
@@ -405,7 +405,9 @@ export function CompanyDrawer({
                 {company.status === "rejected" ? (
                   <>
                     <p className="text-xs text-gh-ink-secondary">
-                      Cut from your lists, and skipped by future searches.
+                      {company.rejectionReason === "Parked by you"
+                        ? "Parked. Off your lists, but future searches still consider it."
+                        : "Cut from your lists, and skipped by future searches."}
                     </p>
                     <button
                       type="button"
@@ -418,18 +420,33 @@ export function CompanyDrawer({
                   </>
                 ) : (
                   <>
+                    {/* TWO STRENGTHS, because "not now" and "never" are
+                        different answers and only one of them was available.
+                        Park keeps the company in play for future searches;
+                        blacklist takes it out of them for good. */}
                     <p className="text-xs text-gh-ink-secondary">
-                      Not one you want? Blacklisting it takes it off your lists
-                      and stops future searches finding it again.
+                      Not one for now? Park it and it leaves your lists but
+                      stays in play. Blacklist stops future searches finding it
+                      at all.
                     </p>
-                    <button
-                      type="button"
-                      disabled={blacklisting}
-                      onClick={() => void setBlacklisted("blacklist")}
-                      className="mt-2 cursor-pointer rounded-lg border border-gh-border px-3 py-1.5 text-[11px] font-semibold text-gh-ink-secondary transition-colors hover:border-gh-critical/50 hover:text-gh-critical disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-critical/30"
-                    >
-                      {blacklisting ? "Blacklisting…" : "Blacklist this company"}
-                    </button>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={blacklisting}
+                        onClick={() => void setBlacklisted("park")}
+                        className="cursor-pointer rounded-lg border border-gh-border px-3 py-1.5 text-[11px] font-semibold text-gh-ink-secondary transition-colors hover:border-gh-sky/50 hover:text-gh-ink disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+                      >
+                        {blacklisting ? "Working…" : "Park it for now"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={blacklisting}
+                        onClick={() => void setBlacklisted("blacklist")}
+                        className="cursor-pointer rounded-lg border border-gh-border px-3 py-1.5 text-[11px] font-semibold text-gh-ink-secondary transition-colors hover:border-gh-critical/50 hover:text-gh-critical disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-critical/30"
+                      >
+                        {blacklisting ? "" : "Blacklist"}
+                      </button>
+                    </div>
                   </>
                 )}
                 {blacklistError && (

@@ -10,7 +10,7 @@ import { isWrongKindOfBusiness } from "@/lib/pipeline/recheck-policy";
 import { LeadCard } from "./LeadCard";
 import { LeadTable } from "./LeadTable";
 
-type Tab = "all" | "signal" | "fit" | "not_a_fit" | "blacklisted";
+type Tab = "all" | "signal" | "fit" | "not_a_fit" | "parked" | "blacklisted";
 
 // FOUR TABS BECAME TWO, and they now say what the cards say.
 //
@@ -86,6 +86,11 @@ const TABS: { key: Tab; label: string; hint: string }[] = [
   },
   { key: "not_a_fit", label: "Not a fit", hint: "Cut by one of your gates, with the reason" },
   {
+    key: "parked",
+    label: "Parked",
+    hint: "Set aside for now. Future searches still consider them.",
+  },
+  {
     key: "blacklisted",
     label: "Blacklisted",
     hint: "Ones you cut yourself. Future searches skip them.",
@@ -99,6 +104,11 @@ const TABS: { key: Tab; label: string; hint: string }[] = [
 /** Written by app/api/company/[id]/route.ts when you blacklist one. */
 function isBlacklisted(c: Company): boolean {
   return (c.rejectionReason ?? "").trim().toLowerCase() === "blacklisted by you";
+}
+
+/** The same, for parking. Set aside rather than shut out. */
+function isParked(c: Company): boolean {
+  return (c.rejectionReason ?? "").trim().toLowerCase() === "parked by you";
 }
 
 function matchesTab(c: Company, tab: Tab) {
@@ -121,11 +131,13 @@ function matchesTab(c: Company, tab: Tab) {
   // the model's rejections, so pressing Blacklist looked like the company had
   // simply vanished -- there was nowhere to go and check, and no way to undo
   // it without hunting through a list of the crawler's reasons.
+  if (tab === "parked") return c.status === "rejected" && isParked(c);
   if (tab === "blacklisted") return c.status === "rejected" && isBlacklisted(c);
   if (tab === "not_a_fit")
     return (
       c.status === "rejected" &&
       !isBlacklisted(c) &&
+      !isParked(c) &&
       !isWrongKindOfBusiness(c.rejectionReason)
     );
   // Signal covers confirmed AND needs-a-look. Both are a founder-and-successor
@@ -331,7 +343,9 @@ export function CompaniesTable({
             where nothing was blacklisted should not carry an empty tab
             inviting the question of what it is for. */}
         {TABS.filter((t) =>
-          t.key === "not_a_fit" || t.key === "blacklisted" ? counts[t.key] > 0 : true
+          t.key === "not_a_fit" || t.key === "blacklisted" || t.key === "parked"
+            ? counts[t.key] > 0
+            : true
         ).map((t) => (
           <button
             key={t.key}
@@ -435,7 +449,13 @@ export function CompaniesTable({
       <p className="px-4 pt-3 text-xs text-gh-ink-muted">
         Showing <span className="font-semibold text-gh-ink-secondary">{filtered.length}</span> of{" "}
         {counts[tab]}{" "}
-        {tab === "not_a_fit" ? "cut" : tab === "blacklisted" ? "blacklisted" : "leads"}
+        {tab === "not_a_fit"
+          ? "cut"
+          : tab === "blacklisted"
+            ? "blacklisted"
+            : tab === "parked"
+              ? "parked"
+              : "leads"}
         {/* NEVER a silent filter. The wrong-kind rows are left out because
             arguing with them is pointless, but a list that quietly shrinks is
             worse than a cluttered one — say how many and why. */}

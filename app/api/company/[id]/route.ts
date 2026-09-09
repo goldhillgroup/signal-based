@@ -29,6 +29,20 @@ import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
  */
 
 export const BLACKLIST_REASON = "Blacklisted by you";
+/**
+ * Between interested and blacklisted.
+ *
+ * Jon's ask: somewhere for a company he does not want on his list right now
+ * but is not done with either. Blacklisting is permanent by design -- it sets
+ * recheck_after to NULL so no future search ever surfaces the domain again --
+ * and that is too strong for "not this quarter".
+ *
+ * Parked uses the same shape as blacklist, so it needs no migration: the row
+ * is kept, marked, and drops off the lead tabs. The ONE difference is the one
+ * that matters -- recheck_after is left alone, so the crawler will still
+ * reconsider the company when its recheck comes due.
+ */
+export const PARKED_REASON = "Parked by you";
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -43,8 +57,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const action = body.action;
-  if (action !== "blacklist" && action !== "restore") {
-    return NextResponse.json({ error: "Blacklist or restore?" }, { status: 400 });
+  if (action !== "blacklist" && action !== "restore" && action !== "park") {
+    return NextResponse.json({ error: "Blacklist, park, or restore?" }, { status: 400 });
   }
 
   const service = createServiceRoleClient();
@@ -54,6 +68,19 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     .eq("id", id)
     .maybeSingle();
   if (!company) return NextResponse.json({ error: "No such company." }, { status: 404 });
+
+  if (action === "park") {
+    // recheck_after UNTOUCHED, which is the whole difference from blacklist:
+    // a parked company is one he may want later, and nulling it would quietly
+    // make "not now" mean "never".
+    const { data: rows, error } = await service
+      .from("companies")
+      .update({ status: "rejected", rejection_reason: PARKED_REASON })
+      .eq("domain", company.domain)
+      .select("id");
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true, parked: (rows ?? []).length, domain: company.domain });
+  }
 
   if (action === "blacklist") {
     // EVERY ROW ON THIS DOMAIN, not just this one. A company found by two

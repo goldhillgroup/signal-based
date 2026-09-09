@@ -177,9 +177,17 @@ ok("the CSV has a phone column", companiesToCsv([personVerified]).split("\r\n")[
 // the shape held -- median 15, 86% in the bottom band. What the sheet carries
 // instead is the next action in words.
 const hdr = companiesToCsv([personVerified]).split("\r\n")[0];
-ok("the CSV exports no numeric score", !/(^|,)"?score"?(,|$)/.test(hdr));
+// WHICH score is exported now matters more than whether one is. The 0-100 is
+// a sort key and stays out: median 38, and a number beside a company name
+// reads as a verdict on the company. The 1-5 Jon asked for is a different
+// scale on a different question -- signal, fit, or outside -- and measured
+// across 448 leads it lands 28/36/209/175/0, which is a usable spread rather
+// than the "30 of 33 scored 4 or below" that sank the first attempt.
+ok("the CSV exports no 0-100 sort key", !hdr.includes("score_100"));
 ok("nor the score reasons", !hdr.includes("score_reasons"));
-ok("but it does say what to do next", hdr.includes("next_step"));
+ok("it exports the 1-5 instead", /(^|,)"?score"?(,|$)/.test(hdr));
+ok("and says what that number means", hdr.includes("score_means"));
+ok("and what to do next", hdr.includes("next_step"));
 ok("but the ranking still orders leads",
    scoreFactors(personVerified).score > scoreFactors(make({})).score);
 

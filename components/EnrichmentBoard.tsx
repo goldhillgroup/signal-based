@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ConfirmDialog } from "./ConfirmDialog";
+import { ENRICH_CEILING_PER_COMPANY_USD } from "@/lib/pipeline/pricing";
 import Link from "next/link";
 import { useSearches, type SearchFolder } from "@/lib/searches-store";
 import { CountUp } from "./CountUp";
@@ -45,6 +47,54 @@ export function EnrichmentBoard() {
   const { folders, loading, startEnrichment, refreshFolders, fetchCompanies } = useSearches();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [confirmAll, setConfirmAll] = useState(false);
+  const [outstandingBy, setOutstandingBy] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    let off = false;
+    fetch("/api/enrichment/outstanding")
+      .then((r) => r.json())
+      .then((j) => {
+        if (!off && j?.byFolder) setOutstandingBy(j.byFolder);
+      })
+      .catch(() => {});
+    return () => {
+      off = true;
+    };
+  }, [folders]);
+
+  /**
+   * Every list with outstanding leads, in sequence.
+   *
+   * SEQUENTIAL, not parallel. Each pass already runs six lookups at a time
+   * internally; firing eight lists at once would be forty-eight concurrent
+   * requests at a vendor that bills per call, which is how an account starts
+   * getting rate-limited or looked at.
+   */
+  async function enrichEveryList() {
+    setBusy("__all__");
+    setError("");
+    let failed = 0;
+    for (const f of outstandingFolders) {
+      try {
+        const res = await fetch(`/api/search/${f.id}/enrich`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scope: "all" }),
+        });
+        if (!res.ok) failed++;
+      } catch {
+        failed++;
+      }
+    }
+    setBusy(null);
+    if (failed > 0) {
+      setError(
+        `${failed} of ${outstandingFolders.length} lists could not be started. The rest are running.`
+      );
+    }
+    await refreshFolders();
+  }
   /** The click waiting on a yes/no. null when no dialog is open. */
   const [pending, setPending] = useState<{
     id: string;
@@ -81,6 +131,25 @@ export function EnrichmentBoard() {
   // The number that makes the decision: people who could be looked up but
   // have not been. Everything else on this page is detail.
   const waiting = ready.reduce((n, f) => n + leadCount(f), 0);
+
+  // Counted server-side from the rows. See the comment on the route for why
+  // the folder counters could not be used: they gave 41 where the truth was
+  // 368, on the number this button is priced from.
+  // STILL OUTSTANDING, WHICH IS NOT THE SAME AS "READY".
+  //
+  // bucketOf calls a folder "done" the moment enrichment has run on it once,
+  // so a list of 21 leads that came back with 3 addresses sat under Enriched
+  // and its other 18 had no way to be picked up again. That is exactly the
+  // gap Jon described -- anything still marked needs enrichment should get
+  // another pass -- and it is why the whole backlog was invisible.
+  //
+  // Counted from the folder's own totals rather than by reading every
+  // company: an approximation, and it can read low where a counter is ahead
+  // of what was actually stored, but it is one query instead of eight.
+  const outstandingFolders = folders.filter(
+    (f) => f.enrichmentStatus !== "running" && (outstandingBy[f.id] ?? 0) > 0
+  );
+  const outstanding = outstandingFolders.reduce((n, f) => n + (outstandingBy[f.id] ?? 0), 0);
   const foundSoFar = folders.reduce((n, f) => n + f.contactsFound, 0);
   const verified = folders.reduce((n, f) => n + f.contactsVerified, 0);
 
@@ -159,6 +228,58 @@ export function EnrichmentBoard() {
       </div>
 
       {error && <p className="text-xs font-medium text-gh-critical">{error}</p>}
+
+      {/* ONE PRESS FOR THE WHOLE BACKLOG.
+          Jon asked for anything still marked "needs enrichment" to get another
+          pass on a schedule. A schedule is a thing this product has promised
+          not to do -- the weekly harvest was removed, the handbook says
+          "nothing runs on its own", and there is a test asserting no cron
+          exists, because he is billed per lookup. This is the same result with
+          a person behind it: every list that still has leads without an
+          address, in order, one confirmation, one visible cost. */}
+      {outstanding > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gh-border bg-gh-surface px-4 py-3">
+          <p className="text-xs text-gh-ink-secondary">
+            <strong className="font-semibold text-gh-ink">{outstanding}</strong> lead
+            {outstanding === 1 ? "" : "s"} across {outstandingFolders.length} list
+            {outstandingFolders.length === 1 ? "" : "s"} still have no address, including lists
+            that have already been through enrichment once.
+          </p>
+          <button
+            type="button"
+            disabled={busy !== null || outstandingFolders.length === 0}
+            onClick={() => setConfirmAll(true)}
+            className="shrink-0 cursor-pointer rounded-lg bg-gh-navy px-3.5 py-2 text-xs font-semibold text-white transition-colors hover:bg-gh-navy-2 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+          >
+            {busy === "__all__" ? "Working through them…" : "Find emails for all of them"}
+          </button>
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={confirmAll}
+        requirePhrase=""
+        title={`Look up ${outstanding} lead${outstanding === 1 ? "" : "s"}?`}
+        confirmLabel={`Yes, up to $${(outstanding * ENRICH_CEILING_PER_COMPANY_USD).toFixed(2)}`}
+        cancelLabel="Not now"
+        onConfirm={() => {
+          setConfirmAll(false);
+          void enrichEveryList();
+        }}
+        onCancel={() => setConfirmAll(false)}
+        body={
+          <>
+            <p>
+              Every list with leads that have no address, one after another.
+            </p>
+            <p className="mt-2">
+              You are charged per address actually found, so the real figure is
+              almost always lower. A lead nobody can find an address for costs
+              nothing.
+            </p>
+          </>
+        }
+      />
 
       <Group
         title="Ready to enrich"
