@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { canonicalEmail } from "@/lib/login-aliases";
 
 /**
  * The "Forgot password?" request, run SERVER-SIDE rather than from the
@@ -67,10 +68,16 @@ const MAX_PER_WINDOW = 5;
 
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as { email?: string };
-  const email = (body.email ?? "").trim();
-  if (!email || !email.includes("@")) {
+  const typed = (body.email ?? "").trim();
+  if (!typed || !typed.includes("@")) {
     return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
   }
+  // An alias (lib/login-aliases.ts) has no Supabase account of its own --
+  // asking Supabase to reset "jon@thegoldhillgroup.com" would silently do
+  // nothing, the same "ok" response as a genuinely unknown address, because
+  // that name only ever existed as a client-side rewrite at sign-in. The
+  // request has to land on the real account for an email to go anywhere.
+  const email = canonicalEmail(typed);
 
   // Crude, in-memory, per-instance -- good enough to stop a script hammering
   // this one address, not a substitute for Supabase's own mailer limits.
