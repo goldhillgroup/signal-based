@@ -4,6 +4,7 @@ import { Suspense, useState } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { canonicalEmail } from "@/lib/login-aliases";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { SupabaseNotConfigured } from "@/components/SupabaseNotConfigured";
 import { RadarIcon, ChevronDownIcon } from "@/components/icons";
@@ -34,7 +35,13 @@ function LoginForm() {
     setError("");
     setLoading(true);
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    // A few other spellings of his own address log into this same account --
+    // see lib/login-aliases.ts. Rewritten only for the call to Supabase; the
+    // field keeps showing what was actually typed.
+    const { error } = await supabase.auth.signInWithPassword({
+      email: canonicalEmail(email),
+      password,
+    });
     setLoading(false);
     if (error) {
       setError("Invalid email or password.");
