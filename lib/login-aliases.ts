@@ -2,7 +2,7 @@
  * Other spellings of Jonathan's email that sign in to the SAME account.
  *
  * WHY THIS EXISTS. "make jon, jonathan and d4nielm7 go to same account" --
- * three ways of reaching one real Supabase user, jonathan@thegoldhillgroup.com.
+ * a few ways of reaching one real Supabase user, jonathan@thegoldhillgroup.com.
  * Supabase authenticates on an exact email match, so any of these typed at
  * login would otherwise fail with the same "Invalid email or password" a
  * wrong password gives.
@@ -21,8 +21,9 @@
  */
 
 const ALIASES: Record<string, string> = {
-  "jon@goldhillgroup.com": "jonathan@thegoldhillgroup.com",
-  "jonathan@goldhillgroup.com": "jonathan@thegoldhillgroup.com",
+  // "goldhillgroup.com" (no "the") is the wrong domain -- it was in here
+  // briefly and got pulled. The real one is thegoldhillgroup.com throughout.
+  "jon@thegoldhillgroup.com": "jonathan@thegoldhillgroup.com",
   "d4nielm7@gmail.com": "jonathan@thegoldhillgroup.com",
 };
 
