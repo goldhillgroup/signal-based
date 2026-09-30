@@ -1,5 +1,6 @@
 import { getSetting, SETTINGS_KEYS } from "@/lib/settings";
 import { LeadDescription } from "@/components/LeadDescription";
+import { AccountEmail } from "@/components/AccountEmail";
 import { ReplayTourButton } from "@/components/DashboardTour";
 import { SettingsForm } from "@/components/SettingsForm";
 
@@ -79,6 +80,7 @@ export default async function SettingsPage() {
         <SettingsForm rows={rows} />
       </section>
 
+      <AccountEmail />
       <LeadDescription />
       {/* Somebody who skipped the tour, or a second person on the shared
           login, needs a way back to it. The flag it clears is per-browser. */}
