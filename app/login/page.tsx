@@ -18,6 +18,13 @@ function LoginForm() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // "Forgot password?" as a second mode of the same form, not a separate
+  // page -- the email he already typed carries over, and there is nowhere
+  // else this form needs to go.
+  const [mode, setMode] = useState<"signin" | "reset">("signin");
+  const [resetStatus, setResetStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [resetError, setResetError] = useState("");
+
   // DERIVED, not synced. This was an effect that called setError when the URL
   // carried ?error=auth — a value copied out of one source of truth into
   // another, which is the exact case React's own guidance says not to use an
@@ -25,6 +32,14 @@ function LoginForm() {
   // version could not be dismissed, because any setError("") was immediately
   // overwritten on the next render.
   const sessionExpired = params.get("error") === "auth";
+  // Sent back here by app/auth/confirm/route.ts when a reset link was
+  // expired, already used, or tampered with -- the honest failure case that
+  // isn't a session timing out.
+  const resetLinkFailed = params.get("error") === "reset";
+  // TEMPORARY, alongside the matching temporary code in auth/confirm/route.ts
+  // -- the real Supabase reason a reset link failed, so it's diagnosable
+  // without Vercel log access. Strip both once answered.
+  const resetDetail = params.get("detail");
 
   if (!isSupabaseConfigured) {
     return <SupabaseNotConfigured />;
@@ -51,6 +66,71 @@ function LoginForm() {
     router.refresh();
   }
 
+  /**
+   * REBUILT, not just re-added. The version that used to live here called
+   * resetPasswordForEmail and never looked at the result, so it rendered
+   * "Email sent" whether or not one was -- and Supabase's default mailer is
+   * rate-limited and often silent, so the usual outcome was a confident tick
+   * and no email. That cost people twenty minutes of checking spam before
+   * they gave up and asked anyway, which is worse than no control at all.
+   *
+   * This one actually checks the error. On success it still says plainly
+   * that the mailer can be slow -- that limitation is real and didn't go
+   * away, only the pretending that it wasn't there did.
+   *
+   * THROUGH OUR OWN SERVER, not straight to Supabase. See
+   * app/api/auth/forgot-password/route.ts -- same request, but a browser
+   * behind a network that can reach this app and not a third-party auth
+   * domain directly now still gets the email.
+   *
+   * RETRIES THE WHOLE REQUEST, up to 4 times, when the failure is the
+   * "fetch failed" shape. Measured directly: this isn't a per-request coin
+   * flip, it's a cold Vercel instance whose resolver is broken for that
+   * instance's entire life -- one failing call took 4.7s (its own internal
+   * retries all exhausted together) while every succeeding call landed
+   * under 300ms on the first try. Retrying INSIDE one invocation therefore
+   * barely helped (93% at 3 retries, 92% at 6); a fresh request has an
+   * independent shot at a working instance, which is the only thing that
+   * actually moves the number. A genuine rejection (bad email, real
+   * infrastructure error) isn't retried -- it would just fail the same way
+   * four times slower.
+   */
+  async function handleReset(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setResetStatus("sending");
+    setResetError("");
+
+    let lastError = "Something went wrong. Try again in a moment.";
+    for (let attempt = 0; attempt < 4; attempt++) {
+      let res: Response;
+      let j: { ok?: boolean; error?: string } = {};
+      try {
+        res = await fetch("/api/auth/forgot-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        });
+        j = await res.json().catch(() => ({}));
+      } catch {
+        lastError = "Something went wrong. Try again in a moment.";
+        continue;
+      }
+      if (res.ok) {
+        setResetStatus("sent");
+        return;
+      }
+      lastError = j.error || lastError;
+      if (!/fetch failed|network|ECONNRESET|ETIMEDOUT/i.test(lastError)) break;
+    }
+    setResetStatus("error");
+    setResetError(lastError);
+  }
+
+  function backToSignIn() {
+    setMode("signin");
+    setResetStatus("idle");
+    setResetError("");
+  }
 
   return (
     <div className="grid min-h-screen overflow-hidden bg-gh-page lg:grid-cols-2">
@@ -69,74 +149,135 @@ function LoginForm() {
             </div>
           </div>
 
-          <h1 className="font-display text-2xl font-semibold text-gh-ink">Welcome back</h1>
+          <h1 className="font-display text-2xl font-semibold text-gh-ink">
+            {mode === "signin" ? "Welcome back" : "Reset your password"}
+          </h1>
           <p className="mb-8 mt-1 text-sm text-gh-ink-secondary">
-            Sign in to your Signal Radar dashboard.
+            {mode === "signin"
+              ? "Sign in to your Signal Radar dashboard."
+              : "We'll email a link to set a new one."}
           </p>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-1.5">
-              <label htmlFor="email" className="text-sm font-medium text-gh-ink-secondary">
-                Email
-              </label>
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoComplete="email"
-                // Generic on purpose. The real address was hardcoded here, which put the
-                // exact account to attack in front of every visitor to the login page
-                // and left it sitting in the client bundle. Email addresses are not
-                // secret, but naming the one valid account turns a password guess into
-                // a password attack.
-                placeholder="you@company.com"
-                className="w-full rounded-lg border border-gh-border bg-gh-surface-sunken px-3 py-2.5 text-sm text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:bg-gh-surface focus:outline-none focus:ring-2 focus:ring-gh-sky/20"
-              />
-            </div>
+          {mode === "signin" ? (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-1.5">
+                <label htmlFor="email" className="text-sm font-medium text-gh-ink-secondary">
+                  Email
+                </label>
+                <input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  autoComplete="email"
+                  // Generic on purpose. The real address was hardcoded here, which put the
+                  // exact account to attack in front of every visitor to the login page
+                  // and left it sitting in the client bundle. Email addresses are not
+                  // secret, but naming the one valid account turns a password guess into
+                  // a password attack.
+                  placeholder="you@company.com"
+                  className="w-full rounded-lg border border-gh-border bg-gh-surface-sunken px-3 py-2.5 text-sm text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:bg-gh-surface focus:outline-none focus:ring-2 focus:ring-gh-sky/20"
+                />
+              </div>
 
-            <div className="space-y-1.5">
-              {/* NO "FORGOT PASSWORD". It called resetPasswordForEmail and
-                  never looked at the result, so it rendered "Email sent"
-                  whether or not one was — and Supabase's default mailer is
-                  rate-limited to a handful a day and frequently silent, so the
-                  usual outcome was a confident tick and no email.
-                  A control that always claims success is worse than no control:
-                  it costs somebody twenty minutes of waiting and checking spam
-                  before they think to ask. A forgotten password is now a
-                  message to Daniel, which is what it was in practice anyway. */}
-              <label htmlFor="password" className="text-sm font-medium text-gh-ink-secondary">
-                Password
-              </label>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                autoComplete="current-password"
-                placeholder="••••••••"
-                className="w-full rounded-lg border border-gh-border bg-gh-surface-sunken px-3 py-2.5 text-sm text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:bg-gh-surface focus:outline-none focus:ring-2 focus:ring-gh-sky/20"
-              />
-            </div>
+              <div className="space-y-1.5">
+                <div className="flex items-baseline justify-between">
+                  <label htmlFor="password" className="text-sm font-medium text-gh-ink-secondary">
+                    Password
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setMode("reset")}
+                    className="cursor-pointer text-xs font-medium text-gh-ink-muted underline-offset-2 hover:text-gh-navy hover:underline"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+                <input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                  placeholder="••••••••"
+                  className="w-full rounded-lg border border-gh-border bg-gh-surface-sunken px-3 py-2.5 text-sm text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:bg-gh-surface focus:outline-none focus:ring-2 focus:ring-gh-sky/20"
+                />
+              </div>
 
-            {/* A submit error wins over the session-expired notice: if he has
-                just tried and failed, that is the more useful sentence. */}
-            {(error || sessionExpired) && (
-              <p className="text-xs font-medium text-gh-critical">
-                {error || "Your session expired. Please sign in again."}
-              </p>
-            )}
+              {/* A submit error wins over either URL-driven notice: if he has
+                  just tried and failed, that is the more useful sentence. */}
+              {(error || sessionExpired || resetLinkFailed) && (
+                <p className="text-xs font-medium text-gh-critical">
+                  {error ||
+                    (sessionExpired
+                      ? "Your session expired. Please sign in again."
+                      : "That reset link didn't work — it may have expired or already been used. Request a new one below.")}
+                  {/* TEMPORARY, see the matching note by resetDetail above. */}
+                  {resetDetail && <span className="mt-1 block break-all text-gh-ink-muted">{resetDetail}</span>}
+                </p>
+              )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="mt-2 w-full rounded-lg bg-gh-navy py-2.5 text-sm font-semibold text-white transition-colors hover:bg-gh-navy-2 disabled:opacity-50"
-            >
-              {loading ? "Signing in…" : "Sign in"}
-            </button>
-          </form>
+              <button
+                type="submit"
+                disabled={loading}
+                className="mt-2 w-full cursor-pointer rounded-lg bg-gh-navy py-2.5 text-sm font-semibold text-white transition-colors hover:bg-gh-navy-2 disabled:opacity-50"
+              >
+                {loading ? "Signing in…" : "Sign in"}
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleReset} className="space-y-4">
+              <div className="space-y-1.5">
+                <label htmlFor="reset-email" className="text-sm font-medium text-gh-ink-secondary">
+                  Email
+                </label>
+                <input
+                  id="reset-email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  autoComplete="email"
+                  placeholder="you@company.com"
+                  disabled={resetStatus === "sending" || resetStatus === "sent"}
+                  className="w-full rounded-lg border border-gh-border bg-gh-surface-sunken px-3 py-2.5 text-sm text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:bg-gh-surface focus:outline-none focus:ring-2 focus:ring-gh-sky/20 disabled:opacity-60"
+                />
+              </div>
+
+              {resetStatus === "sent" ? (
+                // HONEST, not a checkmark. The mailer really can be slow or
+                // silent -- see handleReset -- so this says that plainly
+                // rather than promising an email that might not arrive.
+                <p className="rounded-lg bg-gh-surface-sunken px-3 py-2.5 text-xs leading-relaxed text-gh-ink-secondary">
+                  If that address has an account, a reset link is on its way.
+                  It can take a few minutes and sometimes lands in spam —
+                  message Daniel if nothing shows up.
+                </p>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={resetStatus === "sending"}
+                  className="w-full cursor-pointer rounded-lg bg-gh-navy py-2.5 text-sm font-semibold text-white transition-colors hover:bg-gh-navy-2 disabled:opacity-50"
+                >
+                  {resetStatus === "sending" ? "Sending…" : "Send reset link"}
+                </button>
+              )}
+
+              {resetStatus === "error" && (
+                <p className="text-xs font-medium text-gh-critical">{resetError}</p>
+              )}
+
+              <button
+                type="button"
+                onClick={backToSignIn}
+                className="w-full cursor-pointer text-center text-xs font-medium text-gh-ink-muted hover:text-gh-navy"
+              >
+                Back to sign in
+              </button>
+            </form>
+          )}
 
           <p className="mt-8 text-center text-[11px] text-gh-ink-muted">
             Invite-only. Accounts are created for you.

@@ -120,13 +120,35 @@ SUPABASE_SERVICE_ROLE_KEY
 https://signal-based.vercel.app/login
 ```
 
-Two accounts, both working, same password:
+Two real Supabase accounts, both working, same password:
 
 - `jonathan@thegoldhillgroup.com`
 - `thegoldhillgroup@gmail.com`
 
-Passwords are managed in Supabase → Authentication → Users. There is also a
-"Forgot password?" link on the login page.
+Plus two ALIASES (lib/login-aliases.ts) that sign into the first account above
+without being separate Supabase users -- the typed address is rewritten to
+`jonathan@thegoldhillgroup.com` right before the call to Supabase, so there is
+still exactly one password to keep current:
+
+- `jon@thegoldhillgroup.com`
+- `d4nielm7@gmail.com`
+
+Passwords are managed in Supabase → Authentication → Users, or he can reset
+his own via **"Forgot password?"** on the login page.
+
+REBUILT, not the original version. An earlier one called resetPasswordForEmail
+and never looked at the result, so it claimed "Email sent" whether or not one
+actually was -- Supabase's mailer is rate-limited and can be slow or silent,
+and a control that always claims success just cost him twenty minutes of
+checking spam. This one shows the real error when the request fails, and is
+honest that delivery can still be slow even on success.
+
+**One thing to check in Supabase if the emailed link 404s or bounces back to
+login with "that reset link didn't work":** Authentication → URL
+Configuration → Redirect URLs needs `https://signal-based.vercel.app/auth/confirm`
+in the allow list, or Supabase will refuse the redirect the email link
+depends on. I could not confirm this is set -- this machine has no network
+route to Supabase's API to check it directly, only through the deployed app.
 
 ---
 
