@@ -58,6 +58,69 @@ test("staff are not leadership", () => {
   assert.deepEqual(out.map((p) => p.name), ["Lena Voss"]);
 });
 
+// What the real classifier returned, verbatim, for two realistic pages on
+// 2026-10-13. The second is the one that taught the rule: it was told to leave
+// staff out and listed a dispatcher, a crew leader and an operations manager.
+test("a real answer: the siblings are kept, the founder and president are not repeated", () => {
+  const raw = [
+    { name: "Mark Hendricks", title: "Vice President of Operations", relationship: "son of Walt Hendricks, brother of Dana and Luke" },
+    { name: "Luke Hendricks", title: "Co-owner and Director of Design", relationship: "son of Walt Hendricks, brother of Dana and Mark" },
+  ];
+  const out = cleanOtherPeople(raw, ["Walt Hendricks", "Dana Hendricks-Cole"]);
+  assert.deepEqual(out.map((p) => p.name), ["Mark Hendricks", "Luke Hendricks"]);
+});
+
+test("a real answer: the wife who co-owns is kept, and NONE of the staff are, operations manager included", () => {
+  const raw = [
+    { name: "Patricia Lindqvist", title: "Co-owner and Controller", relationship: "wife of Gary, co-owner" },
+    { name: "Rob Dillard", title: "Operations Manager", relationship: null },
+    { name: "Jenna Pruitt", title: "Dispatcher", relationship: null },
+    { name: "Mike Alvarado", title: "Crew Leader (Mowing)", relationship: null },
+  ];
+  const out = cleanOtherPeople(raw, ["Gary Lindqvist"]);
+  assert.deepEqual(out.map((p) => p.name), ["Patricia Lindqvist"]);
+});
+
+test("managers of a department are not owners, however senior the page makes them sound", () => {
+  const out = cleanOtherPeople(
+    [
+      { name: "Nina Brandt", title: "Project Manager" },
+      { name: "Oscar Vail", title: "Operations Manager" },
+      { name: "Pam Teller", title: "Account Executive" },
+      { name: "Quinn Ames", title: "Superintendent" },
+      { name: "Rita Cho", title: "Controller" },
+    ],
+    []
+  );
+  assert.deepEqual(out, []);
+});
+
+test("executives and owners are kept whatever the wording", () => {
+  const out = cleanOtherPeople(
+    [
+      { name: "Al Green", title: "General Manager" },
+      { name: "Bea Stone", title: "Managing Partner" },
+      { name: "Cy Reed", title: "Principal" },
+      { name: "Di Fox", title: "Chairwoman" },
+      { name: "Ed Lane", title: "Director of Operations" },
+      { name: "Flo Park", title: "CEO" },
+    ],
+    []
+  );
+  assert.equal(out.length, 4); // capped
+  assert.deepEqual(out.map((p) => p.name), ["Al Green", "Bea Stone", "Cy Reed", "Di Fox"]);
+});
+
+test("a relative in an ordinary job stays, because the family is the point", () => {
+  const out = cleanOtherPeople([{ name: "Tony Rossi", title: "Crew Leader", relationship: "nephew of Joe, joined in 2022" }], []);
+  assert.deepEqual(out.map((p) => p.name), ["Tony Rossi"]);
+});
+
+test("a name with neither a title nor a stated tie is not enough to go on", () => {
+  assert.deepEqual(cleanOtherPeople([{ name: "Sam Whitfield", title: null, relationship: null }], []), []);
+  assert.deepEqual(cleanOtherPeople([{ name: "Sam Whitfield", title: null, relationship: "not related" }], []), []);
+});
+
 test("no title is fine when the page relates them to the family", () => {
   const out = cleanOtherPeople([{ name: "Paul Turner", title: null, relationship: "brother" }], known);
   assert.equal(out.length, 1);

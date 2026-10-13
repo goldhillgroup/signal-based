@@ -134,9 +134,11 @@ what the badge says.
 
 Family businesses are often owned by more than the one person a website leads
 with: brothers, a husband and wife, a managing partner beside the founder.
-Signal Radar reads for them. Up to four more owners and leaders a company's own
-pages name are saved as people on the company (staff titles such as crew leads
-and dispatchers are left out), next to the founder and the successor.
+Signal Radar reads for them. Up to four more people a company's own pages name
+are saved as people on the company, next to the founder and the successor: owners,
+partners, executives (president, vice president, general manager) and relatives of
+the owners. Managers of a department and other staff are left out, even when the
+page lists them under "team".
 
 - **On a card or row**, "+2 more owners" means two more people have an email on
   file besides the one shown. Open the lead to see everyone named at the company,

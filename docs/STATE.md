@@ -87,8 +87,16 @@ Four gaps, all real:
 
 1. The page classifier returned two people, the founder and the successor. A page
    naming three brothers, or a husband and wife, or a managing partner beside the
-   founder, produced two names. It now returns up to four more owners and
-   leaders (staff titles are filtered out), stored as people on the company.
+   founder, produced two names. It now returns up to four more people, stored on
+   the company, and **only owners, executives and relatives are kept**. That last
+   rule came from running the real model on realistic pages (about 13 cents):
+   asked to leave staff out, it still listed a dispatcher, a crew leader and an
+   operations manager from a "Staff" section. The prompt is now stricter, and the
+   code keeps a person only if their title says they own or lead the business or
+   the page ties them to the family, so an unfinishable list of staff words is no
+   longer the safety net. On the three test pages the result was: a father and three
+   children gave the two other siblings; a husband-and-wife firm gave the wife and
+   none of the four staff; a sole owner gave nobody.
 2. Enrichment bought an address for **one** person and, if that came back empty,
    settled the company for good. It now tries the other listed people (up to three
    more) when the first lookup found nothing, or only a company-wide mailbox rather
@@ -102,9 +110,18 @@ Four gaps, all real:
    `contact_3_*` columns (hidden when empty).
 
 **Not done:** companies already in the database were not re-read for co-owners.
-That needs a model call per company and is the client's money; it is a small
-backfill script if wanted. The new classifier instruction has not been run against
-a live page.
+That needs a model call per company (about 1 cent each) and is the client's money;
+it is a small backfill script if wanted.
+
+**A finding worth acting on, not yet acted on:** one real classify call was 9.6 s
+and $0.011, and 416 of its 861 output tokens were the model's hidden reasoning.
+Output tokens are the slow and expensive part, so limiting the reasoning could cut
+classify time and cost by something like a third. Separately, one of five test calls
+came back EMPTY on both the 2,400 and the 4,000-token budgets (`finish_reason:
+length`), which looks like the reasoning running away with the budget; the code
+already comments that this loses about 1 company in 5 on some runs. Neither has been
+changed, because the verdicts were tuned with reasoning on and changing it needs a
+measured comparison on the eval set (about $3), which is the client's money.
 
 ### Faster and smoother
 

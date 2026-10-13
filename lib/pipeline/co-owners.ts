@@ -48,21 +48,40 @@ export interface PagePerson {
 }
 
 /**
- * Titles that mean "works there", not "runs there". The classifier is told to
- * return leadership only, and a model told that still occasionally returns a
- * crew lead; this is the net under it.
+ * WHO BELONGS ON THIS LIST: people who OWN the company, are FAMILY of the
+ * people who do, or run it as an executive. Not everyone with "manager" in their
+ * title.
+ *
+ * Found by running the real classifier on a realistic page, 2026-10-13: told to
+ * leave out "crew, technicians, office staff", the model still returned a
+ * dispatcher, a crew leader and an Operations Manager from a page that listed
+ * them under "Staff". The first two were caught by a list of staff words; the
+ * third was not, and a list of staff words can never be finished (project
+ * manager, superintendent, foreman, estimator, bookkeeper...). So the net is
+ * turned the other way round: a person is kept only if their title says they own
+ * or lead the business, or the page ties them to the family. That is also all
+ * this list is for: finding more owners to write to.
+ *
+ * "Director" is in because family firms use it for the people who run a function
+ * ("Director of Design"); "Executive" is deliberately NOT, because it is also an
+ * "Account Executive" in sales.
  */
-const NOT_LEADERSHIP =
-  /\b(crew|technician|installer|laborer|labourer|driver|receptionist|assistant|intern|apprentice|helper|foreman|dispatcher|secretary|bookkeeper|customer service|sales rep(resentative)?|estimator|designer|landscaper|mechanic|operator|coordinator)\b/i;
+const OWNER_LEVEL =
+  /\b(owner|co-?owner|proprietor|principal|partner|founder|co-?founder|president|vice[- ]president|v\.?p\.?|chair(?:man|woman|person)?|ceo|coo|cfo|chief (?:executive|operating|financial) officer|general manager|managing (?:director|member|partner)|director)\b/i;
+
+/** How the page ties them to the owners. Enough on its own, whatever their job. */
+const FAMILY =
+  /\b(wife|husband|spouse|son|daughter|brother|sister|sibling|father|mother|dad|mom|nephew|niece|cousin|uncle|aunt|grandson|granddaughter|grandfather|grandmother|in-law|child|children|relative|family|co-?owner|partner)\b/i;
 
 /**
  * Sanitise what the model returned.
  *
  * Only names a person could actually look up and ring (the same test the
  * founder and successor must pass), no duplicates of each other or of the two
- * people already recorded, no staff, and no more than MAX_PAGE_PEOPLE. Anything
- * malformed is dropped rather than repaired: a missing co-owner is a missing
- * field, a wrong one is a wrong name in a cold email.
+ * people already recorded, only owners, executives and family (see OWNER_LEVEL),
+ * and no more than MAX_PAGE_PEOPLE. Anything malformed is dropped rather than
+ * repaired: a missing co-owner is a missing field, a wrong one is a wrong name in
+ * a cold email.
  */
 export function cleanOtherPeople(raw: unknown, alreadyKnown: (string | null | undefined)[]): PagePerson[] {
   if (!Array.isArray(raw)) return [];
@@ -87,12 +106,17 @@ export function cleanOtherPeople(raw: unknown, alreadyKnown: (string | null | un
     // not provably one, so only an exact (normalised) match is treated as a dupe.
 
     const title = cleanTitle(typeof rec.title === "string" ? rec.title : null);
-    if (title && NOT_LEADERSHIP.test(title)) continue;
-
     const relationship =
       typeof rec.relationship === "string" && rec.relationship.trim()
         ? rec.relationship.trim().slice(0, 80)
         : null;
+
+    // An owner, an executive, or family. A relative in an ordinary job (a nephew
+    // who is a crew leader) stays, because the family is the point; an employee
+    // who is neither does not, however senior the page makes them sound.
+    const ownerLevel = !!title && OWNER_LEVEL.test(title);
+    const family = !!relationship && FAMILY.test(relationship);
+    if (!ownerLevel && !family) continue;
 
     seen.add(k);
     out.push({ name, title, relationship });
