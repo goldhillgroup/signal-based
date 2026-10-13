@@ -213,3 +213,37 @@ test("a single-state group stamps its state on what it found; a multi-state grou
 test("channel names are the ones the health check parses", () => {
   assert.deepEqual([...CHANNEL_NAMES], ["Directory", "Licensing", "Web search", "Maps"]);
 });
+
+test("each call is reported as it comes back, with how long it took", async () => {
+  const seenInfo: { channel: string; ok: boolean; count: number | null; ms: number }[] = [];
+  const { tasks, groups } = oneGroup(after(0, []), after(0, []), after(30, [raw("a.com", "web_search"), raw("b.com", "web_search")]), failAfter(60, "maps broke"));
+  const { first, rest } = progressiveDiscovery({
+    tasks,
+    groups,
+    graceMs: 10,
+    convert,
+    onSettle: (i) => seenInfo.push({ channel: i.channel, ok: i.error === null, count: i.count, ms: i.ms }),
+  });
+  await first;
+  await rest;
+  const web = seenInfo.find((s) => s.channel === "Web search")!;
+  assert.equal(web.count, 2);
+  assert.ok(web.ms >= 25 && web.ms < 500, `web search reported ${web.ms}ms`);
+  const maps = seenInfo.find((s) => s.channel === "Maps")!;
+  assert.equal(maps.ok, false);
+  assert.equal(seenInfo.length, 4, "all four calls were reported");
+});
+
+test("a logging hook that throws changes nothing", async () => {
+  const { tasks, groups } = oneGroup(after(0, []), after(0, []), after(5, [raw("a.com", "web_search")]), after(0, []));
+  const { first } = progressiveDiscovery({
+    tasks,
+    groups,
+    graceMs: 5,
+    convert,
+    onSettle: () => {
+      throw new Error("log failed");
+    },
+  });
+  assert.deepEqual(domains((await first).candidates), ["a.com"]);
+});

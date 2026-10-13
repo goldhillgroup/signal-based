@@ -11,9 +11,15 @@
  * Costs real money. Each run is ~$0.06 per company read, so a target of 3 is
  * roughly $0.25. It prints the spend it caused.
  *
- *   npx tsx e2e-run.mts                    # one run, landscaping/NY, target 3
- *   npx tsx e2e-run.mts --runs 3           # three different configurations
- *   npx tsx e2e-run.mts --keep             # leave the folders on the dashboard
+ *   npx tsx scripts/e2e-run.mts --mini     # the CHEAPEST real check: about $0.20
+ *   npx tsx scripts/e2e-run.mts            # one run, landscaping/NY, target 3 (hybrid: up to 60 reads)
+ *   npx tsx scripts/e2e-run.mts --runs 3   # three different configurations
+ *   npx tsx scripts/e2e-run.mts --keep     # leave the folders on the dashboard
+ *
+ * --mini is filter mode asking for 2 companies in a state with nothing on file, so
+ * the run reads at most 12 companies and every one is new. Use it to confirm the
+ * real vendors still work through the real pipeline after a change. It is not a
+ * measure of pair yield: a pair is about one company in thirty.
  *
  * Without --keep the folders are DETACHED and removed at the end, exactly the
  * way reset-leads.mts does it: the companies stay as cross-search memory (so
@@ -23,10 +29,11 @@
 import fs from "node:fs";
 
 for (const line of fs.readFileSync(".env.local", "utf8").split("\n")) {
-  const i = line.indexOf("=");
-  if (i > 0 && !line.trim().startsWith("#")) {
-    process.env[line.slice(0, i).trim()] ||= line.slice(i + 1).trim().replace(/^"|"$/g, "");
-  }
+  if (line.trim().startsWith("#")) continue;
+  // Tolerates a stray lowercase prefix on a line ("hoNEXT_PUBLIC_..."), which a
+  // hand edit can leave behind and which a strict loader reads as a different key.
+  const m = /^(?:[a-z]+)?([A-Z][A-Z0-9_]*)=(.*)$/.exec(line);
+  if (m) process.env[m[1]] ||= m[2].trim().replace(/^"|"$/g, "");
 }
 
 const { createServiceRoleClient } = await import("../lib/supabase/server.js");
@@ -50,6 +57,16 @@ interface Config {
 // Deliberately DIFFERENT shapes, not the same run three times. Each exercises a
 // path the others do not: multi-state fan-out, signal-only mode (which counts
 // differently and can exhaust its pool), and a band gate with a refinement.
+const MINI: Config = {
+  label: "E2E mini · landscaping · CO · filter (delete me)",
+  industry: "landscaping",
+  states: ["CO"],
+  target: 2,
+  mode: "filter",
+  refinement: null,
+  band: { min: null, max: null },
+};
+
 const CONFIGS: Config[] = [
   {
     label: "E2E 1 · landscaping · NY · hybrid",
@@ -105,8 +122,11 @@ function gradeLead(c: Record<string, unknown>, ev: Record<string, unknown> | und
 const created: string[] = [];
 let grandTotal = 0;
 
-for (let i = 0; i < Math.min(runs, CONFIGS.length); i++) {
-  const cfg = CONFIGS[i];
+const mini = argv.includes("--mini");
+const plan = mini ? [MINI] : CONFIGS.slice(0, Math.min(runs, CONFIGS.length));
+
+for (let i = 0; i < plan.length; i++) {
+  const cfg = plan[i];
   console.log(`\n${"═".repeat(78)}\n${cfg.label}\n${"═".repeat(78)}`);
 
   const { data: row, error } = await sb
@@ -170,6 +190,13 @@ for (let i = 0; i < Math.min(runs, CONFIGS.length); i++) {
 
   console.log(`  status            ${f?.status}${f?.error_message ? "  ERROR: " + f.error_message : ""}`);
   console.log(`  wall clock        ${secs.toFixed(1)}s`);
+  {
+    const stamps = all.map((c) => String(c.last_crawled_at ?? "")).filter(Boolean).sort();
+    if (stamps.length > 0) {
+      const first = (new Date(stamps[0]).getTime() - started) / 1000;
+      console.log(`  first company     stored ${first.toFixed(1)}s after the search began (reading starts when web search is back, not when Maps is)`);
+    }
+  }
   console.log(`  candidates        ${f?.candidates_found}  ->  read ${f?.companies_scanned}  (pages ${f?.pages_fetched})`);
   console.log(`  kept              ${leads.length}  (signal ${f?.qualified_count}+${f?.verify_count}, fit-only ${f?.fit_only_count})`);
   console.log(`  cut               ${cut.length}`);

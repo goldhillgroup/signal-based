@@ -23,8 +23,10 @@
  *   and the companies' own websites) is answered here, with latencies drawn from
  *   fixed distributions and a deterministic mix of companies (3% founder-and-
  *   successor pairs, 15% fit-only, the rest cut; 12% of sites bot-blocked, 8%
- *   slow). Nothing leaves this machine except Supabase calls. The latencies are
- *   plausible, not measured: use it to COMPARE versions, not to quote seconds.
+ *   slow). Discovery uses the latencies and yields MEASURED on the real vendors on
+ *   2026-10-13 (web search 30-75 s for ~16 candidates; Maps ~12 s for ~4; the
+ *   directory is not simulated). Nothing leaves this machine except Supabase
+ *   calls. Use it to COMPARE versions; do not quote its seconds as a promise.
  *
  * DATABASE SAFETY. It writes to the real database, so the writes are allow-
  * listed. Reads pass through. Allowed: inserting this run's own fake companies,
@@ -238,9 +240,9 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       ev(`web search #${call} started`);
       if (SCENARIO === "allfail") { await sleep(300, signal); ev(`web search #${call} FAILED (402)`); return json({ error: "not-enough-usage" }, 402); }
       if (SCENARIO === "webfail") { await sleep(2_000, signal); ev(`web search #${call} FAILED (400)`); return json({ error: "bad" }, 400); }
-      await sleep(between(r, 12_000, 18_000), signal);
+      await sleep(between(r, 30_000, 75_000), signal);
       if (SCENARIO === "dry") { ev(`web search #${call} returned 0`); return json([{ organicResults: [] }]); }
-      const results = Array.from({ length: 60 }, () => {
+      const results = Array.from({ length: 16 }, () => {
         const id = ++nextId;
         return { url: `https://${domainFor(id)}/`, title: `${companyName(id)} | Family Owned in Austin, TX` };
       });
@@ -253,9 +255,9 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       if (SCENARIO === "allfail") { await sleep(300, signal); ev(`maps #${call} FAILED (402)`); return json({ error: "not-enough-usage" }, 402); }
       if (SCENARIO === "mapsfail") { await sleep(20_000, signal); ev(`maps #${call} FAILED (400)`); return json({ error: "bad" }, 400); }
       if (SCENARIO === "mapshang") { ev(`maps #${call} HANGING`); await sleep(900_000, signal); }
-      await sleep(between(r, 60_000, 80_000), signal);
+      await sleep(between(r, 9_000, 15_000), signal);
       if (SCENARIO === "dry") { ev(`maps #${call} returned 0`); return json([]); }
-      const places = Array.from({ length: 12 }, () => {
+      const places = Array.from({ length: 4 }, () => {
         const id = ++nextId;
         return { title: companyName(id), website: `https://${domainFor(id)}/`, phone: "(512) 555-0100", city: "Austin", address: "1 Main St, Austin, TX", state: "TX" };
       });

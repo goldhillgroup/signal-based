@@ -58,23 +58,56 @@ export interface ProgressiveArgs<R extends { state?: string | null }, C> {
   convert: (raw: R, seen: Set<string>) => C | null;
   /** Domains that must not be returned again. Not modified. */
   exclude?: Set<string>;
+  /**
+   * Told as each call comes back, with how long it took. For the logs: how long
+   * each channel REALLY takes decides when reading can start, and that was a
+   * guess until it was written down.
+   */
+  onSettle?: (info: SettleInfo) => void;
+}
+
+export interface SettleInfo {
+  channel: (typeof CHANNEL_NAMES)[number];
+  /** The states of the group that made the call. */
+  group: string;
+  ms: number;
+  /** How many results it returned; null when it failed. */
+  count: number | null;
+  error: string | null;
 }
 
 export function progressiveDiscovery<R extends { state?: string | null }, C>(
   args: ProgressiveArgs<R, C>
 ): { first: Promise<Merged<C>>; rest: Promise<Merged<C>> } {
-  const { tasks, groups, graceMs, convert } = args;
+  const { tasks, groups, graceMs, convert, onSettle } = args;
   const nCh = CHANNEL_NAMES.length;
   const seen = new Set<string>(args.exclude ?? []);
+  const startedAt = Date.now();
+
+  const report = (i: number, count: number | null, error: string | null) => {
+    try {
+      onSettle?.({
+        channel: CHANNEL_NAMES[i % nCh],
+        group: groups[Math.floor(i / nCh)].join("/"),
+        ms: Date.now() - startedAt,
+        count,
+        error,
+      });
+    } catch {
+      // a logging hook must never change what discovery returns
+    }
+  };
 
   const settled: (Settled<R> | undefined)[] = tasks.map(() => undefined);
   const done = tasks.map((t, i) =>
     t.then(
       (value) => {
         settled[i] = { status: "fulfilled", value };
+        report(i, value.length, null);
       },
       (reason) => {
         settled[i] = { status: "rejected", reason };
+        report(i, null, String(reason?.message ?? reason).slice(0, 120));
       }
     )
   );

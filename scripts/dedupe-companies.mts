@@ -21,7 +21,8 @@
  *
  * SAFE BY DEFAULT. Without --write it changes nothing and prints the plan.
  * Deleting a company row also deletes its evidence quote (the contacts are moved
- * first), and that cannot be undone, which is why it asks.
+ * first), and that cannot be undone from the app, which is why it asks, and why
+ * --write first saves every row it is about to delete, in full, to backups/.
  *
  *   npx tsx scripts/dedupe-companies.mts            # plan only
  *   npx tsx scripts/dedupe-companies.mts --write    # do it
@@ -152,6 +153,32 @@ if (!write) {
 // ---- apply -----------------------------------------------------------------
 const { loadMarks, saveMarks } = await import("../lib/lead-notes.js");
 const marks = await loadMarks(sb);
+
+// 0. A COPY OF EVERYTHING ABOUT TO BE DELETED, written before anything is. Deleting
+// a company row also deletes its evidence quote and its contacts, and none of that
+// can be undone from the app, so the rows are saved in full (with the notes and
+// grades that belong to them) to backups/. Restoring is re-inserting from the file.
+{
+  const full: unknown[] = [];
+  for (let i = 0; i < deleteIds.length; i += 100) {
+    const { data, error } = await sb
+      .from("companies")
+      .select("*, signal_evidence(*), contacts(*)")
+      .in("id", deleteIds.slice(i, i + 100));
+    if (error) {
+      console.error(`could not take the backup, so nothing was changed: ${error.message}`);
+      process.exit(1);
+    }
+    full.push(...(data ?? []));
+  }
+  fs.mkdirSync("backups", { recursive: true });
+  const file = `backups/dedupe-companies-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+  fs.writeFileSync(
+    file,
+    JSON.stringify({ takenAt: new Date().toISOString(), rows: full, marks: Object.fromEntries(deleteIds.filter((id) => marks[id]).map((id) => [id, marks[id]])) }, null, 2)
+  );
+  console.log(`backup of ${full.length} rows written to ${file}`);
+}
 
 // 1. addresses first, so deleting a row can never take one with it
 for (const m of moveContacts) {

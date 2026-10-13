@@ -41,3 +41,6 @@ yarn-error.log*
 next-env.d.ts
 
 eval-results.*.json
+
+# row backups taken by destructive scripts (may hold client data)
+/backups/

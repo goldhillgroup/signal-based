@@ -1301,11 +1301,24 @@ function startDiscovery(params: DiscoveryParams, graceMs: number) {
   // The merge itself, and the two-part hand-over, live in discovery-merge.ts so
   // they can be tested without a network. See there for why the round is no
   // longer held up by its slowest channel.
-  return progressiveDiscovery({
+  const startedAt = Date.now();
+  const since = () => ((Date.now() - startedAt) / 1000).toFixed(1);
+  const log = (m: string) => console.log(`[discovery round ${round}] ${m}`);
+
+  const result = progressiveDiscovery({
     tasks,
     groups,
     graceMs,
     exclude: excludeDomains,
+    onSettle: (e) =>
+      // Skip the instant empties of the channels that were not asked this round
+      // (directory and licensing rotate states; Maps rotates too).
+      e.count === 0 && e.ms < 50
+        ? undefined
+        : log(
+            `${e.channel}${groups.length > 1 ? ` ${e.group}` : ""} ` +
+              `${e.error ? `FAILED (${e.error})` : `${e.count} results`} after ${(e.ms / 1000).toFixed(1)}s`
+          ),
     convert: (r, seen) => {
       const host = hostnameOf(r.url);
       if (!host || isBlocked(host) || seen.has(host)) return null;
@@ -1322,6 +1335,14 @@ function startDiscovery(params: DiscoveryParams, graceMs: number) {
       } satisfies Candidate;
     },
   });
+
+  void result.first
+    .then((f) => log(`reading can start after ${since()}s with ${f.candidates.length} candidates`))
+    .catch(() => {});
+  void result.rest.then((r) => {
+    if (r.candidates.length > 0) log(`the slower channels added ${r.candidates.length} more after ${since()}s`);
+  });
+  return result;
 }
 
 /**
