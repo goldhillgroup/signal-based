@@ -926,26 +926,63 @@ export async function runSearchPipeline(
     const EMPTY_DISCOVERIES_BEFORE_DRY = 4;
     let consecutiveEmpty = 0;
 
-    // THE SLOWER CHANNELS OF THE LAST DISCOVERY, still on their way.
+    // ── DISCOVERY, WHICH NO LONGER MAKES THE WORKERS WAIT ────────────────────
     //
-    // A discovery round used to hold the whole pass until its slowest channel
-    // answered, and the slowest is nearly always Google Maps, which is also the
-    // channel that yields least (about one pair in 170 companies read, against
-    // one in 30 for web search). Eight workers stood idle for tens of seconds,
-    // every round, for the sake of the least valuable candidates. Now reading
-    // starts as soon as web search is back, and Maps' candidates join the back
-    // of the queue when they land. Nothing is dropped. See discovery-merge.ts.
+    // Two things used to idle the pool for tens of seconds at a time.
     //
-    // While this is set, an empty buffer is not really empty yet: an idle worker
-    // waits on it, and the loop does not buy another round on top of a call that
-    // is still running. It never rejects.
-    let discoveryRest: Promise<void> | null = null;
+    // 1. A round held the whole pass until its SLOWEST channel answered, and the
+    //    slowest is nearly always Google Maps, which is also the channel that
+    //    yields least (about one pair in 170 companies read, against one in 30
+    //    for web search). Now reading starts as soon as web search is back, and
+    //    Maps' candidates join the back of the queue when they land. Nothing is
+    //    dropped. See discovery-merge.ts.
+    //
+    // 2. The next round was only bought once the buffer was EMPTY, so every
+    //    round ended with eight workers standing by for however long web search
+    //    took. Now it is bought when the buffer runs LOW, while they are still
+    //    reading, so the next candidates are usually there before they are
+    //    needed. A pass is also no longer allowed to end with time on the clock
+    //    just because nothing was left to read: the last discovery used to start
+    //    only when the queue was already empty, which late in a pass meant too
+    //    late.
+    //
+    // Both parts of a discovery are tracked in `discoveryWork`, so a worker that
+    // finds the queue empty knows whether more is coming (wait) or not (retire).
+
+    /** Every discovery that has not finished landing, first part and slower channels both. */
+    const discoveryWork = new Set<Promise<void>>();
+    /** A discovery's first part is on its way. Only one at a time. */
+    let discoveryStarting = false;
+    /** What the last discovery reported, for the "could not search" message. */
+    let lastDiscoveryErrors: string[] = [];
+    /** A background discovery came back empty or failed: leave the next one to the loop. */
+    let prefetchBlocked = false;
+
+    // Wakes workers that are waiting for candidates.
+    let arrivalWake: () => void = () => {};
+    let nextArrival: Promise<void> = new Promise<void>((r) => (arrivalWake = r));
+    function announceArrival() {
+      const wake = arrivalWake;
+      nextArrival = new Promise<void>((r) => (arrivalWake = r));
+      wake();
+    }
+    /** For drainQueue: the next point the queue may have grown, or null if nothing is coming. */
+    const waitForArrivals = (): Promise<unknown> | null =>
+      discoveryWork.size === 0
+        ? null
+        : // Never past the deadline: a channel still crawling must not hold the
+          // pass until the platform kills it, because the clean ending would
+          // never run.
+          waitUpTo(Promise.race([nextArrival, Promise.all([...discoveryWork])]), deadlineAt - Date.now());
 
     /**
      * Put a discovery's candidates in the queue.
      *
      * Claimed for this search the moment they enter the buffer, so the next
-     * discovery call can't re-return (or re-bill) them.
+     * discovery call can't re-return (or re-bill) them. Anything already claimed
+     * by an earlier discovery is left out: two discoveries can overlap now, so a
+     * slow channel from the last one may return a company the next one has
+     * already brought.
      *
      * Drops the organisations whose own name says they are not a trade business
      * — associations, law firms, magazines, city departments. Every channel
@@ -959,19 +996,141 @@ export async function runSearchPipeline(
      * channel having a bad run still earns observations. Nothing is dropped —
      * the scan ceiling is simply spent on the most promising candidates first,
      * which is where the 7x difference between web_search and maps actually
-     * turns into signals. The late part is ordered among itself and goes
-     * BEHIND what is already queued: it is, by construction, the lower-yield part.
+     * turns into signals. A late part is ordered among itself and goes BEHIND
+     * what is already queued: it is, by construction, the lower-yield part.
      */
     function admit(fresh: Candidate[]) {
-      fresh.forEach((c) => seenDomains.add(c.domain));
-      const offTrade = fresh.filter((c) => isOffTradeName(c.title) || isOffTradeName(c.domain));
+      const novel = fresh.filter((c) => !seenDomains.has(c.domain));
+      novel.forEach((c) => seenDomains.add(c.domain));
+      const offTrade = novel.filter((c) => isOffTradeName(c.title) || isOffTradeName(c.domain));
       if (offTrade.length > 0) {
         console.log(
           `Search ${searchId}: skipped ${offTrade.length} non-trade organisation(s) before any spend — ` +
             offTrade.map((c) => c.title || c.domain).slice(0, 6).join(", ")
         );
       }
-      pending.push(...orderByYield(fresh.filter((c) => !offTrade.includes(c)), rates, explore));
+      pending.push(...orderByYield(novel.filter((c) => !offTrade.includes(c)), rates, explore));
+      announceArrival();
+    }
+
+    type DiscoveryOutcome = { kind: "ok" } | { kind: "empty" } | { kind: "failed"; message: string };
+
+    /**
+     * ONE DISCOVERY ROUND, from wherever it is called.
+     *
+     * Resolves when the FIRST part has been queued; the slower channels are
+     * merged in later by themselves. Called by the round loop when the buffer is
+     * empty, and in the background by maybePrefetch when it is running low. It
+     * never rejects.
+     */
+    async function beginDiscovery(): Promise<DiscoveryOutcome> {
+      discoveryCalls++;
+      discoveryAttempts++;
+      discoveryStarting = true;
+      const call = discoveryCalls;
+
+      // Registered at once, so a worker that finds the queue empty while the
+      // first part is still on its way waits for it instead of retiring.
+      let settle!: () => void;
+      const whole = new Promise<void>((r) => (settle = r));
+      discoveryWork.add(whole);
+      const finish = () => {
+        discoveryWork.delete(whole);
+        settle();
+        announceArrival();
+      };
+
+      try {
+        const discovery = discoverProgressively({
+          industries,
+          states,
+          limit: Math.min(ROUND_SIZE, Math.max(1, scanCeiling - totalScanned)),
+          round: call,
+          excludeDomains: seenDomains,
+          refinement,
+        });
+        // Web search and whatever answered with it. Waits for everything when
+        // there is nothing to read yet, so an empty round behaves as before.
+        const { candidates: fresh, channelErrors } = await discovery.first;
+        discoveryStarting = false;
+        lastDiscoveryErrors = channelErrors;
+        if (runEnded) {
+          finish();
+          return { kind: "ok" };
+        }
+        if (channelErrors.length > 0) {
+          channelFailures.push(...channelErrors);
+          console.warn(`Search ${searchId} discovery ${call}: ${channelErrors.join(" | ")}`);
+        }
+        admit(fresh);
+        // Re-checks go BEHIND fresh ground, once, after the first discovery has
+        // returned. They used to be seeded ahead of it, so a pass could be
+        // spent entirely on slow re-reads before discovery ever ran.
+        if (recheckQueue.length > 0) {
+          pending.push(...recheckQueue.splice(0));
+          announceArrival();
+        }
+        totalDiscovered += fresh.length;
+        await bump(supabase, searchId, { candidates_found: totalDiscovered });
+
+        // The slower channels, queued behind everything above when they land.
+        void discovery.rest
+          .then((late) => {
+            if (runEnded) return;
+            if (late.channelErrors.length > 0) {
+              channelFailures.push(...late.channelErrors);
+              console.warn(`Search ${searchId} discovery ${call} (late): ${late.channelErrors.join(" | ")}`);
+            }
+            if (late.candidates.length > 0) {
+              admit(late.candidates);
+              totalDiscovered += late.candidates.length;
+              queueBump({ candidates_found: totalDiscovered });
+            }
+          })
+          .catch(() => {})
+          .finally(finish);
+
+        if (fresh.length === 0) {
+          consecutiveEmpty++;
+          if (consecutiveEmpty >= EMPTY_DISCOVERIES_BEFORE_DRY) poolDry = true;
+          return { kind: "empty" };
+        }
+        // Any hit at all means the rotation is still finding ground. Reset,
+        // so four empties scattered across a long run never accumulate into
+        // a false "exhausted".
+        consecutiveEmpty = 0;
+        return { kind: "ok" };
+      } catch (e) {
+        discoveryStarting = false;
+        finish();
+        return { kind: "failed", message: (e as Error).message.slice(0, 200) };
+      }
+    }
+
+    // How low the buffer may run before the next round is bought. Two waves of
+    // workers' worth: roughly 40 seconds of reading, comfortably longer than web
+    // search normally takes to answer.
+    const PREFETCH_BELOW = 3 * PIPELINE_CONCURRENCY;
+
+    /**
+     * Buy the next discovery round in the background if the buffer is running low
+     * and the run still has a use for it. Checked each time a worker takes a
+     * company. Every condition is one the round loop applies to a blocking
+     * discovery, so a prefetch never buys what the loop would have refused.
+     */
+    function maybePrefetch() {
+      if (discoveryStarting || poolDry || prefetchBlocked || runEnded) return;
+      if (pending.length > PREFETCH_BELOW) return;
+      if (!hasRoomFor(WORST_CASE_MS.discovery)) return;
+      if (estimateUsd(costCounters) >= spendCeilingUsd) return;
+      // Already queued enough to reach the read ceiling, or the target is met.
+      if (totalScanned + pending.length >= scanCeiling) return;
+      if (reachedSoFar() >= targetSignals) return;
+      void beginDiscovery().then((o) => {
+        // An empty or failed round is the loop's to handle (rotate, retry, or
+        // stop with a reason). Do not keep buying on top of it from here.
+        if (o.kind !== "ok") prefetchBlocked = true;
+      });
     }
 
     // ── THE ONE PLACE A COMPANY ROW IS WRITTEN ───────────────────────────
@@ -1075,21 +1234,24 @@ export async function runSearchPipeline(
         break roundLoop;
       }
       round++;
-      const roundLimit = Math.min(ROUND_SIZE, scanCeiling - totalScanned);
 
-      // The slower channels of the last discovery may still be on their way. If
-      // the queue has run dry they ARE the next candidates, so wait for them
-      // rather than buying another round on top of a call that is still running.
-      if (pending.length === 0 && discoveryRest) await waitUpTo(discoveryRest, deadlineAt - Date.now());
+      // A discovery may still be landing. If the queue has run dry it IS the next
+      // supply, so wait for it rather than buying another round on top of a call
+      // that is still running.
+      if (pending.length === 0 && discoveryWork.size > 0) {
+        await waitUpTo(Promise.all([...discoveryWork]), deadlineAt - Date.now());
+      }
 
-      // ── 1. Refill the buffer only when it's actually empty ───────────────
+      // ── 1. Refill the buffer when it has run dry ─────────────────────────
+      // (When it is merely running LOW, maybePrefetch has already bought the next
+      // round in the background, so this is the fallback for when that did not
+      // happen: the first round of a pass, or one it was not allowed to buy.)
       // Discover + fetch get their own try/catch: an Apify hiccup (timeout,
       // rate limit) on round 2+ must not discard signals already found and
       // persisted in earlier rounds — degrade to "stop here, keep what we
       // have" rather than letting it bubble to the outer catch's full
       // status: 'failed', which would misrepresent real, saved results as
       // a failed run.
-      let roundChannelErrors: string[] = [];
       // Only buy MORE candidates if a discovery call can finish inside the
       // budget. Out of room means drain what is already paid for and stop
       // cleanly, rather than starting a 120-second call with 40 seconds left.
@@ -1122,74 +1284,24 @@ export async function runSearchPipeline(
         break roundLoop;
       }
       if (pending.length === 0 && !poolDry) {
-        discoveryCalls++;
-        discoveryAttempts++;
-        try {
-          const discovery = discoverProgressively({
-            industries,
-            states,
-            limit: roundLimit,
-            round: discoveryCalls,
-            excludeDomains: seenDomains,
-            refinement,
-          });
-          // Web search and whatever answered with it. Waits for everything when
-          // there is nothing to read yet, so an empty round behaves as before.
-          const { candidates: fresh, channelErrors } = await discovery.first;
-          if (channelErrors.length > 0) {
-            roundChannelErrors = channelErrors;
-            channelFailures.push(...channelErrors);
-            console.warn(`Search ${searchId} discovery ${discoveryCalls}: ${channelErrors.join(" | ")}`);
-          }
-          admit(fresh);
-          // Re-checks go BEHIND fresh ground, once, after the first discovery has
-          // returned. They used to be seeded ahead of it, so a pass could be
-          // spent entirely on slow re-reads before discovery ever ran.
-          if (recheckQueue.length > 0) pending.push(...recheckQueue.splice(0));
-          totalDiscovered += fresh.length;
-          await bump(supabase, searchId, { candidates_found: totalDiscovered });
-
-          // The slower channels, queued behind everything above when they land.
-          const call = discoveryCalls;
-          const landing: Promise<void> = discovery.rest
-            .then((late) => {
-              if (runEnded) return;
-              if (late.channelErrors.length > 0) {
-                channelFailures.push(...late.channelErrors);
-                console.warn(`Search ${searchId} discovery ${call} (late): ${late.channelErrors.join(" | ")}`);
-              }
-              if (late.candidates.length > 0) {
-                admit(late.candidates);
-                totalDiscovered += late.candidates.length;
-                queueBump({ candidates_found: totalDiscovered });
-              }
-            })
-            .catch(() => {})
-            .finally(() => {
-              if (discoveryRest === landing) discoveryRest = null;
-            });
-          discoveryRest = landing;
-
-          if (fresh.length === 0) {
-            consecutiveEmpty++;
-            if (consecutiveEmpty >= EMPTY_DISCOVERIES_BEFORE_DRY) poolDry = true;
-            else continue roundLoop; // rotate to the next metro/phrasing and ask again
-          } else {
-            // Any hit at all means the rotation is still finding ground. Reset,
-            // so four empties scattered across a long run never accumulate into
-            // a false "exhausted".
-            consecutiveEmpty = 0;
-          }
-        } catch (e) {
-          stoppedEarlyReason = `Stopped after round ${round}: discovery failed (${(e as Error).message.slice(0, 200)})`;
+        const outcome = await beginDiscovery();
+        // The loop is in charge again; a background round may be bought once more.
+        prefetchBlocked = false;
+        if (outcome.kind === "failed") {
+          stoppedEarlyReason = `Stopped after round ${round}: discovery failed (${outcome.message})`;
           break;
         }
+        // Nothing new anywhere. Rotate to the next metro/phrasing and ask again,
+        // unless that was the fourth in a row, which means the pool is dry.
+        if (outcome.kind === "empty" && !poolDry) continue roundLoop;
       }
 
       // The first part can come back with nothing worth reading (every one of
       // them a non-trade organisation) while the slower channels are about to
       // deliver. That is not an empty pool.
-      if (pending.length === 0 && discoveryRest) await waitUpTo(discoveryRest, deadlineAt - Date.now());
+      if (pending.length === 0 && discoveryWork.size > 0) {
+        await waitUpTo(Promise.all([...discoveryWork]), deadlineAt - Date.now());
+      }
 
       if (pending.length === 0) {
         // CRITICAL DISTINCTION: "this state has no more companies" and "we
@@ -1199,9 +1311,9 @@ export async function runSearchPipeline(
         // budget cap, an outage, an expired key — tells Jonathan California is
         // mined out when in fact nobody looked. Only claim exhaustion when
         // discovery genuinely ran.
-        if (roundChannelErrors.length > 0) {
+        if (lastDiscoveryErrors.length > 0) {
           stoppedEarlyReason =
-            `Could not search: ${roundChannelErrors.join(" | ")}`.slice(0, 500);
+            `Could not search: ${lastDiscoveryErrors.join(" | ")}`.slice(0, 500);
         } else {
           await bump(supabase, searchId, { candidates_pool_exhausted: true });
         }
@@ -1247,6 +1359,7 @@ export async function runSearchPipeline(
       // mid-statement, only whole statements between awaits.
       let fetchFailure: Error | null = null;
       let targetHit = false;
+      maybePrefetch();
       await drainQueue(pending, PIPELINE_CONCURRENCY, async (candidate) => {
         // Target already reached by an in-flight sibling — skip the remaining
         // classify spend. (With concurrency N, up to N-1 extra companies can
@@ -1980,10 +2093,10 @@ export async function runSearchPipeline(
         totalScanned >= scanCeiling ||
         targetHit ||
         fetchFailure !== null
-      // An idle worker waits for the slower discovery channels, but never past the
-      // deadline: a channel still crawling must not hold the pass until the
-      // platform kills it, because the clean ending would never run.
-      , () => (discoveryRest ? waitUpTo(discoveryRest, deadlineAt - Date.now()) : null));
+      // An idle worker waits for whatever discovery is still landing (never past
+      // the deadline), and each company taken is a chance to notice the queue
+      // running low and buy the next round before the workers run out.
+      , waitForArrivals, () => maybePrefetch());
 
       await flushBumps();
       // Whatever was never started is still in `pending`, never read and never

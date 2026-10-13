@@ -122,20 +122,46 @@ Every list read now pages through the database's 1,000-row cap instead of silent
 dropping the oldest rows once a table passes it (the companies table is at 1,668
 rows and a folder can now hold 1,000).
 
-Search itself had two stretches where eight workers stood idle: waiting for the
-slowest discovery channel (nearly always Google Maps, which also yields least, 1
-pair in ~170 reads) and at the end of every batch of 32 companies behind the last
-slow site. Reading now **starts as soon as web search is back**, Maps' candidates
-join the back of the queue when they land (nothing is dropped), and the workers
-share one queue so none waits behind another.
+Search itself had three stretches where eight workers stood idle:
 
-**Not yet proven live, and worth stating plainly:** the building blocks have their
-own tests (26), but the glue in the search loop was type-checked and reviewed, not
-run against live vendors. The seconds-per-company figure that sizes "about N
-passes" on the form (2.6) is an estimate; the old measured figure was 5.2 before
-these changes, and runs on the older code averaged 7 to 16 seconds a company
-end to end (**measured**, but including gaps between passes). It should be
-re-measured from the first real run.
+1. **Waiting for the slowest discovery channel**, nearly always Google Maps, which
+   also yields least (1 pair in ~170 reads against 1 in 33 for web search). Reading
+   now **starts as soon as web search is back**; Maps' candidates join the back of the
+   queue when they land. Nothing is dropped, and a Maps call that never answers no
+   longer holds the pass.
+2. **At the end of every batch of 32 companies**, behind the last slow site. The
+   workers now share one queue, so none waits behind another.
+3. **Between discovery rounds.** The next round was only bought once the queue was
+   empty. It is now bought when the queue runs low, while the workers are still
+   reading, so the next candidates are usually there before they are needed.
+
+**Measured on a simulation, not on live vendors** (`scripts/sim-run.mts`, which runs
+the real pipeline and the real database against fake vendors with plausible
+latencies, so it costs nothing and two versions of the code can be compared under
+identical conditions). One pass, same world each time:
+
+| | Before | After |
+|---|---|---|
+| First company read starts | ~64 s (waiting for Maps) | ~19 s |
+| Companies read in one pass | 64 | **108** |
+| Stalls at batch boundaries | yes | none |
+| Maps never answers | the pass waits on it | pass ends cleanly at 226 s, 107 read |
+
+Also exercised on the simulation: Maps failing (reported once, as a warning), web
+search failing (Maps' candidates are read instead), every vendor out of credit
+(ends with "Could not search" and the reason), and an empty pool (declared dry after
+four empty rounds). The latencies are plausible, not measured, so the **ratio** is
+meaningful and the seconds are not a promise.
+
+**Not yet proven on live vendors, and worth stating plainly:** the same changes
+have not been run against real Apify and OpenRouter, because that spends the
+client's credits. Reading more per pass buys more discovery rounds per pass (about
+one extra round, roughly 7 cents), so cost per company read should be unchanged
+while cost per pass rises with the work done. The seconds-per-company figure that
+sizes "about N passes" on the form (2.6) is still an estimate; the old measured
+figure was 5.2, and runs on the older code averaged 7 to 16 seconds a company end
+to end (**measured**, but including gaps between passes). It should be re-measured
+from the first real run.
 
 ### Things worth knowing
 

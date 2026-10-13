@@ -194,3 +194,35 @@ test("waitUpTo with no time left returns at once", async () => {
   await waitUpTo(new Promise(() => {}), -5);
   assert.ok(Date.now() - t0 < 200);
 });
+
+test("onTake sees the queue as it stands, so the next supply can be fetched before it runs out", async () => {
+  const queue = [1, 2, 3, 4, 5, 6];
+  const remaining: number[] = [];
+  await drainQueue(
+    queue,
+    1,
+    async () => {},
+    () => false,
+    undefined,
+    (n) => remaining.push(n)
+  );
+  assert.deepEqual(remaining, [5, 4, 3, 2, 1, 0]);
+});
+
+test("a throwing onTake does not stop the work", async () => {
+  const queue = [1, 2, 3];
+  const ran: number[] = [];
+  await drainQueue(
+    queue,
+    2,
+    async (n) => {
+      ran.push(n);
+    },
+    () => false,
+    undefined,
+    () => {
+      throw new Error("hook failed");
+    }
+  );
+  assert.deepEqual(ran.sort(), [1, 2, 3]);
+});

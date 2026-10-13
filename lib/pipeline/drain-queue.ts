@@ -35,13 +35,19 @@
  *                  null when nothing more is coming. An idle worker waits on it
  *                  and looks again; when it is null the idle worker retires. It
  *                  must never reject.
+ * @param onTake    Called each time a worker takes an item, with the queue as it
+ *                  now stands. This is where the caller notices the queue running
+ *                  low and starts fetching the next supply BEFORE the workers run
+ *                  out, so they never stand idle waiting for it. A throw is
+ *                  swallowed: it must not take a worker down.
  */
 export async function drainQueue<T>(
   queue: T[],
   limit: number,
   run: (item: T) => Promise<void>,
   shouldStop: () => boolean,
-  arrivals?: () => Promise<unknown> | null
+  arrivals?: () => Promise<unknown> | null,
+  onTake?: (remaining: number) => void
 ): Promise<void> {
   async function worker() {
     for (;;) {
@@ -52,6 +58,11 @@ export async function drainQueue<T>(
         if (!next) return;
         await next;
         continue;
+      }
+      try {
+        onTake?.(queue.length);
+      } catch {
+        // a monitoring hook must never stop the work
       }
       await run(item);
     }
