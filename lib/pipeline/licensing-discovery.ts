@@ -579,6 +579,36 @@ async function loadOregon(industry: Industry | null): Promise<LicenseRow[]> {
   }));
 }
 
+// ── Which trades each board actually LICENSES ───────────────────────────────
+//
+// A board that does not license a trade has nothing to enumerate for it, and
+// that is a known fact about the world, not a failed round. It was being
+// reported as a failure anyway: California's loader built an empty class list
+// for professional services, manufacturing and distribution, and
+// `[].every(rejected)` is true, so it threw "CSLB returned no rows". Every
+// California search for one of those trades then carried "State licensing
+// boards failed. Results may be incomplete until that's topped up" -- advice to
+// fix something that was never broken, on a channel that had no business
+// looking. Washington built invalid SoQL from an empty list (HTTP 400), and
+// Oregon answered a professional-services search with builders and landscapers.
+//
+// `null` means no vertical was chosen, which the loaders already treat as
+// "landscaping and home builders".
+const LICENSED_BY_STATE: Record<string, (industry: Industry) => boolean> = {
+  CA: (i) => CSLB_CLASSES[i].length > 0,
+  WA: (i) => WA_SPECIALTY_LIKE[i].length > 0,
+  // Oregon's loader only has endorsements for builders and name matches for
+  // landscaping; anything else would fall back to returning those two.
+  OR: (i) => i === "landscaping" || i === "home_builder",
+};
+
+/** Does this state's board license the trade at all? */
+export function boardLicenses(state: string, industry: Industry | null): boolean {
+  if (industry === null) return true;
+  const covers = LICENSED_BY_STATE[state];
+  return covers ? covers(industry) : false;
+}
+
 // ── The support table ───────────────────────────────────────────────────────
 // Every entry, positive or negative, is backed by a request in the PROBE LOG.
 // An unsupported state is not an error and not a gap to be filled later by
@@ -692,6 +722,8 @@ export async function discoverViaLicensing(
 ): Promise<Candidate[]> {
   const state = stateForRound(states, round);
   if (!state) return [];
+  // Nothing to enumerate for a trade this board does not license. Not a failure.
+  if (!boardLicenses(state, industry)) return [];
 
   const rows = await loadRows(state, industry);
 

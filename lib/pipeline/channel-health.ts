@@ -67,27 +67,65 @@ interface ChannelWarning {
   channel: string;
   reason: string;
   actionable: boolean;
+  /** Failed for every state in that call, rather than for some of them. */
+  total: boolean;
+  /** For a partial failure, the states that could not be searched. */
+  states: string | null;
 }
 
 /**
- * Turn a raw thrown message ("Web search channel failed: Apify self-imposed
- * budget cap hit: this account has used $5.64 this cycle (cap: $5)") into
- * something worth putting in front of a user.
+ * The channels that actually PRODUCE leads, by measurement.
+ *
+ * On this installation's own reads, web search finds a confirmed pair about one
+ * time in ten to thirty reads and Maps is the volume backstop behind it;
+ * the directory channel produced zero pairs in 159 reads and licensing boards
+ * about none. A warning that says "results may be incomplete" is a claim about
+ * the RESULTS, so it is only true when a channel that moves the results was
+ * degraded. Putting the same banner on a run because a free government download
+ * returned a 504 is what taught people to ignore it.
+ *
+ * Minor channels are still counted (they appear in the used/total sum) but they
+ * never raise the banner on their own.
+ */
+const MATERIAL_CHANNELS = new Set(["Web search", "Google Maps"]);
+
+/**
+ * Turn a raw message into something worth putting in front of a user.
+ *
+ * Two shapes arrive from discoverCandidates:
+ *   "Web search channel failed: Apify self-imposed budget cap hit: ..."  (every state failed)
+ *   "Web search channel failed for CA/NY only"                           (some states failed)
+ * The second has no colon, so the original single pattern never matched it and
+ * the channel name came out as "A discovery channel" -- which is exactly the
+ * unreadable "A discovery channel failed" that was showing on real runs.
  */
 function summarizeChannelError(raw: string): ChannelWarning {
   // [\s\S] rather than the /s flag — the tsconfig target predates ES2018.
-  const m = raw.match(/^(.*?) channel failed: ([\s\S]*)$/);
-  const rawChannel = m ? m[1].trim() : "A discovery channel";
-  const detail = m ? m[2] : raw;
+  const full = raw.match(/^(.*?) channel failed: ([\s\S]*)$/);
+  const partial = !full ? raw.match(/^(.*?) channel failed for (.+?) only$/) : null;
+  const rawChannel = (full?.[1] ?? partial?.[1] ?? "").trim();
+  const detail = full ? full[2] : raw;
 
   const hit = REASONS.find((r) => r.test.test(detail));
   return {
-    channel: CHANNEL_LABELS[rawChannel] ?? rawChannel,
+    channel: CHANNEL_LABELS[rawChannel] ?? (rawChannel || "A discovery channel"),
     reason: hit ? hit.short : "failed",
     // Unknown failures are treated as actionable: better to send someone
     // looking at a healthy vendor than to bury a real outage as "transient".
     actionable: hit ? hit.actionable : true,
+    total: !partial,
+    states: partial ? partial[2].trim() : null,
   };
+}
+
+export interface WarningOptions {
+  /**
+   * How many discovery calls this pass made. With it, a channel is only called
+   * degraded when it failed in at least HALF of them: one Maps timeout in a
+   * four-call run searched a pool that was still almost entirely there. Without
+   * it, every failure counts, as before.
+   */
+  calls?: number;
 }
 
 /**
@@ -95,31 +133,57 @@ function summarizeChannelError(raw: string): ChannelWarning {
  *
  * Deliberately states what DID run as well as what didn't — "3 of 4 channels"
  * is the number that tells him how much to trust a short result. Returns null
- * when nothing degraded, so callers can render nothing at all.
+ * when nothing that matters degraded, so callers can render nothing at all.
  */
 export function buildWarningLine(
   rawErrors: Iterable<string>,
   // 4 since licensing joined discoverCandidates. This default is the only
   // place the channel count is written down, so adding a fifth channel means
   // changing it here as well as in apify.ts.
-  totalChannels = 4
+  totalChannels = 4,
+  opts: WarningOptions = {}
 ): string | null {
-  const byChannel = new Map<string, ChannelWarning>();
+  // Every occurrence is kept (a Set of strings used to collapse repeats), so a
+  // channel that failed in all four rounds is distinguishable from one that
+  // failed once.
+  const byChannel = new Map<string, { w: ChannelWarning; hits: number; states: Set<string> }>();
   for (const raw of rawErrors) {
     const w = summarizeChannelError(raw);
+    const entry = byChannel.get(w.channel) ?? { w, hits: 0, states: new Set<string>() };
+    entry.hits++;
+    if (w.states) w.states.split("/").forEach((st) => entry.states.add(st.trim()));
     // First reason per channel wins — a channel that was capped in round 1 and
     // timed out in round 4 is still "capped" as far as the user is concerned.
-    if (!byChannel.has(w.channel)) byChannel.set(w.channel, w);
+    byChannel.set(w.channel, entry);
   }
   if (byChannel.size === 0) return null;
 
-  const parts = Array.from(byChannel.values()).map((w) => `${w.channel} ${w.reason}`);
-  const used = Math.max(0, totalChannels - byChannel.size);
-  const anyActionable = Array.from(byChannel.values()).some((w) => w.actionable);
+  const calls = opts.calls;
+  const degraded = Array.from(byChannel.values()).filter(({ hits }) =>
+    calls === undefined ? true : hits >= Math.max(1, Math.ceil(calls / 2))
+  );
+  if (degraded.length === 0) return null;
+
+  // Searched with N of M: how many channels worked, counting the minor ones.
+  const used = Math.max(0, totalChannels - degraded.length);
+  const material = degraded.filter(({ w }) => MATERIAL_CHANNELS.has(w.channel));
+  const nothingSearched = used === 0;
+
+  // Only minor channels degraded, and something else worked: not a statement
+  // about the results, so say nothing.
+  if (material.length === 0 && !nothingSearched) return null;
+
+  const shown = nothingSearched ? degraded : material;
+  const parts = shown.map(({ w, states }) =>
+    w.total || states.size === 0
+      ? `${w.channel} ${w.reason}`
+      : `${w.channel} could not search ${Array.from(states).join(", ")}`
+  );
+  const anyActionable = shown.some(({ w }) => w.actionable);
 
   return (
     `Searched with ${used} of ${totalChannels} discovery channels, ${parts.join("; ")}. ` +
-    (used === 0
+    (nothingSearched
       ? "No channel was able to search, so this is not a statement about what exists."
       : "Results may be incomplete" +
         (anyActionable ? " until that's topped up." : ", worth re-running later."))
