@@ -19,6 +19,7 @@ import { countsTowardTarget } from "./target-count";
 import { auditRow } from "./row-audit";
 import { pickRechecks, nextRecheckAfter, decideLead, normDomain, SUPERSEDED_REASON } from "./recheck-selection";
 import { drainQueue, waitUpTo } from "./drain-queue";
+import { searchCounts } from "./search-counts";
 import { withDbRetry, isDuplicateKey } from "./db-retry";
 import { cleanOtherPeople, titleFor, PAGE_PERSON_SOURCE } from "./co-owners";
 import { runWithCounters, estimateUsd, describeCost, type CostCounters } from "./cost-tracker";
@@ -1246,13 +1247,21 @@ export async function runSearchPipeline(
           return { id: null, stored: false };
         }
         if (decision.action === "supersede") {
-          await withDbRetry(() =>
+          const { data: retired } = await withDbRetry(() =>
             supabase
               .from("companies")
               .update({ status: "rejected", rejection_reason: SUPERSEDED_REASON, recheck_after: null })
               .in("id", decision.ids)
-              .select("id")
+              .select("id, search_id")
           );
+          // The folders those leads were in keep running totals that no longer
+          // add up: one of them said 5 fit-only and 7 cut while holding 4 and 8.
+          // Recounted from the rows, which is the only repair that cannot drift.
+          const affected = [...new Set((retired ?? []).map((r) => r.search_id).filter((id): id is string => !!id))];
+          for (const sid of affected) {
+            const { data: rows } = await supabase.from("companies").select("status, has_signal, confidence").eq("search_id", sid);
+            if (rows) await bump(supabase, sid, searchCounts(rows));
+          }
         }
       }
 

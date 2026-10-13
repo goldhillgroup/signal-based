@@ -160,6 +160,7 @@ if (!write) {
 
 // ---- apply -----------------------------------------------------------------
 const { loadMarks, saveMarks } = await import("../lib/lead-notes.js");
+const { searchCounts } = await import("../lib/pipeline/search-counts.js");
 const marks = await loadMarks(sb);
 
 // 0. A COPY OF EVERYTHING ABOUT TO BE DELETED, written before anything is. Deleting
@@ -216,17 +217,6 @@ for (let i = 0; i < deleteIds.length; i += 100) {
 // 4. counters, recounted from the rows that are left
 for (const id of affectedSearches) {
   const { data } = await sb.from("companies").select("status,has_signal,confidence").eq("search_id", id);
-  const rs = data ?? [];
-  const kept = rs.filter((r) => r.status === "qualified");
-  const pairs = kept.filter((r) => r.has_signal);
-  await sb
-    .from("searches")
-    .update({
-      qualified_count: pairs.filter((r) => r.confidence !== "verify").length,
-      verify_count: pairs.filter((r) => r.confidence === "verify").length,
-      fit_only_count: kept.length - pairs.length,
-      rejected_count: rs.filter((r) => r.status === "rejected").length,
-    })
-    .eq("id", id);
+  await sb.from("searches").update(searchCounts(data ?? [])).eq("id", id);
 }
 console.log(`\nDone. Removed ${deleteIds.length} rows, moved ${moveContacts.length} contacts, recounted ${affectedSearches.size} folders.`);

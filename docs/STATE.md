@@ -209,11 +209,27 @@ but not counted in that pass's cost estimate. The seconds-per-company figure tha
 sizes "about N passes" on the form (2.6) is still an estimate.
 
 **Co-owners for the leads already on file** (`scripts/backfill-co-owners.mts`, run
-2026-10-13): 148 companies, 124 read, **46 had other owners named, 74 people added**,
-3 addresses attributed to the right person, **$1.36** for the classifier calls.
-17 were skipped because the site would not load without a paid render, and 4 failed
-with the model's empty-answer problem; re-running the script retries only those. It
-buys no addresses: finding emails stays the separate, confirmed step.
+2026-10-13): 148 companies, 130 read, **50 had other owners named, 79 people added**,
+3 addresses attributed to the right person, about **$1.45** for the classifier calls.
+15 sites will not load without a paid render and were left alone. It buys no
+addresses: finding emails stays the separate, confirmed step.
+
+**Empty answers from the classifier, fixed on the retry.** In about one call in
+thirty (4 of 128 on that backfill) the model's hidden reasoning used its whole token
+budget before writing a word of the answer ("finish_reason: length"), on 2,400
+tokens and again on 4,000, and the company was cut as "could not be judged" and not
+looked at for two weeks (50 such on file). A cap on the reasoning is accepted but not
+enforced (the same page used 2,208 reasoning tokens under a 1,024 cap, at five times
+the cost); **low reasoning effort is**: the same page came back in 5 s with none, and
+the same answer. Only the retry runs that way, so the 97% of calls that work are
+unchanged, and the 4 that had failed were read successfully afterwards. Turning the
+reasoning down for every call would be roughly 5x faster and a third cheaper, but the
+verdicts were tuned with it on, so that needs a measured comparison first.
+
+**Folder totals can no longer drift** when a newer search upgrades a fit-only lead to
+a real pair at the same company: the old lead is retired, and its folder is now
+recounted from its rows (one August folder said 5 fit-only and 7 cut while holding 4
+and 8, and was repaired).
 
 ### Things worth knowing
 

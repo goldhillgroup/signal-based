@@ -85,7 +85,10 @@ export async function chat(
   // of a classify request's input — over Anthropic's 1024/2048-token cache
   // minimum for both Sonnet and Haiku. Off by default so one-off calls don't
   // pay the cache-write premium for a prefix that will never be reused.
-  cacheSystemPrompt = false
+  cacheSystemPrompt = false,
+  // Extra request fields, merged into the body. Used by the retry in classifySignal
+  // to cap the model's hidden reasoning (see there).
+  extraBody: Record<string, unknown> = {}
 ): Promise<string> {
   const body = cacheSystemPrompt
     ? messages.map((m) =>
@@ -104,6 +107,7 @@ export async function chat(
     response_format: { type: "json_object" },
     messages: body,
     max_tokens: maxTokens,
+    ...extraBody,
   });
 
   async function call(key: string) {
@@ -631,7 +635,23 @@ export async function classifySignal(
   try {
     return extractJson<ClassificationResult>(await chat(messages, 2400, model, true));
   } catch {
-    return extractJson<ClassificationResult>(await chat(messages, 4000, model, true));
+    // THE RETRY TURNS THE MODEL'S HIDDEN REASONING DOWN, because asking again with a
+    // bigger budget did not help. Measured on the live model, 2026-10-13: a normal
+    // call spends about 400 of its ~860 output tokens reasoning, and in roughly one
+    // call in thirty (4 of 128 on a real backfill) the reasoning runs away and uses
+    // the WHOLE budget before a single word of the answer, on 2,400 tokens and again
+    // on 4,000 ("finish_reason: length", empty content). The company is then cut as
+    // "could not be judged" and not looked at again for two weeks (50 such on file).
+    //
+    // A token CAP on the reasoning (max_tokens: 1024) is accepted but not enforced:
+    // the same page used 2,208 reasoning tokens under it, at five times the cost.
+    // effort: "low" is: the same page came back in 5 s with no reasoning at all and
+    // the same answer. Only the RETRY runs this way, so the 97% of calls that work
+    // are exactly as they were; a rougher verdict beats a company that is never
+    // judged.
+    return extractJson<ClassificationResult>(
+      await chat(messages, 4000, model, true, { reasoning: { effort: "low" } })
+    );
   }
 }
 
