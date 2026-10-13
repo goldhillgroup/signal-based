@@ -1,5 +1,5 @@
 import { createServiceRoleClient } from "../supabase/server";
-import { discoverCandidates, fetchCompanyPages, pickBestPage, fetchSingleUrl, isOffTradeName, isBlocked, DOMAIN_FETCH_BUDGET_MS, type Candidate, type FetchedPage } from "./apify";
+import { discoverProgressively, fetchCompanyPages, pickBestPage, fetchSingleUrl, isOffTradeName, isBlocked, DOMAIN_FETCH_BUDGET_MS, type Candidate, type FetchedPage } from "./apify";
 import { VendorUnavailableError, classifySignal, disprovePass } from "./openrouter";
 import { findContact, companyEmails } from "./anymailfinder";
 import { peopleFrom } from "./people";
@@ -18,6 +18,7 @@ import { DEFAULT_ICP } from "./icp-types";
 import { countsTowardTarget } from "./target-count";
 import { auditRow } from "./row-audit";
 import { pickRechecks, nextRecheckAfter, decideLead, normDomain, SUPERSEDED_REASON } from "./recheck-selection";
+import { drainQueue, waitUpTo } from "./drain-queue";
 import { withDbRetry, isDuplicateKey } from "./db-retry";
 import { cleanOtherPeople, titleFor, PAGE_PERSON_SOURCE } from "./co-owners";
 import { runWithCounters, estimateUsd, describeCost, type CostCounters } from "./cost-tracker";
@@ -64,22 +65,17 @@ import { RUN_CEILING_MS } from "./reap";
 // the model calls it feeds are what the old figure was protecting, and at 8 they
 // are still well inside OpenRouter's limits (each company makes one or two).
 const PIPELINE_CONCURRENCY = 8;
-// Companies taken from the buffer per round. Larger than ROUND_SIZE because the
-// pool no longer waits for a whole batch to be fetched before it starts.
-const BATCH_SIZE = 32;
-
-// Plain worker pool — same shape as the one in apify.ts, kept local so the two
-// call sites can be tuned independently (page fetching and LLM classification
-// have very different rate-limit profiles).
+// Plain worker pool over a FIXED list — same shape as the one in apify.ts, kept
+// local so the two call sites can be tuned independently (page fetching and LLM
+// classification have very different rate-limit profiles). The search's own
+// read loop uses drainQueue instead, whose queue can grow while it runs.
 async function runWithConcurrency<T>(
   items: T[],
   limit: number,
   run: (item: T) => Promise<void>,
   /**
-   * Checked before EACH item, so a run that is out of time stops mid-round
-   * instead of finishing all fifteen. A round is ~15 companies at ~5s each,
-   * so a round-boundary-only check could overshoot by more than a minute —
-   * which is precisely the margin that decides whether the platform kills us.
+   * Checked before EACH item, so a run that is out of time stops mid-list
+   * instead of finishing all of it.
    */
   shouldStop?: () => boolean
 ): Promise<T[]> {
@@ -510,6 +506,10 @@ export async function runSearchPipeline(
   // an older patch can never land after a newer one, and flushBumps() runs at
   // the end of each batch and before the final status write so nothing is left
   // behind.
+  // Set when the run is over, so a discovery channel that lands after the final
+  // write cannot touch a finished search. Function-level, like the writer below,
+  // because the failure path (outside the try) sets it too.
+  let runEnded = false;
   let bumpBuf: Partial<SearchRow> = {};
   let lastBumpAt = 0;
   let bumpChain: Promise<void> = Promise.resolve();
@@ -926,6 +926,54 @@ export async function runSearchPipeline(
     const EMPTY_DISCOVERIES_BEFORE_DRY = 4;
     let consecutiveEmpty = 0;
 
+    // THE SLOWER CHANNELS OF THE LAST DISCOVERY, still on their way.
+    //
+    // A discovery round used to hold the whole pass until its slowest channel
+    // answered, and the slowest is nearly always Google Maps, which is also the
+    // channel that yields least (about one pair in 170 companies read, against
+    // one in 30 for web search). Eight workers stood idle for tens of seconds,
+    // every round, for the sake of the least valuable candidates. Now reading
+    // starts as soon as web search is back, and Maps' candidates join the back
+    // of the queue when they land. Nothing is dropped. See discovery-merge.ts.
+    //
+    // While this is set, an empty buffer is not really empty yet: an idle worker
+    // waits on it, and the loop does not buy another round on top of a call that
+    // is still running. It never rejects.
+    let discoveryRest: Promise<void> | null = null;
+
+    /**
+     * Put a discovery's candidates in the queue.
+     *
+     * Claimed for this search the moment they enter the buffer, so the next
+     * discovery call can't re-return (or re-bill) them.
+     *
+     * Drops the organisations whose own name says they are not a trade business
+     * — associations, law firms, magazines, city departments. Every channel
+     * produces them and each one previously cost a fetch plus two model calls to
+     * be told what its title already said. The rule is backtested lead-safe on
+     * the whole corpus (see isOffTradeName); they are still counted as
+     * discovered, because pretending discovery never returned them would
+     * misreport channel yield.
+     *
+     * Best-yielding channels to the front, with an exploration slice so a
+     * channel having a bad run still earns observations. Nothing is dropped —
+     * the scan ceiling is simply spent on the most promising candidates first,
+     * which is where the 7x difference between web_search and maps actually
+     * turns into signals. The late part is ordered among itself and goes
+     * BEHIND what is already queued: it is, by construction, the lower-yield part.
+     */
+    function admit(fresh: Candidate[]) {
+      fresh.forEach((c) => seenDomains.add(c.domain));
+      const offTrade = fresh.filter((c) => isOffTradeName(c.title) || isOffTradeName(c.domain));
+      if (offTrade.length > 0) {
+        console.log(
+          `Search ${searchId}: skipped ${offTrade.length} non-trade organisation(s) before any spend — ` +
+            offTrade.map((c) => c.title || c.domain).slice(0, 6).join(", ")
+        );
+      }
+      pending.push(...orderByYield(fresh.filter((c) => !offTrade.includes(c)), rates, explore));
+    }
+
     // ── THE ONE PLACE A COMPANY ROW IS WRITTEN ───────────────────────────
     //
     // Seven separate insert sites used to write rows with no error check and
@@ -1029,6 +1077,11 @@ export async function runSearchPipeline(
       round++;
       const roundLimit = Math.min(ROUND_SIZE, scanCeiling - totalScanned);
 
+      // The slower channels of the last discovery may still be on their way. If
+      // the queue has run dry they ARE the next candidates, so wait for them
+      // rather than buying another round on top of a call that is still running.
+      if (pending.length === 0 && discoveryRest) await waitUpTo(discoveryRest, deadlineAt - Date.now());
+
       // ── 1. Refill the buffer only when it's actually empty ───────────────
       // Discover + fetch get their own try/catch: an Apify hiccup (timeout,
       // rate limit) on round 2+ must not discard signals already found and
@@ -1072,7 +1125,7 @@ export async function runSearchPipeline(
         discoveryCalls++;
         discoveryAttempts++;
         try {
-          const { candidates: fresh, channelErrors } = await discoverCandidates({
+          const discovery = discoverProgressively({
             industries,
             states,
             limit: roundLimit,
@@ -1080,43 +1133,42 @@ export async function runSearchPipeline(
             excludeDomains: seenDomains,
             refinement,
           });
+          // Web search and whatever answered with it. Waits for everything when
+          // there is nothing to read yet, so an empty round behaves as before.
+          const { candidates: fresh, channelErrors } = await discovery.first;
           if (channelErrors.length > 0) {
             roundChannelErrors = channelErrors;
             channelFailures.push(...channelErrors);
             console.warn(`Search ${searchId} discovery ${discoveryCalls}: ${channelErrors.join(" | ")}`);
           }
-          // Claimed for this search the moment they enter the buffer, so the
-          // next discovery call can't re-return (or re-bill) them.
-          fresh.forEach((c) => seenDomains.add(c.domain));
-
-          // Drop the organisations whose own name says they are not a trade
-          // business — associations, law firms, magazines, city departments.
-          // Every channel produces them and each one previously cost a fetch
-          // plus two model calls to be told what its title already said. The
-          // rule is backtested lead-safe on the whole corpus (see
-          // isOffTradeName); they are still counted as discovered, because
-          // pretending discovery never returned them would misreport channel
-          // yield.
-          const offTrade = fresh.filter((c) => isOffTradeName(c.title) || isOffTradeName(c.domain));
-          if (offTrade.length > 0) {
-            console.log(
-              `Search ${searchId}: skipped ${offTrade.length} non-trade organisation(s) before any spend — ` +
-                offTrade.map((c) => c.title || c.domain).slice(0, 6).join(", ")
-            );
-          }
-          pending.push(...fresh.filter((c) => !offTrade.includes(c)));
-          // Best-yielding channels to the front, with an exploration slice so a
-          // channel having a bad run still earns observations. Nothing is
-          // dropped — the scan ceiling is simply spent on the most promising
-          // candidates first, which is where the 7x difference between
-          // web_search and maps actually turns into signals.
-          pending.splice(0, pending.length, ...orderByYield(pending, rates, explore));
+          admit(fresh);
           // Re-checks go BEHIND fresh ground, once, after the first discovery has
           // returned. They used to be seeded ahead of it, so a pass could be
           // spent entirely on slow re-reads before discovery ever ran.
           if (recheckQueue.length > 0) pending.push(...recheckQueue.splice(0));
           totalDiscovered += fresh.length;
           await bump(supabase, searchId, { candidates_found: totalDiscovered });
+
+          // The slower channels, queued behind everything above when they land.
+          const call = discoveryCalls;
+          const landing: Promise<void> = discovery.rest
+            .then((late) => {
+              if (runEnded) return;
+              if (late.channelErrors.length > 0) {
+                channelFailures.push(...late.channelErrors);
+                console.warn(`Search ${searchId} discovery ${call} (late): ${late.channelErrors.join(" | ")}`);
+              }
+              if (late.candidates.length > 0) {
+                admit(late.candidates);
+                totalDiscovered += late.candidates.length;
+                queueBump({ candidates_found: totalDiscovered });
+              }
+            })
+            .catch(() => {})
+            .finally(() => {
+              if (discoveryRest === landing) discoveryRest = null;
+            });
+          discoveryRest = landing;
 
           if (fresh.length === 0) {
             consecutiveEmpty++;
@@ -1133,6 +1185,11 @@ export async function runSearchPipeline(
           break;
         }
       }
+
+      // The first part can come back with nothing worth reading (every one of
+      // them a non-trade organisation) while the slower channels are about to
+      // deliver. That is not an empty pool.
+      if (pending.length === 0 && discoveryRest) await waitUpTo(discoveryRest, deadlineAt - Date.now());
 
       if (pending.length === 0) {
         // CRITICAL DISTINCTION: "this state has no more companies" and "we
@@ -1160,14 +1217,20 @@ export async function runSearchPipeline(
         break roundLoop;
       }
 
-      // ── consume this round's batch from the buffer ───────────────────────
+      // ── read from the buffer, continuously ───────────────────────────────
       //
       // Nothing is counted as scanned HERE. It used to be: the whole batch was
       // added to the counter up front, so a company that was never read (the
       // run ran out of time, or the target was already hit) still counted, and
       // a re-check that was just a re-read of something already on file counted
       // as new ground. A company is counted when it is actually read, below.
-      const candidates = pending.splice(0, BATCH_SIZE);
+      //
+      // The workers share the buffer and each takes the next company the moment
+      // it finishes its last (see drain-queue.ts). It used to be taken 32 at a
+      // time, and every batch ended with a few slow sites still running and the
+      // other workers idle behind them. Candidates the slower discovery channels
+      // return later are appended to this same buffer, and the workers pick them
+      // up without the pool ever stopping.
 
       // ── 2 + 3. Fetch, classify, disprove: ONE PIPELINE PER COMPANY ───────
       //
@@ -1184,7 +1247,7 @@ export async function runSearchPipeline(
       // mid-statement, only whole statements between awaits.
       let fetchFailure: Error | null = null;
       let targetHit = false;
-      const unstarted = await runWithConcurrency(candidates, PIPELINE_CONCURRENCY, async (candidate) => {
+      await drainQueue(pending, PIPELINE_CONCURRENCY, async (candidate) => {
         // Target already reached by an in-flight sibling — skip the remaining
         // classify spend. (With concurrency N, up to N-1 extra companies can
         // finish past the target; their results are kept, never discarded.)
@@ -1917,11 +1980,14 @@ export async function runSearchPipeline(
         totalScanned >= scanCeiling ||
         targetHit ||
         fetchFailure !== null
-      );
+      // An idle worker waits for the slower discovery channels, but never past the
+      // deadline: a channel still crawling must not hold the pass until the
+      // platform kills it, because the clean ending would never run.
+      , () => (discoveryRest ? waitUpTo(discoveryRest, deadlineAt - Date.now()) : null));
 
       await flushBumps();
-      // Never started, so never read and never counted: put them back.
-      if (unstarted.length > 0) pending.unshift(...unstarted);
+      // Whatever was never started is still in `pending`, never read and never
+      // counted, ready for the next pass.
 
       if (fetchFailure) {
         stoppedEarlyReason = `Stopped after round ${round}: page fetch failed (${(fetchFailure as Error).message.slice(0, 200)})`;
@@ -1932,6 +1998,10 @@ export async function runSearchPipeline(
       // the loop is the single place that decides "pool dry" now, and it does
       // so only when a real discovery call came back empty-handed.
     }
+
+    // Whatever the slower channels return from here on is no longer wanted: the
+    // search is about to be written as finished.
+    runEnded = true;
 
     // A round-level hiccup (caught above) still ends in status: 'complete' —
     // whatever was found and saved is real and shown as-is; the note just
@@ -1967,6 +2037,7 @@ export async function runSearchPipeline(
     // that could not judge anything must never read as "complete, found
     // nothing", which is indistinguishable from a thorough search of barren
     // ground.
+    runEnded = true;
     const vendorDown = e instanceof VendorUnavailableError;
     if (vendorDown) {
       console.warn(`Search ${searchId} stopped: ${(e as VendorUnavailableError).detail}`);

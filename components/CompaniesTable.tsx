@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useMemo, useState } from "react";
 import { Company } from "@/lib/company";
 import { INDUSTRY_META } from "@/lib/signal-meta";
 import type { Industry } from "@/lib/supabase/types";
@@ -314,8 +314,15 @@ export function CompaniesTable({
     [marks]
   );
 
+  // The box itself updates on every keystroke; the list follows at lower
+  // priority. A folder can hold a thousand companies now (a search may read that
+  // many), and re-filtering and redrawing all of them inside the keystroke is
+  // what makes a text box feel sticky. At today's sizes the two are the same
+  // frame, so this costs nothing until it is needed.
+  const deferredQ = useDeferredValue(q);
+
   const filtered = useMemo(() => {
-    const query = q.trim().toLowerCase();
+    const query = deferredQ.trim().toLowerCase();
     return companies
       .filter((c) => matchesTab(c, tab))
       .filter((c) => (industry === "all" ? true : c.industry === industry))
@@ -344,7 +351,7 @@ export function CompaniesTable({
         const d = scoreFactors(b).score - scoreFactors(a).score;
         return d !== 0 ? d : b.lastCrawledAt.localeCompare(a.lastCrawledAt);
       });
-  }, [companies, tab, industry, q, marks]);
+  }, [companies, tab, industry, deferredQ, marks]);
 
   const groups = useMemo(() => buildGroups(filtered, groupBy), [filtered, groupBy]);
 

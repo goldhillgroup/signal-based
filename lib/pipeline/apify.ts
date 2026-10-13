@@ -1,4 +1,5 @@
 import type { Industry } from "../supabase/types";
+import { progressiveDiscovery } from "./discovery-merge";
 import { stateNameFor } from "./us-states";
 import { resolveSetting } from "../settings";
 // Circular by module graph (directory-discovery imports hostnameOf/isBlocked/
@@ -1165,11 +1166,13 @@ async function discoverViaWebSearch(
 //   - web search — succession-specific phrasing, precision play.
 //   - Maps — broad category coverage, but the most Apify-expensive; kept as
 //     the volume backstop rather than the primary source now.
-// Promise.allSettled — one channel timing out or erroring must not take the
-// others' real results down with it (a real Maps timeout happened live during
-// testing; a round should degrade to the surviving channels' results rather
-// than fail outright over an unrelated channel's hiccup).
-export async function discoverCandidates(params: {
+// Every channel is allowed to settle either way — one timing out or erroring
+// must not take the others' real results down with it (a real Maps timeout
+// happened live during testing; a round should degrade to the surviving
+// channels' results rather than fail outright over an unrelated channel's
+// hiccup). How the four are merged, and why the round no longer waits for the
+// slowest before reading can start, is in discovery-merge.ts.
+export interface DiscoveryParams {
   /**
    * The verticals to search. EMPTY MEANS ALL — the client can select any
    * combination, so "landscaping and HVAC" is one run rather than two.
@@ -1188,7 +1191,10 @@ export async function discoverCandidates(params: {
   /** Jonathan's free-text Signal focus, steering WHAT is searched for — not
    *  only how the result is judged. See refinementQueries. */
   refinement?: string | null;
-}): Promise<{ candidates: Candidate[]; channelErrors: string[] }> {
+}
+
+/** Shared by the two public entry points below. */
+function startDiscovery(params: DiscoveryParams, graceMs: number) {
   const { industries, states, limit, round = 1, excludeDomains, refinement } = params;
 
   // EVERY REQUESTED STATE, EVERY CALL — in parallel, sharing one budget.
@@ -1253,8 +1259,7 @@ export async function discoverCandidates(params: {
   const deepLimit = Math.max(1, Math.ceil(perGroupLimit * 2));
   const floorLimit = Math.max(1, Math.floor(perGroupLimit * 0.35));
 
-  const settled = await Promise.allSettled(
-    groups.flatMap((group, g) => [
+  const tasks: Promise<Candidate[]>[] = groups.flatMap((group, g) => [
       // DIRECTORIES AND LICENSING ROTATE STATES, exactly as Maps does below
       // and for a sharper version of the same reason.
       //
@@ -1291,82 +1296,60 @@ export async function discoverCandidates(params: {
       g === mapsGroup
         ? discoverViaMaps(industries, group, floorLimit, round)
         : Promise.resolve([] as Candidate[]),
-    ])
-  );
+    ]);
 
-  // Rebuilt per channel across all state groups, so "did the web search
-  // channel work" still has a single answer even though it now ran four
-  // times. A channel counts as failed only when it failed for EVERY state —
-  // one state's timeout must not condemn a channel that worked elsewhere.
-  const CHANNELS = ["Directory", "Licensing", "Web search", "Maps"] as const;
-  const channelErrors: string[] = [];
-  const raw: Candidate[] = [];
-  const failedEverywhere: boolean[] = [];
+  // The merge itself, and the two-part hand-over, live in discovery-merge.ts so
+  // they can be tested without a network. See there for why the round is no
+  // longer held up by its slowest channel.
+  return progressiveDiscovery({
+    tasks,
+    groups,
+    graceMs,
+    exclude: excludeDomains,
+    convert: (r, seen) => {
+      const host = hostnameOf(r.url);
+      if (!host || isBlocked(host) || seen.has(host)) return null;
+      seen.add(host);
+      return {
+        domain: host,
+        url: r.url,
+        title: r.title || host,
+        channel: r.channel,
+        state: r.state ?? null,
+        phone: r.phone ?? null,
+        city: r.city ?? null,
+        address: r.address ?? null,
+      } satisfies Candidate;
+    },
+  });
+}
 
-  for (let ch = 0; ch < CHANNELS.length; ch++) {
-    const forChannel = groups.map((_, g) => settled[g * CHANNELS.length + ch]);
-    const ok = forChannel.filter((r) => r.status === "fulfilled");
-    // Stamp the state of the group that issued the call. This is the only
-    // point in the pipeline that still knows it — by the time a candidate
-    // reaches the orchestrator the groups have been merged into one list.
-    forChannel.forEach((r, g) => {
-      if (r.status !== "fulfilled") return;
-      const stateOfGroup = groups[g].length === 1 ? groups[g][0] : null;
-      raw.push(...r.value.map((c) => ({ ...c, state: c.state ?? stateOfGroup })));
-    });
+/**
+ * Everything at once: one list, after EVERY channel has answered. What a caller
+ * that wants the whole round before it starts (tests, scripts) should use.
+ */
+export async function discoverCandidates(
+  params: DiscoveryParams
+): Promise<{ candidates: Candidate[]; channelErrors: string[] }> {
+  return startDiscovery(params, Infinity).first;
+}
 
-    failedEverywhere.push(ok.length === 0);
-    if (ok.length === 0) {
-      const first = forChannel[0] as PromiseRejectedResult;
-      channelErrors.push(
-        `${CHANNELS[ch]} channel failed: ${first?.reason?.message?.slice(0, 150) ?? first?.reason}`
-      );
-    } else if (ok.length < forChannel.length) {
-      const failed = forChannel
-        .map((r, g) => (r.status === "rejected" ? groups[g].join("/") : null))
-        .filter(Boolean);
-      channelErrors.push(`${CHANNELS[ch]} channel failed for ${failed.join(", ")} only`);
-    }
-  }
+/**
+ * How long after web search answers to keep waiting for the other channels
+ * before reading begins. Long enough that a channel that was about to answer
+ * anyway (licensing is instant; a cached directory is quick) travels with the
+ * first part, short enough that it is not the thing the pass is waiting on.
+ */
+export const DISCOVERY_GRACE_MS = 4_000;
 
-  const [dirFailed, , webFailed, mapsFailed] = failedEverywhere;
-
-  // Deliberately still the THREE searching channels, not all four. Licensing
-  // returns [] rather than throwing for a state with no free enumerable source
-  // — which is most states — so folding it into this AND would mean a run where
-  // every key is dead but the search happened to be for Texas fulfils quietly
-  // with zero candidates instead of raising. That silent-partial-answer failure
-  // is the exact thing channel-health.ts exists to prevent. A licensing
-  // rejection still lands in channelErrors above and surfaces as a warning.
-  if (dirFailed && webFailed && mapsFailed) {
-    throw new Error(channelErrors.join(" | "));
-  }
-
-  const seen = new Set<string>(excludeDomains ?? []);
-  const candidates: Candidate[] = [];
-  for (const r of raw) {
-    const host = hostnameOf(r.url);
-    if (!host || isBlocked(host) || seen.has(host)) continue;
-    seen.add(host);
-    candidates.push({
-      domain: host,
-      url: r.url,
-      title: r.title || host,
-      channel: r.channel,
-      state: r.state ?? null,
-      phone: r.phone ?? null,
-      city: r.city ?? null,
-      address: r.address ?? null,
-    });
-  }
-
-  // NO cut at `limit` here — everything above was already paid for (Maps
-  // bills per place, the SERP per page, directory extraction per Haiku
-  // call), and cutting used to throw the surplus away and re-bill a fresh
-  // discovery for it next round. The orchestrator's candidate buffer now
-  // consumes these at its own pace; `limit` only sizes the per-channel
-  // buys above.
-  return { candidates, channelErrors };
+/**
+ * The round in two parts: `first` as soon as web search (and anything that has
+ * answered with it) is back, and `rest` with whatever the slower channels,
+ * Maps above all, return afterwards. Nothing is dropped; `rest` is simply late.
+ * See discovery-merge.ts.
+ */
+export function discoverProgressively(params: DiscoveryParams, graceMs = DISCOVERY_GRACE_MS) {
+  return startDiscovery(params, graceMs);
 }
 
 export interface FetchedPage {
