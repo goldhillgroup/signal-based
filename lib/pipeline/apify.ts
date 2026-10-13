@@ -1446,7 +1446,7 @@ const TEAM_PAGE_GLOBS = [
 // they link to, in one small actor call with a fixed, predictable timeout.
 // Failure here (that domain's site hangs/times out) only costs that one
 // domain — never the batch.
-async function fetchOneDomain(domain: string): Promise<RawFetchedItem[]> {
+async function fetchOneDomain(domain: string, timeoutSecs = 90): Promise<RawFetchedItem[]> {
   const startUrls = ABOUT_SLUGS.map((slug) => ({ url: `https://${domain}/${slug}` }));
   recordCost("apify_crawler_run");
   return (await runActorSync(
@@ -1463,7 +1463,7 @@ async function fetchOneDomain(domain: string): Promise<RawFetchedItem[]> {
       maxRequestRetries: 1,
       saveMarkdown: false,
     },
-    90 // raised from 60, one hop means up to 5 more pages per domain.
+    timeoutSecs // 90 at most: one hop means up to 5 more pages per domain.
   )) as RawFetchedItem[];
 }
 
@@ -1638,6 +1638,39 @@ async function freeFetchDomain(
   return { pages, sawHttp: true };
 }
 
+/**
+ * The longest ONE company's page fetch may take, across every layer together.
+ *
+ * It had no overall limit, only a limit per layer, and the layers add up: the
+ * free fetch (two hops of 8s), then up to two Firecrawl renders (60s each), then
+ * an Apify crawl (90s). A bot-blocked site could therefore hold a worker for
+ * about 256 seconds, which is the whole four-minute pass. On the live database
+ * the re-check queue was mostly exactly those sites, and five of the last twelve
+ * searches read nothing but them.
+ *
+ * Each later layer is only started if the room left can plausibly hold it, and
+ * is raced against what is left, so the total is bounded here rather than being
+ * whatever the vendors happen to take.
+ */
+export const DOMAIN_FETCH_BUDGET_MS = 55_000;
+
+/** Resolve with null if `p` has not settled within `ms`. Never rejects. */
+function raceMs<T>(p: Promise<T>, ms: number): Promise<T | null> {
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve(null), Math.max(0, ms));
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      () => {
+        clearTimeout(t);
+        resolve(null);
+      }
+    );
+  });
+}
+
 export async function fetchCompanyPages(domains: string[]): Promise<Map<string, FetchedPage[]>> {
   // Fail loud on real misconfiguration (e.g. missing token) before the
   // per-domain try/catch below has a chance to swallow it as "this domain's
@@ -1648,6 +1681,9 @@ export async function fetchCompanyPages(domains: string[]): Promise<Map<string, 
   const byDomain = new Map<string, FetchedPage[]>();
 
   await withConcurrency(domains, FETCH_CONCURRENCY, async (domain) => {
+    const startedAt = Date.now();
+    const left = () => DOMAIN_FETCH_BUDGET_MS - (Date.now() - startedAt);
+
     // LAYER 1 — free plain fetch. Costs nothing and handles the plain-HTML
     // majority: two consecutive live runs got 15/15 and 24/24 this way.
     const free = await freeFetchDomain(domain);
@@ -1671,8 +1707,21 @@ export async function fetchCompanyPages(domains: string[]): Promise<Map<string, 
     // layer 1 structurally cannot read. Tried BEFORE Apify because it's a
     // plain REST call with no actor-run semantics, no per-actor timeout
     // tuning, and no shared budget cap that can wedge the whole pipeline.
-    const rendered = await firecrawlScrape(`https://${domain}/about`).catch(() => null);
-    const renderedHome = rendered ?? (await firecrawlScrape(`https://${domain}`).catch(() => null));
+    // Gated on the room left (see DOMAIN_FETCH_BUDGET_MS): a render needs time
+    // to finish, and starting one with none left only holds the worker.
+    if (left() < 12_000) return;
+    const rendered = await raceMs(
+      firecrawlScrape(`https://${domain}/about`).catch(() => null),
+      Math.min(30_000, left() - 4_000)
+    );
+    const renderedHome =
+      rendered ??
+      (left() > 15_000
+        ? await raceMs(
+            firecrawlScrape(`https://${domain}`).catch(() => null),
+            Math.min(25_000, left() - 4_000)
+          )
+        : null);
     if (renderedHome) {
       byDomain.set(domain, [
         { domain, url: `https://${domain}`, text: renderedHome, siteName: null },
@@ -1683,9 +1732,13 @@ export async function fetchCompanyPages(domains: string[]): Promise<Map<string, 
     // LAYER 3 — Apify's rendering crawler. Last resort: it's the layer most
     // likely to be unavailable (budget cap, actor timeout), which is exactly
     // why it's no longer the only fallback.
+    // Only worth starting if it can finish. It runs on whatever is left rather
+    // than a fixed 90s, which is what let it hold a worker for a minute and a
+    // half on a site that was never going to load.
+    if (left() < 35_000) return;
     let items: RawFetchedItem[];
     try {
-      items = await fetchOneDomain(domain);
+      items = await fetchOneDomain(domain, Math.min(90, Math.floor((left() - 5_000) / 1000)));
     } catch {
       // Every layer failed for this domain — it just yields no pages (classify
       // records it as "no page fetched"); everyone else in the round is

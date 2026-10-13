@@ -1,11 +1,13 @@
 import { createServiceRoleClient } from "../supabase/server";
-import { discoverCandidates, fetchCompanyPages, pickBestPage, fetchSingleUrl, isOffTradeName, type Candidate, type FetchedPage } from "./apify";
+import { discoverCandidates, fetchCompanyPages, pickBestPage, fetchSingleUrl, isOffTradeName, isBlocked, DOMAIN_FETCH_BUDGET_MS, type Candidate, type FetchedPage } from "./apify";
 import { VendorUnavailableError, classifySignal, disprovePass } from "./openrouter";
 import { findContact, companyEmails } from "./anymailfinder";
 import { peopleFrom } from "./people";
 import { localMatchesName } from "./page-email";
 import { verifyEmail } from "./millionverifier";
-import type { Industry, SearchMode, SearchRow } from "../supabase/types";
+import type { Database, Industry, SearchMode, SearchRow } from "../supabase/types";
+
+type CompanyInsert = Database["public"]["Tables"]["companies"]["Insert"];
 import { recheckAfterFor, rejectionScope, sizeVerdictStillBinds, parseRevenueBand } from "./recheck-policy";
 import { extractEmails, bestEmailFor, allEmailsFor, type FoundEmail, bestPhoneFor, isSharedInbox } from "./page-email";
 import { callableName, cleanEmployeeBand, cleanPersonName, cleanRevenueBand, cleanTitle, earnedConfidence, fitOnlyIsLeadWorthy, isLifestyleBusiness, professionalServicesQualifies, realCompanyName } from "../lead-signal";
@@ -15,6 +17,8 @@ import { channelEvidence, explorationFor, orderByYield } from "./channel-priors"
 import { DEFAULT_ICP } from "./icp-types";
 import { countsTowardTarget } from "./target-count";
 import { auditRow } from "./row-audit";
+import { pickRechecks, nextRecheckAfter, decideLead, normDomain, SUPERSEDED_REASON } from "./recheck-selection";
+import { withDbRetry, isDuplicateKey } from "./db-retry";
 import { runWithCounters, estimateUsd, describeCost, type CostCounters } from "./cost-tracker";
 
 // Contact enrichment (Anymailfinder + MillionVerifier) lives in
@@ -34,11 +38,15 @@ import { runWithCounters, estimateUsd, describeCost, type CostCounters } from ".
 const ROUND_SIZE = 15;
 
 // Ceiling on how many due-for-recheck companies one run pulls in. Without it a
-// first sweep after a long gap would front-load hundreds of free reads and
-// crowd out new discovery entirely — the run would spend its whole scan
-// ceiling re-reading known companies and find nothing new. Bounded so a run is
-// always part re-check, part fresh ground.
-const RECHECK_PER_RUN = 20;
+// first sweep after a long gap would front-load hundreds of reads and crowd out
+// new discovery entirely.
+//
+// It was 20, and it was not enough of a ceiling: on 2026-10-13 five of the last
+// twelve searches had spent their whole pass on eleven re-reads (see
+// recheck-selection.ts). 8 is the most one pass may take, and never more than
+// RECHECK_SHARE of its scan budget, so a small search stays mostly fresh ground.
+const RECHECK_PER_RUN = 8;
+const RECHECK_SHARE = 0.15;
 import { scansFor } from "./scan-limits";
 import { SEARCH_CEILING_PER_COMPANY_USD } from "./pricing";
 import { RUN_CEILING_MS } from "./reap";
@@ -47,7 +55,17 @@ import { RUN_CEILING_MS } from "./reap";
 // (classify, plus disprove when there's a signal to check), so this is bounded
 // by politeness to that API rather than by anything local. 5 turns a measured
 // ~14.6s-per-company serial pass into roughly 3s per company.
-const CLASSIFY_CONCURRENCY = 5;
+// (Classification alone ran 5 at a time, which turned a measured ~14.6s per
+// company into roughly 3s. The fetch now sits in front of it in the same worker.)
+// One pipeline per company now (fetch then classify), so this is the number of
+// companies in flight, not the number of simultaneous model calls. The page
+// fetch is mostly waiting on other people's servers, which is cheap to overlap;
+// the model calls it feeds are what the old figure was protecting, and at 8 they
+// are still well inside OpenRouter's limits (each company makes one or two).
+const PIPELINE_CONCURRENCY = 8;
+// Companies taken from the buffer per round. Larger than ROUND_SIZE because the
+// pool no longer waits for a whole batch to be fetched before it starts.
+const BATCH_SIZE = 32;
 
 // Plain worker pool — same shape as the one in apify.ts, kept local so the two
 // call sites can be tuned independently (page fetching and LLM classification
@@ -63,7 +81,7 @@ async function runWithConcurrency<T>(
    * which is precisely the margin that decides whether the platform kills us.
    */
   shouldStop?: () => boolean
-) {
+): Promise<T[]> {
   let cursor = 0;
   async function worker() {
     while (cursor < items.length) {
@@ -73,6 +91,9 @@ async function runWithConcurrency<T>(
     }
   }
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  // What was never started, so a caller that stopped early can put it back
+  // instead of counting companies it never read.
+  return items.slice(cursor);
 }
 
 type Supa = ReturnType<typeof createServiceRoleClient>;
@@ -478,6 +499,35 @@ export async function runSearchPipeline(
   // land on the search row so each run's spend is a visible number, not a
   // dashboard archaeology project.
   const costCounters: CostCounters = { counts: {} };
+  // ── PROGRESS WRITES, COALESCED ───────────────────────────────────────
+  //
+  // Every company wrote the search row two or three times (scanned, then
+  // kept or cut), and with eight in flight that is a stream of tiny updates
+  // to one row for a progress bar that is polled every couple of seconds. They
+  // are merged and written at most about once a second instead. The latest
+  // value always wins (every counter here only grows), writes are chained so
+  // an older patch can never land after a newer one, and flushBumps() runs at
+  // the end of each batch and before the final status write so nothing is left
+  // behind.
+  let bumpBuf: Partial<SearchRow> = {};
+  let lastBumpAt = 0;
+  let bumpChain: Promise<void> = Promise.resolve();
+  function flushBumps(): Promise<void> {
+    bumpChain = bumpChain.then(async () => {
+      if (Object.keys(bumpBuf).length === 0) return;
+      const patch = bumpBuf;
+      bumpBuf = {};
+      lastBumpAt = Date.now();
+      await bump(supabase, searchId, patch);
+    });
+    return bumpChain;
+  }
+  function queueBump(patch: Partial<SearchRow>) {
+    Object.assign(bumpBuf, patch);
+    if (Date.now() - lastBumpAt >= 1000) void flushBumps();
+  }
+
+
   await runWithCounters(costCounters, async () => {
   try {
     // A run looking for succession pairs has to read about twenty companies
@@ -541,8 +591,8 @@ export async function runSearchPipeline(
     const WORST_CASE_MS = {
       /** Apify actor run, timeoutSecs = 120. */
       discovery: 120_000,
-      /** Rendered page fetch, AbortSignal.timeout(90_000). */
-      fetch: 90_000,
+      /** One company's whole page fetch, all layers. See DOMAIN_FETCH_BUDGET_MS. */
+      fetch: DOMAIN_FETCH_BUDGET_MS + 5_000,
     } as const;
     const hasRoomFor = (ms: number) => Date.now() + ms < deadlineAt;
 
@@ -701,57 +751,90 @@ export async function runSearchPipeline(
     // time, and discovery is only re-invoked (and re-billed) when it's empty.
     const pending: Candidate[] = [];
 
-    // ── Free reads first: companies whose re-check has come due ──────────
+    // ── Companies whose re-check has come due ────────────────────────────
     //
     // recheck-policy.ts has always computed WHEN each rejected company is
     // worth another look — 14 days if the page simply would not load, 90 days
     // for "only one generation is named", which is exactly the fact that
-    // changes when a daughter joins. That date was written on every row and
-    // then never queried. A due company was only re-examined if a paid channel
-    // happened to surface it again by luck.
+    // changes when a daughter joins. That is what makes the engine recurring
+    // rather than one-shot: the universe it has already bought keeps producing
+    // new verdicts as the companies in it change.
     //
-    // These cost NOTHING to find: the domain is already known, so the whole
-    // discovery step is skipped and only the fetch+classify is paid for. They
-    // go into the buffer BEFORE any discovery call, so the loop drains the
-    // free reads first and only pays for new ground once they run out.
+    // They cost no DISCOVERY (the domain is already known) but they are not
+    // free: each is a full fetch and classify, and the ones that fail to load
+    // are the slowest reads in the pipeline. So a small, selected number are
+    // taken, behind fresh ground rather than ahead of it.
     //
-    // This is also what makes the engine recurring rather than one-shot: the
-    // universe it has already bought keeps producing new verdicts as the
-    // companies in it change.
+    // THE SELECTION RULES LIVE IN recheck-selection.ts, and they changed on
+    // 2026-10-13 because this block was the main reason a search returned so
+    // little. On the live database 205 of the 209 overdue rows were dead or
+    // bot-blocked sites; the query had no ORDER BY, so the same few came back
+    // on every search; nothing ever moved their date forward; and they were
+    // queued AHEAD of any fresh discovery, which meant a pass could spend all
+    // four minutes on eleven slow domains and read nothing new. Now:
+    //   - companies that were actually judged come first, dead sites get a small
+    //     fixed allowance, oldest-due first so the list rotates
+    //   - anything already settled elsewhere, or already in THIS folder, is skipped
+    //   - the pass takes at most RECHECK_SHARE of its read budget
+    //   - they are queued AFTER the first discovery, never before it
+    //   - each one's date is moved on when it is read (see persistCompany)
+    const recheckQueue: Candidate[] = [];
+    // What each due row said when it came due, so the next date can back off for
+    // a site that has failed to load more than once.
+    const recheckMeta = new Map<string, { reason: string | null; firstSeenAt: string | null }>();
     let recheckSeeded = 0;
-    try {
-      const nowIso2 = new Date().toISOString();
-      const { data: due } = await supabase
-        .from("companies")
-        .select("domain, source_url, state")
-        .in("industry", industries.length ? industries : (Object.keys(INDUSTRY_META) as Industry[]))
-        .in("state", states)
-        .lt("recheck_after", nowIso2)
-        .not("recheck_after", "is", null)
-        .limit(RECHECK_PER_RUN);
-      const seenHere = new Set<string>();
-      for (const r of due ?? []) {
-        if (!r.domain || seenHere.has(r.domain)) continue;
-        seenHere.add(r.domain);
-        pending.push({
-          domain: r.domain,
-          url: r.source_url ?? `https://${r.domain}`,
-          title: "",
-          channel: "recheck",
-          // Carry the state already on file. A re-checked company must not
-          // silently change state just because it came back through a search
-          // that happens to list a different one first.
-          state: r.state ?? null,
+    if (!includeAlreadyChecked) {
+      try {
+        const nowIso2 = new Date().toISOString();
+        const { data: due } = await supabase
+          .from("companies")
+          .select("domain, source_url, state, rejection_reason, recheck_after, first_seen_at")
+          .in("industry", industries.length ? industries : (Object.keys(INDUSTRY_META) as Industry[]))
+          .in("state", states)
+          .lt("recheck_after", nowIso2)
+          .not("recheck_after", "is", null)
+          .order("recheck_after", { ascending: true })
+          .limit(RECHECK_PER_RUN * 12);
+
+        const { data: inFolder } = await supabase
+          .from("companies")
+          .select("domain")
+          .eq("search_id", searchId);
+        const skip = new Set<string>();
+        for (const d of seenDomains) skip.add(normDomain(d));
+        for (const r of inFolder ?? []) skip.add(normDomain(r.domain));
+
+        const cap = Math.min(RECHECK_PER_RUN, Math.max(2, Math.floor(scanCeiling * RECHECK_SHARE)));
+        const picks = pickRechecks(due ?? [], {
+          skip,
+          cap,
+          junk: (d) => isBlocked(d) || isOffTradeName(d),
         });
+        for (const r of picks) {
+          recheckMeta.set(normDomain(r.domain), {
+            reason: r.rejection_reason,
+            firstSeenAt: r.first_seen_at,
+          });
+          recheckQueue.push({
+            domain: r.domain,
+            url: r.source_url ?? `https://${r.domain}`,
+            title: "",
+            channel: "recheck",
+            // Carry the state already on file. A re-checked company must not
+            // silently change state just because it came back through a search
+            // that happens to list a different one first.
+            state: r.state ?? null,
+          });
+        }
+        recheckSeeded = recheckQueue.length;
+        if (recheckSeeded > 0) {
+          console.log(
+            `Search ${searchId}: ${recheckSeeded} companies came due for re-check (of ${due?.length ?? 0} overdue), queued behind fresh discovery.`
+          );
+        }
+      } catch {
+        // Never let the sweep stop a search; discovery still runs as normal.
       }
-      recheckSeeded = pending.length;
-      if (recheckSeeded > 0) {
-        console.log(
-          `Search ${searchId}: ${recheckSeeded} companies came due for re-check, read first, at no discovery cost.`
-        );
-      }
-    } catch {
-      // Never let the sweep stop a search; discovery still runs as normal.
     }
 
     // ── Where in the rotation this run STARTS ────────────────────────────
@@ -837,6 +920,101 @@ export async function runSearchPipeline(
     // refills only when empty).
     const EMPTY_DISCOVERIES_BEFORE_DRY = 4;
     let consecutiveEmpty = 0;
+
+    // ── THE ONE PLACE A COMPANY ROW IS WRITTEN ───────────────────────────
+    //
+    // Seven separate insert sites used to write rows with no error check and
+    // then bump their counters regardless. That is how a run that made ten
+    // model calls reported 66 companies scanned and 63 rejected against a folder
+    // holding eleven rows: every continuation pass re-inserted the same stale
+    // domains, hit the unique (search, domain) index, and counted each collision
+    // as a fresh rejection.
+    //
+    // Everything that decides whether a row exists now lives here:
+    //   1. A RE-CHECK moves the old row's date forward first, whatever the
+    //      outcome, so the same domain cannot come due on the next search.
+    //   2. A re-check that is still a "no" stores NOTHING. A second rejected row
+    //      for a company already on file says nothing new, and it is where the
+    //      duplicates in the exports came from.
+    //   3. ONE LIVE LEAD PER COMPANY. A lead that is already on another list is
+    //      not added again; the one exception is a fit-only lead that has since
+    //      grown a real founder-and-successor pair, which replaces it.
+    //   4. A transient database failure is retried, and a write that still fails
+    //      is reported as NOT stored, so no counter moves for a row that is not
+    //      there.
+    //
+    // `stored` is the only thing callers may count from.
+    let duplicatesSkipped = 0;
+    let recheckedRead = 0;
+    async function persistCompany(
+      candidate: Candidate,
+      row: CompanyInsert & { status: "qualified" | "rejected" }
+    ): Promise<{ id: string | null; stored: boolean }> {
+      const isRecheck = candidate.channel === "recheck";
+
+      if (isRecheck) {
+        recheckedRead++;
+        const meta = recheckMeta.get(normDomain(candidate.domain));
+        const next = nextRecheckAfter({
+          baseIso: row.recheck_after ?? null,
+          oldReason: meta?.reason ?? null,
+          newReason: row.rejection_reason ?? null,
+          firstSeenAt: meta?.firstSeenAt ?? null,
+        });
+        const nowIso = new Date().toISOString();
+        await withDbRetry(() =>
+          supabase
+            .from("companies")
+            .update({ recheck_after: next, last_crawled_at: nowIso })
+            .eq("domain", candidate.domain)
+            .not("recheck_after", "is", null)
+            .lt("recheck_after", nowIso)
+            .select("id")
+        );
+        if (row.status !== "qualified") return { id: null, stored: false };
+      }
+
+      if (row.status === "qualified") {
+        const { data: existing } = await withDbRetry(() =>
+          supabase
+            .from("companies")
+            .select("id, has_signal")
+            .eq("domain", candidate.domain)
+            .eq("status", "qualified")
+            .neq("search_id", searchId)
+        );
+        const decision = decideLead(existing ?? [], { hasSignal: row.has_signal === true });
+        if (decision.action === "skip") {
+          duplicatesSkipped++;
+          return { id: null, stored: false };
+        }
+        if (decision.action === "supersede") {
+          await withDbRetry(() =>
+            supabase
+              .from("companies")
+              .update({ status: "rejected", rejection_reason: SUPERSEDED_REASON, recheck_after: null })
+              .in("id", decision.ids)
+              .select("id")
+          );
+        }
+      }
+
+      const { data, error } = await withDbRetry(() =>
+        supabase.from("companies").insert(row).select("id").single()
+      );
+      if (error || !data) {
+        if (isDuplicateKey(error)) {
+          // Already in THIS folder: nothing to add and nothing to count.
+          duplicatesSkipped++;
+        } else {
+          console.warn(
+            `Search ${searchId}: could not save ${candidate.domain}, ${(error?.message ?? "unknown error").slice(0, 160)}`
+          );
+        }
+        return { id: null, stored: false };
+      }
+      return { id: (data as { id: string }).id, stored: true };
+    }
 
     roundLoop: while (reachedSoFar() < targetSignals && totalScanned < scanCeiling) {
       if (outOfTime()) {
@@ -927,6 +1105,10 @@ export async function runSearchPipeline(
           // candidates first, which is where the 7x difference between
           // web_search and maps actually turns into signals.
           pending.splice(0, pending.length, ...orderByYield(pending, rates, explore));
+          // Re-checks go BEHIND fresh ground, once, after the first discovery has
+          // returned. They used to be seeded ahead of it, so a pass could be
+          // spent entirely on slow re-reads before discovery ever ran.
+          if (recheckQueue.length > 0) pending.push(...recheckQueue.splice(0));
           totalDiscovered += fresh.length;
           await bump(supabase, searchId, { candidates_found: totalDiscovered });
 
@@ -973,38 +1155,54 @@ export async function runSearchPipeline(
       }
 
       // ── consume this round's batch from the buffer ───────────────────────
-      const candidates = pending.splice(0, roundLimit);
-      totalScanned += candidates.length;
-      await bump(supabase, searchId, {
-        companies_scanned: totalScanned,
-      });
+      //
+      // Nothing is counted as scanned HERE. It used to be: the whole batch was
+      // added to the counter up front, so a company that was never read (the
+      // run ran out of time, or the target was already hit) still counted, and
+      // a re-check that was just a re-read of something already on file counted
+      // as new ground. A company is counted when it is actually read, below.
+      const candidates = pending.splice(0, BATCH_SIZE);
 
-      // ── 2. Fetch pages for this round's batch ────────────────────────────
-      let pagesByDomain;
-      try {
-        pagesByDomain = await fetchCompanyPages(candidates.map((c) => c.domain));
-      } catch (e) {
-        stoppedEarlyReason = `Stopped after round ${round}: page fetch failed (${(e as Error).message.slice(0, 200)})`;
-        break;
-      }
-      await bump(supabase, searchId, { pages_fetched: totalScanned });
-
-      // ── 3. Classify -> disprove, CLASSIFY_CONCURRENCY at a time ──────────
+      // ── 2 + 3. Fetch, classify, disprove: ONE PIPELINE PER COMPANY ───────
+      //
+      // The batch used to be fetched whole and only THEN classified, which put a
+      // barrier between the two stages: the slowest page in the round (a
+      // bot-blocked site can walk through the free fetch, two Firecrawl renders
+      // and an Apify crawl) held back the start of every classification, and
+      // the workers sat idle behind it. Each company now carries its own fetch
+      // into its own classify, so a slow site only ever occupies one worker.
+      //
       // Each candidate is fully independent (its own page, its own LLM calls,
-      // its own row), so this was pure wasted wall-clock when serial: a real
-      // 25-company run measured 364s -> ~14.6s per company, essentially all of
-      // it waiting on one classify+disprove pair at a time.
-      // Counter mutations below are safe without locking: Node is
+      // its own row). Counter mutations below are safe without locking: Node is
       // single-threaded, so `qualified++` and friends can't interleave
-      // mid-statement — only whole statements between awaits interleave.
+      // mid-statement, only whole statements between awaits.
+      let fetchFailure: Error | null = null;
       let targetHit = false;
-      await runWithConcurrency(candidates, CLASSIFY_CONCURRENCY, async (candidate) => {
+      const unstarted = await runWithConcurrency(candidates, PIPELINE_CONCURRENCY, async (candidate) => {
         // Target already reached by an in-flight sibling — skip the remaining
         // classify spend. (With concurrency N, up to N-1 extra companies can
         // finish past the target; their results are kept, never discarded.)
-        if (targetHit) return;
+        if (targetHit || fetchFailure) return;
 
-        const domainPages = pagesByDomain.get(candidate.domain) ?? [];
+        // THIS company's pages, bounded in time (see DOMAIN_FETCH_BUDGET_MS).
+        let domainPages: FetchedPage[] = [];
+        try {
+          const fetched = await fetchCompanyPages([candidate.domain]);
+          domainPages = fetched.get(candidate.domain) ?? [];
+        } catch (e) {
+          // Real misconfiguration (a missing token), not one site failing: that
+          // is swallowed per domain inside fetchCompanyPages. Stop the run and
+          // say so rather than recording a rejection nobody judged.
+          fetchFailure ??= e as Error;
+          return;
+        }
+        // Counted now, because now it has really been read. A re-check is a
+        // second look at ground already covered, so it does not spend the
+        // fresh-ground budget the scan ceiling is measured in.
+        if (candidate.channel !== "recheck") {
+          totalScanned++;
+          queueBump({ companies_scanned: totalScanned, pages_fetched: totalScanned });
+        }
         const page = pickBestPage(domainPages);
 
         // discovery_channel belongs on EVERY row, including the early
@@ -1039,7 +1237,7 @@ export async function runSearchPipeline(
         };
 
         if (!page) {
-          await supabase.from("companies").insert({
+          const saved = await persistCompany(candidate, {
             ...base,
             name: cleanDomainName(candidate.domain),
             industry: searchedVertical,
@@ -1047,8 +1245,11 @@ export async function runSearchPipeline(
             rejection_reason: "No About/Team/Leadership page could be fetched from this domain",
             recheck_after: recheckAfterFor("rejected", "could not be fetched"),
           });
-          rejected++;
-          await bump(supabase, searchId, { rejected_count: rejected });
+          // Counted only if a row now exists. See persistCompany.
+          if (saved.stored) {
+            rejected++;
+            queueBump({ rejected_count: rejected });
+          }
           return;
         }
 
@@ -1059,7 +1260,7 @@ export async function runSearchPipeline(
         // as a fetch-quality failure (14-day recheck, same as "could not be
         // fetched") rather than paying to hear "names no individuals".
         if (page.text.length < 500) {
-          await supabase.from("companies").insert({
+          const saved = await persistCompany(candidate, {
             ...base,
             name: resolveName(page.siteName, null, candidate.domain),
             industry: searchedVertical,
@@ -1068,8 +1269,11 @@ export async function runSearchPipeline(
               "Page too thin to evaluate, likely a JS-rendered shell or placeholder page",
             recheck_after: recheckAfterFor("rejected", "could not be fetched"),
           });
-          rejected++;
-          await bump(supabase, searchId, { rejected_count: rejected });
+          // Counted only if a row now exists. See persistCompany.
+          if (saved.stored) {
+            rejected++;
+            queueBump({ rejected_count: rejected });
+          }
           return;
         }
 
@@ -1094,7 +1298,7 @@ export async function runSearchPipeline(
           console.warn(
             `classify failed for ${candidate.domain}: ${(e as Error).message}`.slice(0, 500)
           );
-          await supabase.from("companies").insert({
+          const saved = await persistCompany(candidate, {
             ...base,
             name: resolveName(page.siteName, null, candidate.domain),
             industry: searchedVertical,
@@ -1110,8 +1314,11 @@ export async function runSearchPipeline(
               "Could not be judged automatically. The page was read but the result came back unreadable, so it is queued to be checked again rather than counted either way.",
             recheck_after: recheckAfterFor("rejected", "classification failed"),
           });
-          rejected++;
-          await bump(supabase, searchId, { rejected_count: rejected });
+          // Counted only if a row now exists. See persistCompany.
+          if (saved.stored) {
+            rejected++;
+            queueBump({ rejected_count: rejected });
+          }
           return;
         }
 
@@ -1141,7 +1348,7 @@ export async function runSearchPipeline(
         // A placeholder scraped off a staging banner ("CURRENT_LIVE_SITE")
         // reached a real folder as something to call. See realCompanyName.
         if (!realCompanyName(companyName)) {
-          await supabase.from("companies").insert({
+          const saved = await persistCompany(candidate, {
             ...base,
             name: candidate.domain,
             industry: (classification.industry === "other"
@@ -1152,8 +1359,11 @@ export async function runSearchPipeline(
               "The page gave no usable business name — only template or placeholder text.",
             recheck_after: recheckAfterFor("rejected", "page too thin to evaluate"),
           });
-          rejected++;
-          await bump(supabase, searchId, { rejected_count: rejected });
+          // Counted only if a row now exists. See persistCompany.
+          if (saved.stored) {
+            rejected++;
+            queueBump({ rejected_count: rejected });
+          }
           return;
         }
 
@@ -1210,14 +1420,17 @@ export async function runSearchPipeline(
           industries.length === 0 ||
           industries.includes(classification.industry as Industry);
         if (classification.industry !== "other" && !inScope) {
-          await supabase.from("companies").insert({
+          const saved = await persistCompany(candidate, {
             ...withName,
             status: "rejected",
             rejection_reason: `A ${INDUSTRY_META[classification.industry as Industry]?.label ?? classification.industry} company — outside the verticals this search asked for.`,
             recheck_after: recheckAfterFor("rejected", "not selected for this search"),
           });
-          rejected++;
-          await bump(supabase, searchId, { rejected_count: rejected });
+          // Counted only if a row now exists. See persistCompany.
+          if (saved.stored) {
+            rejected++;
+            queueBump({ rejected_count: rejected });
+          }
           return;
         }
 
@@ -1232,14 +1445,17 @@ export async function runSearchPipeline(
           // landscaping, was invisible to every future search.
           const wrongTradeReason =
             classification.rejectionReason ?? "Outside the landscaping/home-builder ICP";
-          await supabase.from("companies").insert({
+          const saved = await persistCompany(candidate, {
             ...withName,
             status: "rejected",
             rejection_reason: wrongTradeReason,
             recheck_after: recheckAfterFor("rejected", wrongTradeReason),
           });
-          rejected++;
-          await bump(supabase, searchId, { rejected_count: rejected });
+          // Counted only if a row now exists. See persistCompany.
+          if (saved.stored) {
+            rejected++;
+            queueBump({ rejected_count: rejected });
+          }
           return;
         }
 
@@ -1489,9 +1705,7 @@ export async function runSearchPipeline(
         const bothCallable = callableName(founderName) && callableName(nextGenName);
         const finalHasSignal = hasSignal && signalStands && bothCallable;
 
-        const { data: inserted, error: insertErr } = await supabase
-          .from("companies")
-          .insert({
+        const saved = await persistCompany(candidate, {
             ...withName,
             status: finalQualifies ? "qualified" : "rejected",
             // The label the lead has EARNED, which may be lower than the one
@@ -1516,15 +1730,14 @@ export async function runSearchPipeline(
             founder_title: cleanTitle(classification.founderTitle),
             next_gen_name: nextGenName,
             next_gen_title: cleanTitle(classification.nextGenTitle),
-          })
-          .select("id")
-          .single();
+          });
 
-        if (insertErr || !inserted) {
-          rejected++;
-          await bump(supabase, searchId, { rejected_count: rejected });
-          return;
-        }
+        // Nothing stored means nothing to count: a duplicate lead already on
+        // another list, a re-check that is still a "no", or a write that failed.
+        // This used to count a rejection for every one of those, which is how
+        // the folder's numbers drifted away from its rows.
+        if (!saved.stored || !saved.id) return;
+        const inserted = { id: saved.id };
 
         // Phone, written separately and best-effort ON PURPOSE. It needs a
         // column this codebase cannot create (no psql, no CLI, no database
@@ -1574,7 +1787,7 @@ export async function runSearchPipeline(
 
         if (!finalQualifies) {
           rejected++;
-          await bump(supabase, searchId, { rejected_count: rejected });
+          queueBump({ rejected_count: rejected });
           return;
         }
 
@@ -1636,7 +1849,7 @@ export async function runSearchPipeline(
           fitOnly++;
         }
         accepted = qualified + verify + fitOnly;
-        await bump(supabase, searchId, {
+        queueBump({
           qualified_count: qualified,
           verify_count: verify,
           fit_only_count: fitOnly,
@@ -1649,10 +1862,27 @@ export async function runSearchPipeline(
         // this row) and stops here.
 
         // Target hit mid-round — the rest of this batch was already
-        // discovered/fetched (sunk cost), but skip further classify spend.
+        // discovered (sunk cost), but skip further fetch and classify spend.
         if (reachedSoFar() >= targetSignals) targetHit = true;
-      }, outOfTime);
+      }, () =>
+        // Checked before EACH company. Time and room come first (a fetch that
+        // cannot finish before the deadline must not start), then the read
+        // budget, so the pool cannot overshoot the ceiling by a whole batch.
+        outOfTime() ||
+        !hasRoomFor(WORST_CASE_MS.fetch) ||
+        totalScanned >= scanCeiling ||
+        targetHit ||
+        fetchFailure !== null
+      );
 
+      await flushBumps();
+      // Never started, so never read and never counted: put them back.
+      if (unstarted.length > 0) pending.unshift(...unstarted);
+
+      if (fetchFailure) {
+        stoppedEarlyReason = `Stopped after round ${round}: page fetch failed (${(fetchFailure as Error).message.slice(0, 200)})`;
+        break roundLoop;
+      }
       if (targetHit) break roundLoop;
       // No trailing exhaustion check here — the buffer refill at the top of
       // the loop is the single place that decides "pool dry" now, and it does
@@ -1670,6 +1900,12 @@ export async function runSearchPipeline(
       );
     }
 
+    await flushBumps();
+    if (recheckedRead > 0 || duplicatesSkipped > 0) {
+      console.log(
+        `Search ${searchId}: ${recheckedRead} re-check(s) read, ${duplicatesSkipped} company row(s) not added because that company is already on file.`
+      );
+    }
     await bump(supabase, searchId, {
       status: "complete",
       error_message: stoppedEarlyReason,
@@ -1691,6 +1927,7 @@ export async function runSearchPipeline(
     if (vendorDown) {
       console.warn(`Search ${searchId} stopped: ${(e as VendorUnavailableError).detail}`);
     }
+    await flushBumps();
     await bump(supabase, searchId, {
       status: "failed",
       error_message: (e as Error).message?.slice(0, 500) ?? "Unknown error",
