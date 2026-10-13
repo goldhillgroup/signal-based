@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { peopleFrom, MAX_PEOPLE, PERSON_SOURCE, PERSON_TARGET_SOURCE, splitName, joinName } from "../lib/pipeline/people.js";
+import { PAGE_PERSON_SOURCE, MAX_PAGE_PEOPLE } from "../lib/pipeline/co-owners.js";
 
 const company = { founder_name: "John Hansmann", founder_title: "Founder", next_gen_name: "Steve Hansmann", next_gen_title: "Owner" };
 const row = (over: Record<string, unknown> = {}) => ({
@@ -45,9 +46,45 @@ test("re-typing a name already in a crawler slot is the same person", () => {
   assert.equal(people.find((p) => p.isTarget)?.name, "Steve Hansmann");
 });
 
-test("the list stops at five", () => {
-  const extras = ["A", "B", "C", "D", "E"].map((n, i) => row({ id: `x${i}`, name: n, find_source: PERSON_SOURCE }));
+test("the list stops at the limit", () => {
+  const extras = Array.from({ length: MAX_PEOPLE + 3 }, (_, i) => row({ id: `x${i}`, name: `Person ${i}`, find_source: PERSON_SOURCE }));
   assert.equal(peopleFrom(company, extras).length, MAX_PEOPLE);
+});
+
+test("the crawler's co-owners can never fill every slot", () => {
+  // Raised from 5 to 8 when co-owners started being read off the page. With the
+  // old limit the crawler (founder + successor + 4 owners) would have taken the
+  // lot and Jonathan could not add the person he actually knew about.
+  const slotsLeftForHand = MAX_PEOPLE - (2 + MAX_PAGE_PEOPLE);
+  assert.ok(slotsLeftForHand >= 2, `only ${slotsLeftForHand} slots left for hand-added people`);
+});
+
+test("an owner read off the page is a person, labelled as such", () => {
+  const people = peopleFrom(company, [
+    row({ id: "p1", name: "Paul Hansmann", title: "Co-owner", find_source: PAGE_PERSON_SOURCE }),
+    row({ id: "u1", name: "Dave Hansmann", find_source: PERSON_SOURCE }),
+  ]);
+  assert.equal(people.find((p) => p.name === "Paul Hansmann")?.origin, "page");
+  assert.equal(people.find((p) => p.name === "Dave Hansmann")?.origin, "user");
+  assert.equal(people.find((p) => p.name === "Paul Hansmann")?.title, "Co-owner");
+});
+
+test("a crawler row naming the founder does not turn the founder into a hand-added person", () => {
+  const people = peopleFrom(company, [
+    row({ id: "p1", name: "John Hansmann", find_source: PAGE_PERSON_SOURCE }),
+  ]);
+  assert.equal(people.filter((p) => p.name === "John Hansmann").length, 1);
+  assert.equal(people.find((p) => p.name === "John Hansmann")?.origin, "founder");
+});
+
+test("a co-owner with an address on file shows it", () => {
+  const people = peopleFrom(company, [
+    row({ id: "p1", name: "Paul Hansmann", find_source: PAGE_PERSON_SOURCE }),
+    row({ id: "e1", name: "Paul Hansmann", email: "paul@h.com", find_source: "anymailfinder", find_status: "found" }),
+  ]);
+  const paul = people.filter((p) => p.name === "Paul Hansmann");
+  assert.equal(paul.length, 1, "one person, not two");
+  assert.equal(paul[0].email, "paul@h.com");
 });
 
 test("an address already on file shows against its person", () => {

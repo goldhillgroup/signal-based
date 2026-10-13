@@ -1,4 +1,5 @@
 import type { createServiceRoleClient } from "../supabase/server";
+import { PAGE_PERSON_SOURCE } from "./co-owners";
 
 /**
  * The people at a company, and which one the next paid lookup is for.
@@ -39,8 +40,14 @@ export const PERSON_TARGET_SOURCE = "user:person:target";
 /** An address Jonathan typed in himself, from wherever he found it. */
 export const PERSON_TYPED_SOURCE = "user:typed";
 
-/** Room for a founder, a couple of children, and a manager. Jonathan's ask. */
-export const MAX_PEOPLE = 5;
+/**
+ * Room for a founder, a successor, the other owners the page names (up to
+ * four, see co-owners.ts) and a couple of people added by hand. It was 5, which
+ * was Jonathan's ask when only hand-added people existed; with co-owners now
+ * read off the page, five would have let the crawler fill every slot and left
+ * him unable to add the person he actually knew about.
+ */
+export const MAX_PEOPLE = 8;
 
 export interface Person {
   /** A contacts row id for hand-added people; null for the two crawler slots. */
@@ -48,7 +55,13 @@ export interface Person {
   name: string;
   title: string | null;
   /** Where this person came from, which decides whether they can be deleted. */
-  origin: "founder" | "next_gen" | "user";
+  /**
+   * `page` is an owner or partner the crawler read off the company's own site
+   * (beyond the founder and the successor). It is a contacts row like a
+   * hand-added person, and is edited and removed the same way, but it is
+   * labelled for what it is: nobody typed it in.
+   */
+  origin: "founder" | "next_gen" | "page" | "user";
   /**
    * Ticked for enrichment. MORE THAN ONE MAY BE, which is the point: a
    * builder with a founder and two sons is three people worth an address, and
@@ -132,7 +145,9 @@ export function peopleFrom(company: CompanyRow, contacts: ContactRow[]): Person[
     const dupe = out.find((p) => p.name.trim().toLowerCase() === c.name!.trim().toLowerCase());
     if (dupe) {
       dupe.id = c.id;
-      dupe.origin = "user";
+      // Only a person somebody typed in takes over the slot. A crawler row for
+      // the same human leaves it as it was.
+      if (c.find_source !== PAGE_PERSON_SOURCE) dupe.origin = "user";
       dupe.email = c.email;
       continue;
     }
@@ -140,7 +155,7 @@ export function peopleFrom(company: CompanyRow, contacts: ContactRow[]): Person[
       id: c.id,
       name: c.name,
       title: c.title,
-      origin: "user",
+      origin: c.find_source === PAGE_PERSON_SOURCE ? "page" : "user",
       isTarget: false,
       email: c.email,
     });

@@ -1,4 +1,4 @@
-import { settledContact, type Company } from "./company";
+import type { Company } from "./company";
 import { toLead, SIGNAL_TYPE_META } from "./lead-signal";
 import { isSharedInbox } from "./pipeline/page-email";
 import {
@@ -11,7 +11,7 @@ import {
   nextStep,
   DEFAULT_RULES,
 } from "./lead-score";
-import { personalEmail, generalEmail } from "./company";
+import { personalEmail, generalEmail, personalContacts } from "./company";
 
 // The "sheet" — a plain CSV download, opens directly in Excel/Google Sheets/
 // Numbers with no export API, no OAuth, no extra vendor. Simplest thing that
@@ -53,6 +53,12 @@ export type Exportable = Company & {
   /** Jonathan's own note. */
   note?: string | null;
 };
+
+/** Personal addresses beyond the one in `contact_email`. */
+function extraContacts(c: Exportable) {
+  const first = personalEmail(c)?.email?.toLowerCase();
+  return personalContacts(c).filter((x) => x.email?.toLowerCase() !== first);
+}
 
 export const COLUMNS: { header: string; get: (c: Exportable) => string }[] = [
   // FIRST, so a combined sheet sorts and groups by it without being rearranged.
@@ -144,6 +150,19 @@ export const COLUMNS: { header: string; get: (c: Exportable) => string }[] = [
   // was bought is not the question a sheet needs answered; who it reaches is,
   // and email_status below still says how sure we are.
   { header: "contact_email", get: (c) => personalEmail(c)?.email ?? "" },
+  // THE OTHER OWNERS' ADDRESSES. The sheet carried one personal contact per
+  // company, so a co-owner whose address was on file sat in the app and never
+  // reached the spreadsheet Jonathan works from. "For many companies the
+  // primary owner's email is not available, but a co owner's email is."
+  // Columns rather than one packed cell, because outreach is done from a mail
+  // merge. They only appear when some row has a second or third contact (see
+  // usedColumns), so a list with none carries no empty columns.
+  { header: "contact_2_name", get: (c) => extraContacts(c)[0]?.name ?? "" },
+  { header: "contact_2_title", get: (c) => extraContacts(c)[0]?.title ?? "" },
+  { header: "contact_2_email", get: (c) => extraContacts(c)[0]?.email ?? "" },
+  { header: "contact_3_name", get: (c) => extraContacts(c)[1]?.name ?? "" },
+  { header: "contact_3_title", get: (c) => extraContacts(c)[1]?.title ?? "" },
+  { header: "contact_3_email", get: (c) => extraContacts(c)[1]?.email ?? "" },
   { header: "general_inbox", get: (c) => generalEmail(c)?.email ?? "" },
   {
     header: "email_status",
@@ -204,9 +223,12 @@ function csvCell(value: string): string {
  * a question the reader has to answer for themselves.
  */
 export function usedColumns(companies: Exportable[]) {
-  return COLUMNS.filter(
-    (c) => c.header !== "list" || companies.some((x) => (x.listName ?? "").length > 0)
-  );
+  return COLUMNS.filter((c) => {
+    if (c.header === "list") return companies.some((x) => (x.listName ?? "").length > 0);
+    // Second and third contact: only when somebody in the sheet has one.
+    if (/^contact_[23]_/.test(c.header)) return companies.some((x) => c.get(x).length > 0);
+    return true;
+  });
 }
 
 export function companiesToCsv(companies: Exportable[]): string {

@@ -321,6 +321,15 @@ export interface ClassificationResult {
   founderTitle: string | null;
   nextGenName: string | null;
   nextGenTitle: string | null;
+  /**
+   * Everyone ELSE the page names as an owner, partner or senior leader, beyond
+   * the founder and the successor. Co-owners were never captured: the result
+   * carried exactly two people, so a page naming three brothers, or a couple
+   * who own it together, produced two names. Optional because a model that
+   * ignores the field, or a cached older result, simply returns nothing for it.
+   * Sanitised before use: see lib/pipeline/co-owners.ts.
+   */
+  otherPeople?: { name: string; title: string | null; relationship: string | null }[];
   quote: string | null;
   /**
    * Supporting succession signals the page shows, beyond the pair itself.
@@ -423,6 +432,8 @@ STEP 1 — "companyName": the real business name as the page itself presents it 
 
 STEP 2 — "founderName"/"founderTitle": read the ENTIRE page text specifically hunting for any named individual presented as running the place — owner, founder, CEO, President, General Manager, Managing Partner, whoever. This field name says "founder" but means "the person to contact" — treat "Owned and operated by John Smith," "Hi, I'm John Smith, owner of X," a name signed at the bottom of an About page, or a name on a team/contact page identically to a literal founder story. Do this whether or not there's any succession angle at all, and whether or not the company will end up qualifying. Only return null after you've actually read the full page text and confirmed no individual is named anywhere — not because the succession story (if any) doesn't need one.
 
+STEP 3 — "otherPeople": every OTHER named individual the page presents as an owner, co-owner, partner, principal or senior leader, beyond the two people you give as founderName and nextGenName. Brothers or sisters who own it together, a spouse who co-owns it, a business partner, a managing partner, a second son or daughter in management, a president or general manager who is a different person. Up to four. For each give "name" (the full name exactly as the page writes it — never a first name alone and never an initial in place of the surname), "title" (as the page gives it, or null) and "relationship" (how the page ties them to the others, such as "brother of Tom" or "co-owner", or null). Do NOT include crew, technicians, office staff or anyone who is not part of the ownership or leadership. This list exists only so more owners can be reached: it NEVER changes qualifies, confidence or the signal, which are decided entirely by the rules below. Return [] when nobody else is named.
+
 Then identify "industry": one of the eight families above, or "other". If "other", this can never qualify — set qualifies: false and say so in rejectionReason.
 
 THE SIGNAL (only relevant if industry is one of the eight): the company's OWN page shows a founder/senior leader AND a next-generation family member BOTH CURRENTLY IN THE BUSINESS, mid-handoff.
@@ -500,6 +511,7 @@ Respond with ONLY a JSON object (no markdown fences, no prose) matching this sha
   "pageType": "about" | "leadership" | "team" | "home" | "other",
   "nextGenName": string | null,
   "nextGenTitle": string | null,
+  "otherPeople": { "name": string, "title": string | null, "relationship": string | null }[],
   "quote": string | null,
   "city": string | null,
   "revenueEstimate": string | null,

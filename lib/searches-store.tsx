@@ -28,8 +28,7 @@ import type {
   FindStatus,
   VerificationStatus,
 } from "./supabase/types";
-import type { Company } from "./company";
-import { isSharedInbox } from "./pipeline/page-email";
+import { contactsForCompany, type Company } from "./company";
 
 export interface SearchFolder {
   id: string;
@@ -134,19 +133,7 @@ interface CompanyJoinRow {
 
 function mapCompanyRow(row: CompanyJoinRow): Company {
   const evidence = row.signal_evidence?.[0];
-  // NOT contacts[0]. That was whichever row the database returned first, so a
-  // company with both info@ and the founder's own address showed whichever
-  // won the race — and a free footer scrape of info@ could displace the
-  // address that had actually been paid for. Rank instead: a settled lookup
-  // beats a parked one, and a named person beats a shared inbox.
-  const ranked = [...(row.contacts ?? [])].sort((a, b) => {
-    const settled = (c: typeof a) => (c.find_status === "found" ? 1 : 0);
-    const personal = (c: typeof a) => (c.email && !isSharedInbox(c.email) ? 1 : 0);
-    return settled(b) - settled(a) || personal(b) - personal(a);
-  });
-  const contact = ranked[0];
-  // The best SHARED inbox, kept alongside rather than instead of the above.
-  const backup = ranked.find((c) => c.email && isSharedInbox(c.email) && c !== contact);
+  const { contact, backupContact, allContacts } = contactsForCompany(row.contacts);
   return {
     id: row.id,
     searchId: row.search_id ?? null,
@@ -189,41 +176,9 @@ function mapCompanyRow(row: CompanyJoinRow): Company {
           disproveNotes: evidence.disprove_notes ?? undefined,
         }
       : null,
-    contact: contact
-      ? {
-          name: contact.name,
-          nameInferred: contact.name_inferred,
-          title: contact.title,
-          email: contact.email,
-          findStatus: contact.find_status,
-          findSource: contact.find_source,
-          verificationStatus: contact.verification_status,
-        }
-      : null,
-    // ALL of them, ranked, so the drawer can say which is which instead of
-    // showing one and implying it is the only one.
-    allContacts: ranked
-      .filter((c) => c.email)
-      .map((c) => ({
-        name: c.name,
-        nameInferred: c.name_inferred,
-        title: c.title,
-        email: c.email,
-        findStatus: c.find_status,
-        findSource: c.find_source,
-        verificationStatus: c.verification_status,
-      })),
-    backupContact: backup
-      ? {
-          name: backup.name,
-          nameInferred: backup.name_inferred,
-          title: backup.title,
-          email: backup.email,
-          findStatus: backup.find_status,
-          findSource: backup.find_source,
-          verificationStatus: backup.verification_status,
-        }
-      : null,
+    contact,
+    allContacts,
+    backupContact,
   };
 }
 

@@ -19,6 +19,7 @@ import { countsTowardTarget } from "./target-count";
 import { auditRow } from "./row-audit";
 import { pickRechecks, nextRecheckAfter, decideLead, normDomain, SUPERSEDED_REASON } from "./recheck-selection";
 import { withDbRetry, isDuplicateKey } from "./db-retry";
+import { cleanOtherPeople, titleFor, PAGE_PERSON_SOURCE } from "./co-owners";
 import { runWithCounters, estimateUsd, describeCost, type CostCounters } from "./cost-tracker";
 
 // Contact enrichment (Anymailfinder + MillionVerifier) lives in
@@ -738,7 +739,11 @@ export async function runSearchPipeline(
     // each pass. A channel that was capped in round 1 and recovered by round 4
     // still means round 1 searched a smaller pool than it appeared to, so the
     // run as a whole was degraded and has to say so.
-    const degradedChannels = new Set<string>();
+    // Every failure, with repeats (not a Set), and how many discovery calls were
+    // made, so buildWarningLine can tell a channel that failed in every round
+    // from one that failed once. See channel-health.ts.
+    const channelFailures: string[] = [];
+    let discoveryAttempts = 0;
 
     // CANDIDATE BUFFER — consume everything already paid for before paying
     // for more. Discovery channels return more than one round consumes (a
@@ -1065,6 +1070,7 @@ export async function runSearchPipeline(
       }
       if (pending.length === 0 && !poolDry) {
         discoveryCalls++;
+        discoveryAttempts++;
         try {
           const { candidates: fresh, channelErrors } = await discoverCandidates({
             industries,
@@ -1076,7 +1082,7 @@ export async function runSearchPipeline(
           });
           if (channelErrors.length > 0) {
             roundChannelErrors = channelErrors;
-            channelErrors.forEach((e) => degradedChannels.add(e));
+            channelFailures.push(...channelErrors);
             console.warn(`Search ${searchId} discovery ${discoveryCalls}: ${channelErrors.join(" | ")}`);
           }
           // Claimed for this search the moment they enter the buffer, so the
@@ -1820,10 +1826,22 @@ export async function runSearchPipeline(
           // see which is which instead of the crawler deciding for him. The
           // ranking is unchanged, so the first row is still the same address
           // that used to be the only one.
-          const parkedAll = allEmailsFor(extractEmails(classifyText), candidate.domain, [
-            classification.nextGenName,
-            classification.founderName,
-          ]).slice(0, 5);
+          // EVERYONE LISTED, not just two. The addresses are matched against the
+          // founder, the successor AND every other owner the page names, so an
+          // address printed beside a co-owner's name is attributed to them
+          // rather than filed as an anonymous inbox. And each takes the title of
+          // the person it matched; they all used to take the successor's.
+          const coOwners = cleanOtherPeople(classification.otherPeople, [founderName, nextGenName]);
+          const roster = [
+            { name: nextGenName, title: cleanTitle(classification.nextGenTitle) },
+            { name: founderName, title: cleanTitle(classification.founderTitle) },
+            ...coOwners.map((c) => ({ name: c.name, title: c.title })),
+          ];
+          const parkedAll = allEmailsFor(
+            extractEmails(classifyText),
+            candidate.domain,
+            roster.map((r) => r.name)
+          ).slice(0, 8);
           if (parkedAll.length > 0) {
             await supabase.from("contacts").insert(
               parkedAll.map((parked) => ({
@@ -1831,14 +1849,40 @@ export async function runSearchPipeline(
                 email: parked.email,
                 name: parked.matchedName,
                 name_inferred: parked.matchedName !== null,
-                title: parked.matchedName
-                  ? classification.nextGenTitle ?? classification.founderTitle
-                  : null,
+                title: parked.matchedName ? titleFor(parked.matchedName, roster) : null,
                 find_status: "not_attempted" as const,
                 find_source: `company-page:${parked.kind}`,
                 verification_status: "not_attempted" as const,
               }))
             );
+          }
+
+          // THE OTHER OWNERS THEMSELVES, as people, with or without an address.
+          // Name-only rows, which is exactly the shape hand-added people already
+          // have (see people.ts): peopleFrom lists them, enrichment can look
+          // them up, and one with no address is an ordinary row there. Best
+          // effort and error-checked, because a lead must never be lost over a
+          // co-owner row that failed to write.
+          if (coOwners.length > 0) {
+            const { error: coErr } = await withDbRetry(() =>
+              supabase.from("contacts").insert(
+                coOwners.map((c) => ({
+                  company_id: inserted.id,
+                  name: c.name,
+                  title: c.title,
+                  email: null,
+                  name_inferred: false,
+                  find_status: "not_attempted" as const,
+                  find_source: PAGE_PERSON_SOURCE,
+                  verification_status: "not_attempted" as const,
+                }))
+              )
+            );
+            if (coErr) {
+              console.warn(
+                `Search ${searchId}: ${candidate.domain} co-owners not saved, ${(coErr.message ?? "").slice(0, 120)}`
+              );
+            }
           }
         }
 
@@ -1911,7 +1955,7 @@ export async function runSearchPipeline(
       error_message: stoppedEarlyReason,
       // Separate from error_message on purpose: this run SUCCEEDED, it just
       // searched a smaller surface than it looks like it did.
-      warnings: buildWarningLine(degradedChannels),
+      warnings: buildWarningLine(channelFailures, 4, { calls: discoveryAttempts }),
       cost_estimate_usd: estimateUsd(costCounters),
       cost_breakdown: describeCost(costCounters) || null,
       finished_at: new Date().toISOString(),
@@ -2132,11 +2176,17 @@ export async function enrichContacts(
       if (personal || c.find_status === "not_found") enrichedCompanies.add(c.company_id);
     }
     const alreadyEnriched = enrichedCompanies;
-    const parkedByCompany = new Map(
-      (existingContacts ?? [])
-        .filter((c) => c.find_status === "not_attempted" && c.email)
-        .map((c) => [c.company_id, c])
-    );
+    // EVERY parked address per company, not the last one. This was a Map built
+    // from [company_id, row] pairs, so a company with three parked addresses
+    // kept whichever came last and the other two were never looked at again.
+    type ContactLite = NonNullable<typeof existingContacts>[number];
+    const parkedRowsByCompany = new Map<string, ContactLite[]>();
+    for (const c of existingContacts ?? []) {
+      if (c.find_status !== "not_attempted" || !c.email) continue;
+      const list = parkedRowsByCompany.get(c.company_id) ?? [];
+      list.push(c);
+      parkedRowsByCompany.set(c.company_id, list);
+    }
 
     // Reuse an email we already bought for this DOMAIN, even if it was found
     // under a different search. Companies are stored per (search, domain), so
@@ -2234,6 +2284,10 @@ export async function enrichContacts(
     // concurrent requests to AnymailFinder is how an account starts getting
     // 429s or looked at. Six is a comfortable multiple with no burst.
     const POOL = 6;
+    // How many OTHER people at a company are tried when the first has no address.
+    // See the fall-through below. Three covers a founder, a successor and two
+    // more owners, which is what almost every family firm lists.
+    const CO_OWNER_LOOKUPS = 3;
 
     // ── AND ITS OWN DEADLINE ─────────────────────────────────────────────
     //
@@ -2295,26 +2349,38 @@ export async function enrichContacts(
         // Zullo on the strength of a mailbox that reaches the front office.
         // Both are still SHOWN, in their own column, and both remain
         // enrichable -- Daniel's call, and the right one.
-        const parked = parkedByCompany.get(company.id);
-        const parkedKind = String(parked?.find_source ?? "").startsWith("company-page:")
-          ? String(parked?.find_source).slice("company-page:".length)
-          : null;
-        const parkedReachesAPerson =
-          parkedKind === "person_match" || parkedKind === "person";
-        if (parked?.email && parkedReachesAPerson) {
-          const verification = await verifyEmail(parked.email).catch(() => "unknown" as const);
-          await supabase
-            .from("contacts")
-            .update({
-              find_status: "found",
-              verification_status: verification,
-              verification_source: "millionverifier",
-              verified_at: new Date().toISOString(),
-            })
-            .eq("company_id", company.id)
-            .eq("find_status", "not_attempted");
-          contactsFound++;
-          if (verification === "valid") contactsVerified++;
+        const parkedRows = parkedRowsByCompany.get(company.id) ?? [];
+        // The first parked address, for the page-scrape fallback further down.
+        const parked = parkedRows[0];
+        const isPersonKind = (r: ContactLite) => {
+          const kind = String(r.find_source ?? "").startsWith("company-page:")
+            ? String(r.find_source).slice("company-page:".length)
+            : null;
+          return kind === "person_match" || kind === "person";
+        };
+        const personalParked = parkedRows.filter(isPersonKind);
+        if (personalParked.length > 0) {
+          // EACH ONE IS VERIFIED ON ITS OWN, and only the personal ones are
+          // promoted. This used to verify the first address and then flip EVERY
+          // parked row for the company to "found" with that single result, so
+          // office@ came out of enrichment marked as verified because manny@ was.
+          // It also meant a company printing two owners' addresses was settled
+          // after checking one of them. The shared inboxes stay exactly as they
+          // were: shown, and not claimed to be anything they are not.
+          for (const row of personalParked) {
+            const verification = await verifyEmail(row.email as string).catch(() => "unknown" as const);
+            await supabase
+              .from("contacts")
+              .update({
+                find_status: "found",
+                verification_status: verification,
+                verification_source: "millionverifier",
+                verified_at: new Date().toISOString(),
+              })
+              .eq("id", row.id);
+            contactsFound++;
+            if (verification === "valid") contactsVerified++;
+          }
           await bump(supabase, searchId, { contacts_found: contactsFound, contacts_verified: contactsVerified });
           return; // next company; this one is settled without a paid lookup
         }
@@ -2367,9 +2433,56 @@ export async function enrichContacts(
         // Each is a separate purchase, which is why "look up everyone" is an
         // explicit choice and priced per person rather than per company.
         const wanted = targetsFor(company);
-        const primary = wanted[0];
+        let primary = wanted[0];
         const targetName = primary?.name ?? null;
-        const contact = await findContact(company.domain, targetName);
+        let contact = await findContact(company.domain, targetName);
+
+        // ── THE OTHER OWNERS, when the first person has no address of their own
+        //
+        // Jonathan, 2026-10-13: "For many companies, the primary owner's email is
+        // not available, but a co owner's email is." This is where that was lost.
+        // Enrichment asked for ONE person, and when that came back empty it
+        // recorded "not found" and settled the company for good. 29 of the 102
+        // enriched leads on file ended without an address for any named person.
+        //
+        // Two shapes of "the first person had no address of their own":
+        //   - nothing came back at all (the lookup is free: the vendor bills only
+        //     on a find), and
+        //   - a COMPANY mailbox came back, doug@ for a search for John, with the
+        //     name inferred from the handle. The person lookup found nobody and
+        //     the domain fallback answered, which is very often a different human.
+        //
+        // In either case the OTHER people listed here are tried next, one lookup
+        // each, person-specific (personOnly: the domain-wide fallback would hand
+        // back the same company address for every one of them), stopping at the
+        // first real hit. Failed lookups cost nothing; a hit is the lead.
+        //
+        // BOUNDED: at most CO_OWNER_LOOKUPS tries, and at most ONE extra billed
+        // lookup per company. When the first lookup found nothing at all that
+        // extra IS the company's lookup, so the ceiling the dialog quotes (one
+        // lookup per person asked for) is unchanged.
+        const firstIsPerson = contact.found && !!contact.email && !contact.nameInferred;
+        let coOwnerHit: { person: { id: string | null; name: string; title: string | null }; result: typeof contact } | null = null;
+        if (!firstIsPerson) {
+          const others = (peopleByCompany.get(company.id) ?? []).filter(
+            (p) => p.name && p.name.trim().toLowerCase() !== (primary?.name ?? "").trim().toLowerCase()
+          );
+          for (const person of others.slice(0, CO_OWNER_LOOKUPS)) {
+            const alt = await findContact(company.domain, person.name, { personOnly: true });
+            if (alt.found && alt.email && !alt.nameInferred) {
+              coOwnerHit = { person, result: alt };
+              break;
+            }
+          }
+          // Nothing for the first person at all: the co-owner IS the result, and
+          // the company is enriched on the strength of them.
+          if (coOwnerHit && !(contact.found && contact.email)) {
+            contact = coOwnerHit.result;
+            primary = coOwnerHit.person;
+            coOwnerHit = null;
+          }
+        }
+
         if (contact.found && contact.email) {
           const verification = await verifyEmail(contact.email).catch(() => "unknown" as const);
           const { error: insertErr } = await supabase.from("contacts").insert({
@@ -2426,6 +2539,9 @@ export async function enrichContacts(
             : await emailFromCompanyPage(company.domain, company.source_url, [
                 company.next_gen_name,
                 company.founder_name,
+                // And everyone else listed, so an address beside a co-owner's
+                // name is attributed to them rather than filed as an inbox.
+                ...(peopleByCompany.get(company.id) ?? []).map((p) => p.name),
               ]);
           if (scraped) {
             const verification = await verifyEmail(scraped.email).catch(() => "unknown" as const);
@@ -2454,6 +2570,41 @@ export async function enrichContacts(
             });
           }
         }
+        // THE CO-OWNER'S OWN ADDRESS, alongside the first lookup's company
+        // mailbox. Only reached when the first lookup returned a company address
+        // (doug@ for a search for John) and one of the other owners listed here
+        // turned out to have a real personal one. Both are kept: the company
+        // mailbox is a genuine way in, and this is the person.
+        if (coOwnerHit) {
+          const hit = coOwnerHit;
+          const hitEmail = hit.result.email as string;
+          const { data: sameAddress } = await supabase
+            .from("contacts")
+            .select("id")
+            .eq("company_id", company.id)
+            .ilike("email", hitEmail)
+            .maybeSingle();
+          if (!sameAddress) {
+            const hitVerification = await verifyEmail(hitEmail).catch(() => "unknown" as const);
+            const { error: hitErr } = await supabase.from("contacts").insert({
+              company_id: company.id,
+              name: hit.result.name ?? hit.person.name,
+              name_inferred: false,
+              title: hit.person.title,
+              email: hitEmail,
+              find_status: "found",
+              find_source: "anymailfinder",
+              verification_status: hitVerification,
+              verification_source: "millionverifier",
+              verified_at: new Date().toISOString(),
+            });
+            // Bought and paid for: a rejected write is reported, never swallowed.
+            if (hitErr) throw new Error(`saving the co-owner's address failed: ${hitErr.message}`);
+            contactsFound++;
+            if (hitVerification === "valid") contactsVerified++;
+          }
+        }
+
           // EVERY OTHER ADDRESS THE SAME LOOKUP RETURNED.
         //
         // The charge is per lookup, not per address, so these are already

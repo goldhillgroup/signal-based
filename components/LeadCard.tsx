@@ -1,6 +1,6 @@
 "use client";
 
-import { settledContact, type Company } from "@/lib/company";
+import { settledContact, personalContacts, type Company } from "@/lib/company";
 import { isSharedInbox } from "@/lib/pipeline/page-email";
 import { toLead, SIGNAL_TYPE_META, leadPeople } from "@/lib/lead-signal";
 import { formatRelativeDate } from "@/lib/stats";
@@ -46,6 +46,11 @@ export function LeadCard({
   // says are not there yet, and would leave the Enrich button apparently
   // doing nothing for those rows.
   const contact = settledContact(company);
+  // Other owners with an address on file. The card showed one contact, so a
+  // co-owner reachable at their own address was invisible from the list.
+  const otherOwners = personalContacts(company).filter(
+    (x) => x.email?.toLowerCase() !== contact?.email?.toLowerCase()
+  );
   const parked = company.contact?.findStatus === "not_attempted" && !!company.contact.email;
   const rejected = company.status === "rejected";
   const selectable = picked !== null && typeof onTogglePick === "function";
@@ -191,6 +196,14 @@ export function LeadCard({
               <span className="text-[11px] text-gh-ink-muted">
                 {contact.name}
                 {contact.title ? `, ${contact.title}` : ""}
+              </span>
+            )}
+            {otherOwners.length > 0 && (
+              <span
+                className="rounded-full bg-gh-sky/10 px-2 py-0.5 text-[10px] font-semibold text-gh-navy"
+                title={otherOwners.map((x) => `${x.name ?? ""} ${x.email}`.trim()).join("\n")}
+              >
+                +{otherOwners.length} more owner{otherOwners.length === 1 ? "" : "s"}
               </span>
             )}
           </div>

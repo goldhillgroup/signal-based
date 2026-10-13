@@ -34,7 +34,7 @@ interface Person {
   id: string | null;
   name: string;
   title: string | null;
-  origin: "founder" | "next_gen" | "user";
+  origin: "founder" | "next_gen" | "page" | "user";
   isTarget: boolean;
   email: string | null;
 }
@@ -49,6 +49,8 @@ interface Draft extends Person {
 const ROLE_LABEL: Record<Person["origin"], string> = {
   founder: "Founder",
   next_gen: "Next generation",
+  // Read off their own site by the crawler, not typed in.
+  page: "Owner on their site",
   user: "Added by you",
 };
 
@@ -228,7 +230,7 @@ export function PeopleEditor({
 
     try {
       for (const d of drafts.filter((x) => x.removed && !x.isNew)) {
-        if (d.origin === "user" && d.id) await call("DELETE", { contact_id: d.id });
+        if ((d.origin === "user" || d.origin === "page") && d.id) await call("DELETE", { contact_id: d.id });
         else await call("PATCH", { [`${d.origin === "founder" ? "founder" : "next_gen"}_name`]: "" });
       }
 
@@ -252,7 +254,7 @@ export function PeopleEditor({
         const renamed =
           d.name.trim() !== was.name.trim() || (d.title ?? "").trim() !== (was.title ?? "").trim();
         if (renamed) {
-          if (d.origin === "user" && d.id) {
+          if ((d.origin === "user" || d.origin === "page") && d.id) {
             await call("PATCH", { contact_id: d.id, name: d.name, title: d.title });
           } else {
             const prefix = d.origin === "founder" ? "founder" : "next_gen";

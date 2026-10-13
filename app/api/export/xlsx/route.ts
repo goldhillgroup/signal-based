@@ -3,6 +3,7 @@ import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { companiesToXlsx } from "@/lib/xlsx-export";
 import { folderTitle } from "@/lib/folder-title";
 import { loadMarks } from "@/lib/lead-notes";
+import { contactsForCompany, type ContactRow } from "@/lib/company";
 import type { Exportable } from "@/lib/csv-export";
 
 /**
@@ -65,15 +66,13 @@ function toCompany(
   listName: string,
   marks?: { note: string | null; grade: number | null }
 ): Exportable {
-  const contacts = (r.contacts ?? []).map((c) => ({
-    name: c.name,
-    nameInferred: c.name_inferred,
-    title: c.title,
-    email: c.email,
-    findStatus: c.find_status,
-    findSource: c.find_source,
-    verificationStatus: c.verification_status,
-  }));
+  // The SAME ranking the app uses (see contactsForCompany). This took the first
+  // two rows in whatever order the database returned them, so a name-only
+  // co-owner row could come first and the sheet showed a blank email for a
+  // company whose list showed one.
+  const { contact, backupContact, allContacts } = contactsForCompany(
+    (r.contacts ?? []) as unknown as ContactRow[]
+  );
   const ev = r.signal_evidence?.[0];
   return {
     id: r.id,
@@ -108,9 +107,9 @@ function toCompany(
           disproveNotes: ev.disprove_notes ?? undefined,
         }
       : null,
-    contact: contacts[0] ?? null,
-    backupContact: contacts[1] ?? null,
-    allContacts: contacts,
+    contact,
+    backupContact,
+    allContacts,
     listName,
     ownGrade: marks?.grade ?? null,
     note: marks?.note ?? null,

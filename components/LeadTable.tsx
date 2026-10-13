@@ -2,7 +2,7 @@
 
 import { Fragment } from "react";
 import type { Company } from "@/lib/company";
-import { personalEmail, generalEmail, lookupCameBackEmpty } from "@/lib/company";
+import { personalEmail, generalEmail, lookupCameBackEmpty, personalContacts } from "@/lib/company";
 import { toLead, SIGNAL_TYPE_META, leadPeople } from "@/lib/lead-signal";
 import { ScorePill, type Verdict } from "./ScorePill";
 
@@ -136,6 +136,10 @@ export function LeadTable({
                 // the better lead than a bought info@.
                 const personal = personalEmail(c);
                 const general = generalEmail(c);
+                // Everyone else with a personal address on file: co-owners.
+                const otherOwners = personalContacts(c).filter(
+                  (x) => x.email?.toLowerCase() !== personal?.email?.toLowerCase()
+                );
                 const who = nextGen ?? founder ?? null;
                 return (
                   <tr
@@ -212,15 +216,34 @@ export function LeadTable({
                     </Td>
                     <Td title={lead.signalDetail ?? ""}>{lead.signalDetail ?? <Muted>-</Muted>}</Td>
                     <Td title={who ?? ""}>{who ?? <Muted>nobody named</Muted>}</Td>
-                    <Td title={personal?.email ?? ""}>
+                    <Td
+                      title={
+                        otherOwners.length > 0
+                          ? [personal?.email, ...otherOwners.map((x) => `${x.name ?? ""} ${x.email}`.trim())]
+                              .filter(Boolean)
+                              .join("\n")
+                          : (personal?.email ?? "")
+                      }
+                    >
                       {personal?.email ? (
-                        <a
-                          href={`mailto:${personal.email}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="text-gh-sky hover:underline"
-                        >
-                          {personal.email}
-                        </a>
+                        <>
+                          <a
+                            href={`mailto:${personal.email}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-gh-sky hover:underline"
+                          >
+                            {personal.email}
+                          </a>
+                          {/* THE OTHER OWNERS. This column showed one address per
+                              company, so a co-owner whose address was on file was
+                              invisible from the list. Opening the row lists every
+                              one of them. */}
+                          {otherOwners.length > 0 && (
+                            <span className="ml-1.5 whitespace-nowrap rounded-full bg-gh-sky/10 px-1.5 py-0.5 text-[10px] font-semibold text-gh-navy">
+                              +{otherOwners.length} more
+                            </span>
+                          )}
+                        </>
                       ) : (
                         // NOT "does a general inbox exist" -- that was the old
                         // test and it drew a line nobody could act on: both

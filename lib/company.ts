@@ -77,6 +77,88 @@ export function reachesAPerson(c: Contact | null | undefined): boolean {
   return c.findStatus === "found" && !isSharedInbox(c.email);
 }
 
+/** A `contacts` row as the database returns it. */
+export interface ContactRow {
+  name: string | null;
+  name_inferred: boolean;
+  title: string | null;
+  email: string | null;
+  find_status: FindStatus;
+  find_source: string | null;
+  verification_status: VerificationStatus;
+}
+
+function toContact(c: ContactRow): Contact {
+  return {
+    name: c.name,
+    nameInferred: c.name_inferred,
+    title: c.title,
+    email: c.email,
+    findStatus: c.find_status,
+    findSource: c.find_source,
+    verificationStatus: c.verification_status,
+  };
+}
+
+/**
+ * Rank, pick and map a company's contacts, in ONE place.
+ *
+ * The app's store and the Excel export each did this themselves, and they did
+ * it differently: the store ranked, the export took the first two rows in
+ * whatever order the database returned them. With co-owners now stored as
+ * name-only rows beside the addresses, "the first two rows" could be a name with
+ * nothing to write to, and the spreadsheet would show a blank email for a
+ * company whose list showed one.
+ *
+ * Ranking: a settled lookup beats a parked one, a row with an address beats a
+ * bare name, and a named person beats a shared inbox. Not contacts[0], which was
+ * whichever row the database returned first, so a free footer scrape of info@
+ * could displace an address that had actually been paid for.
+ */
+export function contactsForCompany(rows: ContactRow[] | null | undefined): {
+  contact: Contact | null;
+  backupContact: Contact | null;
+  allContacts: Contact[];
+} {
+  const ranked = [...(rows ?? [])].sort((a, b) => {
+    const settled = (c: ContactRow) => (c.find_status === "found" ? 1 : 0);
+    const reachable = (c: ContactRow) => (c.email ? 1 : 0);
+    const personal = (c: ContactRow) => (c.email && !isSharedInbox(c.email) ? 1 : 0);
+    return settled(b) - settled(a) || reachable(b) - reachable(a) || personal(b) - personal(a);
+  });
+  const first = ranked[0];
+  // The best SHARED inbox, kept alongside rather than instead of the above.
+  const backup = ranked.find((c) => c.email && isSharedInbox(c.email) && c !== first);
+  return {
+    contact: first ? toContact(first) : null,
+    backupContact: backup ? toContact(backup) : null,
+    // ALL of them, ranked, with an address, so the drawer and the exports can say
+    // which is which instead of implying the first is the only one.
+    allContacts: ranked.filter((c) => c.email).map(toContact),
+  };
+}
+
+/**
+ * Every address that reaches a PERSON, not only the best one.
+ *
+ * `personalEmail` answers "who do I write to first". This answers "who ELSE":
+ * the co-owner whose address is on file beside the founder's. It was invisible,
+ * because every list, card and export read only the first.
+ */
+export function personalContacts(c: Company): Contact[] {
+  const seen = new Set<string>();
+  const out: Contact[] = [];
+  const pool = [...(c.allContacts ?? []), ...[c.contact, c.backupContact].filter((x): x is Contact => !!x)];
+  for (const x of pool) {
+    if (!x.email || !reachesAPerson(x)) continue;
+    const k = x.email.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(x);
+  }
+  return out;
+}
+
 /** The address to actually write to, whether it was bought or already on the page. */
 export function personalEmail(c: Company): Contact | null {
   for (const cand of [c.contact, c.backupContact]) {
