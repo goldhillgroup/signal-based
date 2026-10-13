@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { queueKey } from "@/lib/pipeline/candidate-queue";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 
 /**
@@ -63,6 +64,10 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   if (delErr) {
     return NextResponse.json({ error: `Could not delete: ${delErr.message}` }, { status: 500 });
   }
+
+  // Any unread candidates it was carrying for its next pass go with it. Best
+  // effort: a leftover is a few kilobytes that nothing will ever read.
+  await service.from("app_settings").delete().eq("key", queueKey(id));
 
   console.warn(
     `Deleted search ${id} ("${search.label}") and ${companyCount ?? 0} companies, by ${user.email ?? user.id}`

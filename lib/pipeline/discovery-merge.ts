@@ -52,6 +52,14 @@ export interface ProgressiveArgs<R extends { state?: string | null }, C> {
    */
   graceMs: number;
   /**
+   * The longest the first part waits for web search, when something else has
+   * already come back with candidates. Web search is the channel worth waiting
+   * for, but its latency has a long tail (36 to 145 s measured), and the others
+   * answer in about 12 s. Past this, reading starts on what is here and web
+   * search's candidates join as they land. Ignored when nothing else has any.
+   */
+  maxLeadWaitMs?: number;
+  /**
    * Turn a raw result into a candidate, or null to drop it (no usable host, a
    * blocked host, or one already seen). Must add what it keeps to `seen`.
    */
@@ -165,6 +173,9 @@ export function progressiveDiscovery<R extends { state?: string | null }, C>(
       await Promise.race([
         webSearchBack.then(() => new Promise<void>((r) => setTimeout(r, graceMs))),
         allDone,
+        // A ceiling on the wait. It only ends the wait EARLY if something else has
+        // candidates to read: with nothing, the check below keeps waiting.
+        ...(args.maxLeadWaitMs !== undefined ? [new Promise<void>((r) => setTimeout(r, args.maxLeadWaitMs))] : []),
       ]);
       const ready = everyChannel.filter(channelDone);
       const early = merge(ready);

@@ -247,3 +247,26 @@ test("a logging hook that throws changes nothing", async () => {
   });
   assert.deepEqual(domains((await first).candidates), ["a.com"]);
 });
+
+test("a slow web search does not hold back candidates that are already here, past the ceiling", async () => {
+  const t0 = Date.now();
+  const { tasks, groups } = oneGroup(
+    after(0, []),
+    after(0, []),
+    after(400, [raw("web.com", "web_search")]), // the slow, valuable channel
+    after(10, [raw("maps.com", "maps")])
+  );
+  const { first, rest } = progressiveDiscovery({ tasks, groups, graceMs: 20, maxLeadWaitMs: 60, convert });
+  const f = await first;
+  assert.deepEqual(domains(f.candidates), ["maps.com"], "reading starts on what is here");
+  assert.ok(Date.now() - t0 < 300, "without waiting for the 400ms web search");
+  assert.deepEqual(domains((await rest).candidates), ["web.com"], "and web search's candidates still arrive");
+});
+
+test("the ceiling does not end the wait when nothing else has anything to read", async () => {
+  const t0 = Date.now();
+  const { tasks, groups } = oneGroup(after(0, []), after(0, []), after(150, [raw("web.com", "web_search")]), after(5, []));
+  const { first } = progressiveDiscovery({ tasks, groups, graceMs: 10, maxLeadWaitMs: 40, convert });
+  assert.deepEqual(domains((await first).candidates), ["web.com"]);
+  assert.ok(Date.now() - t0 >= 140, "it kept waiting for web search, the only source");
+});

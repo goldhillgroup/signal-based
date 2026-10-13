@@ -20,6 +20,8 @@ import { auditRow } from "./row-audit";
 import { pickRechecks, nextRecheckAfter, decideLead, normDomain, SUPERSEDED_REASON } from "./recheck-selection";
 import { drainQueue, waitUpTo } from "./drain-queue";
 import { searchCounts } from "./search-counts";
+import { getSetting, setSetting } from "../settings";
+import { packQueue, unpackQueue, queueKey } from "./candidate-queue";
 import { withDbRetry, isDuplicateKey } from "./db-retry";
 import { cleanOtherPeople, titleFor, PAGE_PERSON_SOURCE } from "./co-owners";
 import { runWithCounters, estimateUsd, describeCost, type CostCounters } from "./cost-tracker";
@@ -1024,7 +1026,15 @@ export async function runSearchPipeline(
             offTrade.map((c) => c.title || c.domain).slice(0, 6).join(", ")
         );
       }
-      pending.push(...orderByYield(novel.filter((c) => !offTrade.includes(c)), rates, explore));
+      const accepted = novel.filter((c) => !offTrade.includes(c));
+      // MERGED BY YIELD, not appended. A round's web-search candidates arrive about
+      // a minute after its Maps ones, and with rounds overlapping they would land
+      // BEHIND Maps candidates from the round before: the best channel read last.
+      // Re-checks stay at the tail, as they always have (a dead site is the slowest
+      // read there is, so they go behind fresh ground).
+      const rechecks = pending.filter((c) => c.channel === "recheck");
+      const queued = pending.filter((c) => c.channel !== "recheck");
+      pending.splice(0, pending.length, ...orderByYield([...queued, ...accepted], rates, explore), ...rechecks);
       announceArrival();
     }
 
@@ -1280,6 +1290,24 @@ export async function runSearchPipeline(
         return { id: null, stored: false };
       }
       return { id: (data as { id: string }).id, stored: true };
+    }
+
+    // ── CANDIDATES CARRIED OVER FROM THE LAST PASS ───────────────────────────
+    //
+    // Found and paid for, not read before the last pass ended. Starting from them
+    // means this pass reads at once instead of standing idle for web search (36 to
+    // 145 s measured), and discovery for what comes next is bought in the
+    // background. See candidate-queue.ts. Never fatal: without them the pass simply
+    // starts the way it always did.
+    try {
+      const carried = unpackQueue(await getSetting(queueKey(searchId)), { seen: seenDomains });
+      if (carried.length > 0) {
+        admit(carried);
+        console.log(`Search ${searchId}: carrying ${carried.length} unread candidates over from the last pass.`);
+      }
+      await setSetting(queueKey(searchId), "");
+    } catch (e) {
+      console.warn(`Search ${searchId}: could not read the carried-over candidates, ${(e as Error).message?.slice(0, 120)}`);
     }
 
     roundLoop: while (reachedSoFar() < targetSignals && totalScanned < scanCeiling) {
@@ -2173,6 +2201,18 @@ export async function runSearchPipeline(
     // Whatever the slower channels return from here on is no longer wanted: the
     // search is about to be written as finished.
     runEnded = true;
+
+    // What was found and paid for but not read goes to the next pass, unless the
+    // search is over (target met or the read ceiling reached), when it is of no use.
+    try {
+      const over = reachedSoFar() >= targetSignals || totalScanned >= scanCeiling;
+      if (!over && pending.length > 0) {
+        await setSetting(queueKey(searchId), packQueue(pending));
+        console.log(`Search ${searchId}: ${pending.length} unread candidates saved for the next pass.`);
+      }
+    } catch (e) {
+      console.warn(`Search ${searchId}: could not save the unread candidates, ${(e as Error).message?.slice(0, 120)}`);
+    }
 
     // A round-level hiccup (caught above) still ends in status: 'complete' —
     // whatever was found and saved is real and shown as-is; the note just

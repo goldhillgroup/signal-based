@@ -231,6 +231,49 @@ a real pair at the same company: the old lead is retired, and its folder is now
 recounted from its rows (one August folder said 5 fit-only and 7 cut while holding 4
 and 8, and was repaired).
 
+### Research: is there anything better out there? (13 October 2026, evening)
+
+**No open-source project does this.** Searching GitHub and the wider web for
+anything that finds family businesses with a founder-and-successor signal turned up
+nothing that combines a crawler, an LLM judge and succession detection. The nearest
+are SaaS-fit prospectors ([ScrapeHubAI](https://github.com/scrapegraphai/scrapehubai),
+[Signal Prospector](https://glama.ai/mcp/servers/ekas-io/open-sourcesales-stack),
+[goose-skills lead-discovery](https://tessl.io/registry/skills/github/gooseworks-ai/goose-skills/lead-discovery)),
+which score technology fit, not ownership. There is nothing to adopt wholesale. The
+pieces others use are the ones already here: a crawler (Firecrawl; Crawl4AI is a
+Python library and would not run on Vercel), an LLM judge, and waterfall enrichment.
+
+**Faster search APIs exist, and were tested.** Serper, Tavily and Brave answer in
+roughly 1 to 2 s ([comparison](https://searlo.tech/blog/best-serp-api-2026)); the
+Apify Google call used here took 36 to **145 s** over seven real samples. On the same
+five production queries, Tavily answered in 3.3 s with 20 usable company sites to
+Apify's 12, and the two shared **zero** domains. Apify's were succession-flavoured
+("Our Family", "keeps it in the family for 175 years"); Tavily's were generic local
+landscapers. So Tavily is not a replacement, and using it to fill idle time would
+spend reads on low-yield companies and dilute the pair rate (and the client's 1,000
+monthly Tavily credits are shared with the directory channel). **Not adopted.** It
+remains an option as a supplement if more leads, rather than more pairs, are wanted.
+
+**What did turn up was waste that quality does not depend on**, fixed instead:
+
+- **Every pass started cold.** A search is several passes, each a fresh function with
+  an empty queue, so each stood idle 36 to 145 s for web search before reading
+  anything, and threw away the candidates it had bought and not read. Unread
+  candidates are now carried into the next pass (stored in the settings table under
+  `queue:<search id>`, validated, dropped if stale or settled elsewhere, cleared when
+  read or when the folder is deleted). Simulated, a second pass starts reading in
+  **2.4 s instead of 52 s** and reads 120 companies against 95.
+- **Reading no longer waits out web search's long tail.** After 45 s it starts on
+  what Maps and the directory found, and web search's candidates join when they land.
+  Candidates are merged by channel yield, so the best channel's late arrivals go to
+  the front of the unread queue rather than behind lower-yield ones. Checked live:
+  reading started at 45 s instead of 83 s.
+- **The web-search limit is 180 s.** A sample taken right after raising it to 150 s
+  took 144.5 s.
+- **Passes after the first lost Jonathan's focus sentence.** They were started with
+  no focus, so what he had saved steered pass one only. They now get the same focus
+  (read back from the folder's query, falling back to the saved description).
+
 ### Things worth knowing
 
 - `.env.local` has a stray `ho` before its first key (`hoNEXT_PUBLIC_SUPABASE_URL`).

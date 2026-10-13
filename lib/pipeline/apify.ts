@@ -1093,7 +1093,15 @@ export function successionTermsFor(
 // question instead of re-buying the same SERP (see SUCCESSION_QUERY_SETS).
 // Still exactly one SERP page per query, before and after rotation.
 /** The longest one web-search actor run may take. See the comment where it is used. */
-export const WEB_SEARCH_TIMEOUT_SECS = 150;
+export const WEB_SEARCH_TIMEOUT_SECS = 180;
+
+/**
+ * How long reading waits for web search before starting on what the other
+ * channels already have. Web search is the channel worth waiting for, but its
+ * latency has a long tail (36 to 145 s in seven real samples, against 12 s for
+ * Maps and the directory), and a pass should not stand idle for the tail.
+ */
+export const FIRST_PART_MAX_WAIT_MS = 45_000;
 
 async function discoverViaWebSearch(
   industries: Industry[],
@@ -1144,8 +1152,10 @@ async function discoverViaWebSearch(
   // failed". That is the "Results may be incomplete" banner, and thin results,
   // with the cause on the vendor's side of a number set here.
   //
-  // 150 leaves real headroom, and nothing waits on it past the pass deadline (the
-  // loop only starts a round it has room for: see WORST_CASE_MS.discovery).
+  // 150 was the first fix, and a sample taken right after it took 144.5 s, so it is
+  // 180 now. A slow call no longer holds anything up: reading starts on what the
+  // other channels found (FIRST_PART_MAX_WAIT_MS) and these results join when they
+  // land, and the loop only starts a round it has room for (WORST_CASE_MS.discovery).
   const items = (await runActorSync(
     "apify~google-search-scraper",
     {
@@ -1327,6 +1337,7 @@ function startDiscovery(params: DiscoveryParams, graceMs: number) {
     tasks,
     groups,
     graceMs,
+    maxLeadWaitMs: FIRST_PART_MAX_WAIT_MS,
     exclude: excludeDomains,
     onSettle: (e) =>
       // Skip the instant empties of the channels that were not asked this round

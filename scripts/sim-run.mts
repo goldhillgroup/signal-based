@@ -43,6 +43,7 @@ const REPO = process.env.REPO ?? MAIN;
 const TAG = (process.env.TAG ?? "x").replace(/[^a-z0-9]/gi, "");
 const TARGET = Number(process.env.TARGET ?? 50);
 const SCALE = Number(process.env.SCALE ?? 1); // 1 = real-time latencies
+const PASSES = Math.max(1, Number(process.env.PASSES ?? 1)); // 2 = run a continuation pass too
 const SCENARIO = process.env.SCENARIO ?? "normal"; // normal | mapsfail | mapshang | webfail | allfail | dry
 
 for (const line of fs.readFileSync(`${MAIN}/.env.local`, "utf8").split("\n")) {
@@ -208,11 +209,14 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     if (method === "POST" && table === "searches" && SEARCH_ID === "") allowed = true;
     else if (method === "PATCH" && table === "searches" && q.includes(`id=eq.${SEARCH_ID}`)) allowed = true;
     else if (method === "POST" && ["companies", "contacts", "signal_evidence"].includes(table)) allowed = true;
+    // The ONE settings key this run's carried-over candidates are kept under.
+    else if (["POST", "PATCH"].includes(method) && table === "app_settings" && String(init?.body ?? "").includes(`queue:${SEARCH_ID}`)) allowed = true;
     else if (method === "PATCH" && table === "companies" && ownIds.has(idEq("id") ?? "")) allowed = true;
     else if (CLEANING && method === "DELETE") {
       if (table === "searches" && q.includes(`id=eq.${SEARCH_ID}`)) allowed = true;
       else if (table === "companies" && (allOwn(idsIn("id")) || q.includes(`zz-sim-${TAG}-`))) allowed = true;
       else if ((table === "contacts" || table === "signal_evidence") && allOwn(idsIn("company_id"))) allowed = true;
+      else if (table === "app_settings" && q.includes(`queue:${SEARCH_ID}`)) allowed = true;
     }
     if (!allowed) {
       blockedWrites++;
@@ -357,8 +361,23 @@ console.log(`[${TAG}] scenario=${SCENARIO}; search ${SEARCH_ID} created; repo=${
 
 let status: Record<string, unknown> | null = null;
 const started = Date.now();
+const passLog: string[] = [];
 try {
-  await runSearchPipeline(SEARCH_ID, ["landscaping"], ["TX"], TARGET, "hybrid", null, { min: null, max: null }, true);
+  let readBefore = 0;
+  for (let pass = 1; pass <= PASSES; pass++) {
+    const startedPass = Date.now();
+    if (pass > 1) {
+      // What POST /api/search/[id]/continue does before it starts the next pass.
+      await sb.from("searches").update({ status: "running", finished_at: null }).eq("id", SEARCH_ID);
+    }
+    await runSearchPipeline(SEARCH_ID, ["landscaping"], ["TX"], TARGET, "hybrid", null, { min: null, max: null }, true);
+    const { data: st } = await sb.from("searches").select("companies_scanned").eq("id", SEARCH_ID).single();
+    const { data: rs } = await sb.from("companies").select("last_crawled_at").eq("search_id", SEARCH_ID).gte("last_crawled_at", new Date(startedPass).toISOString()).order("last_crawled_at");
+    const scanned = (st as { companies_scanned: number }).companies_scanned;
+    const firstAt = rs && rs.length ? ((+new Date((rs[0] as { last_crawled_at: string }).last_crawled_at) - startedPass) / 1000).toFixed(1) : "-";
+    passLog.push(`pass ${pass}: ${((Date.now() - startedPass) / 1000).toFixed(0)}s, read ${scanned - readBefore}, first company stored ${firstAt}s after the pass began`);
+    readBefore = scanned;
+  }
 } catch (e) {
   console.error("PIPELINE THREW:", (e as Error).stack ?? e);
 } finally {
@@ -393,6 +412,7 @@ try {
     await sb.from("companies").delete().in("id", part);
   }
   await sb.from("companies").delete().like("domain", `zz-sim-${TAG}-%`);
+  await sb.from("app_settings").delete().eq("key", `queue:${SEARCH_ID}`);
   await sb.from("searches").delete().eq("id", SEARCH_ID);
   const { count: leftover } = await sb.from("companies").select("*", { count: "exact", head: true }).like("domain", `zz-sim-${TAG}-%`);
 
@@ -403,6 +423,7 @@ try {
   };
   console.log(`\n=== [${TAG}] RESULT (${SCENARIO}) ===`);
   console.log(`wall clock            ${wall.toFixed(1)}s`);
+  for (const l of passLog) console.log(`  ${l}`);
   console.log(`status                ${(status as { status?: string })?.status}  ${((status as { error_message?: string })?.error_message ?? "")}`);
   console.log(`candidates found      ${(status as { candidates_found?: number })?.candidates_found}`);
   console.log(`companies read        ${(status as { companies_scanned?: number })?.companies_scanned}`);

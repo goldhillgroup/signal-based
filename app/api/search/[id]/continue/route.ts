@@ -4,6 +4,9 @@ import { after } from "next/server";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { runSearchPipeline } from "@/lib/pipeline/orchestrator";
 import { continuationState } from "@/lib/pipeline/scan-limits";
+import { refinementForContinuation } from "@/lib/pipeline/refinement";
+import { DEFAULT_ICP } from "@/lib/pipeline/icp-types";
+import { resolveSetting } from "@/lib/settings";
 import type { Industry, SearchMode } from "@/lib/supabase/types";
 
 // See app/api/search/route.ts for why 300 and how to raise it.
@@ -49,7 +52,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const { data: search, error } = await service
     .from("searches")
     .select(
-      "id, status, query, mode, industries, target_signals, revenue_min_musd, revenue_max_musd, candidates_pool_exhausted, companies_scanned, qualified_count, verify_count, fit_only_count"
+      "id, status, label, query, mode, industries, target_signals, revenue_min_musd, revenue_max_musd, candidates_pool_exhausted, companies_scanned, qualified_count, verify_count, fit_only_count"
     )
     .eq("id", id)
     .single();
@@ -155,8 +158,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: "A pass is already running." }, { status: 409 });
   }
 
+  // The focus the search was started with, so a later pass searches for and judges
+  // by the same thing the first one did. It was passed as null, which silently
+  // dropped the saved focus sentence after pass one.
+  const refinement = refinementForContinuation({
+    label: search.label,
+    query: search.query,
+    described: await resolveSetting("LEAD_DESCRIPTION", undefined),
+    fallback: DEFAULT_ICP.signalFocus,
+  });
+
   after(() =>
-    runSearchPipeline(id, industries, states.length > 0 ? states : ["CA"], target, mode, null, {
+    runSearchPipeline(id, industries, states.length > 0 ? states : ["CA"], target, mode, refinement, {
       min: search.revenue_min_musd ?? null,
       max: search.revenue_max_musd ?? null,
     })
