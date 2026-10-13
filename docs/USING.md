@@ -58,8 +58,21 @@ it in to go after something specific for this one search.
 | **Signal only** | You only want confirmed founder-and-successor pairs. Fewer results, all strong. |
 | **Filter only** | You want the category and size, and will judge succession yourself. |
 
-**Target** is a number of *signals*, not companies. Ask for 20 and it keeps
-going in passes until it finds 20 or genuinely runs out.
+**Target** is how many confirmed pairs you want (in Filter only, how many fitting
+companies). The choices are 10, 20, 50, 100 and 200.
+
+The form tells you what that means before you press Search. A founder-and-successor
+pair turns up in roughly **one company in thirty**, so a target of 50 pairs reads
+up to **1,000 companies**, the most one search will read, and will usually find
+fewer than 50 pairs. It also keeps the good family-owned companies it meets on the
+way, and says how many to expect. A search stops early when it reaches the target
+or runs out of new companies.
+
+**Keep searching.** If a finished search stopped short of its target, its folder
+shows a **Keep searching** button. It carries on from where the search stopped and
+never re-reads a company it has already read. It only appears when pressing it will
+actually do something: not when the target is met, not when there is nothing new to
+find, and not once the 1,000-company limit has been reached.
 
 ---
 
@@ -117,6 +130,29 @@ what the badge says.
 
 ---
 
+## Co-owners and partners
+
+Family businesses are often owned by more than the one person a website leads
+with: brothers, a husband and wife, a managing partner beside the founder.
+Signal Radar reads for them. Up to four more owners and leaders a company's own
+pages name are saved as people on the company (staff titles such as crew leads
+and dispatchers are left out), next to the founder and the successor.
+
+- **On a card or row**, "+2 more owners" means two more people have an email on
+  file besides the one shown. Open the lead to see everyone named at the company,
+  with their role and any email on file.
+- **Finding emails** tries the other people too. If the first person has no
+  address, or only a company-wide inbox, it moves on to the next one listed, up to
+  three more. You are billed only for an address actually found, so a miss is free.
+- **In an export**, the main person is in `contact_name` and `contact_email`; the
+  next two are in `contact_2_*` and `contact_3_*`. Those columns appear only when
+  some lead has something to put in them.
+
+Companies found before this existed have not been re-read for co-owners. Their
+people are whoever was found at the time; add anyone else by hand from the lead.
+
+---
+
 ## Rejected companies
 
 Everything cut is kept, with the reason, on the **Not a fit** tab. You can read
@@ -140,6 +176,14 @@ actually found. Roughly $0.05 each.
 **Copy for Google Sheets** copies every lead as tab-separated rows. Open a
 sheet, click a cell, paste. Columns land correctly with no import step.
 
+**Combining your lists.** On Lead Lists, **CSV all** and **Excel** give you every
+lead from every list in one file, **one row per company**. The same company can be
+found by several searches, so it sits in several lists; in the combined file it
+appears once, the strongest version of it, with every email and note kept and an
+`also_in_lists` column naming the other lists it was in. The page says so: "171
+leads (148 different companies; 23 are in more than one list)", and the buttons
+show the shorter number. A single list's own download is just that list.
+
 Everything in the sheet is confirmed — no hedged titles, no "unknown" revenue
 bands, no quotes stitched from fragments.
 
@@ -153,7 +197,9 @@ pass by itself. A big target simply takes several passes off one press of
 Search.
 
 You will see the pass counter move. Nothing is lost between passes, and nothing
-is paid for twice.
+is paid for twice. If you leave the page, the search stops carrying on by itself
+after the pass it is on; open the folder and press **Keep searching** to resume.
+One window will start up to 14 passes on its own.
 
 This is why the app does **not** need a paid Vercel plan.
 
@@ -192,4 +238,6 @@ passes, and come back.
 | Search returns nothing at all | Settings → vendor balances. Something is out of credit. |
 | A lead looks wrong | Open the source link. If the page doesn't say it, tell Daniel — that is a real bug. |
 | Search seems stuck | It is running passes. The counter moves; give it a few minutes. |
+| "Results may be incomplete" | One of the two channels that matter, **web search** or **Google Maps**, could not run for at least half of the search, usually out of credit (it says which). Top it up and press **Keep searching**. A directory or a licensing board being quiet does not raise this. |
+| Fewer leads than the target | Normal: a pair is about one company in thirty. Press **Keep searching**, or look at the fit-only leads found on the way. |
 | Can't log in | "Forgot password?" on the login page. |
