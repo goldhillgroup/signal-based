@@ -18,7 +18,8 @@ watched.
 
 ### 1. "Results may be incomplete" kept appearing
 
-Three separate causes, none of them the search being incomplete:
+Four causes. The first three were noise; **the fourth was real and was the biggest,
+and was found only on the first production search after the other fixes shipped**:
 
 - A trade or state with **no public licence list** (most of them) was reported as
   the licensing channel having *failed*. It now says nothing, because there was
@@ -26,6 +27,16 @@ Three separate causes, none of them the search being incomplete:
 - A channel that failed for **some states only** ("Web search failed for CA/NY")
   was not understood by the banner and printed as "A discovery channel failed".
 - **One timeout** in a four-call search raised the same banner as a dead vendor.
+
+- **Web search was being cut off by its own time limit.** The call to the search
+  vendor was given 90 seconds. Measured on the live vendor, it takes 36 to 86
+  seconds (about 83 with Jonathan's focus sentence, which makes it five queries
+  instead of three), so a good share of calls ran past the limit. A run that passes
+  its limit comes back as "TIMED-OUT" with **none** of its results, so the channel
+  that finds a confirmed pair about once in thirty companies (Maps: once in 170) was
+  lost for the whole round. That is the banner, and it is also thin results. The
+  limit is now 150 seconds, and Apify's "TIMED-OUT" wording is now named as a
+  timeout instead of a vague "failed".
 
 The banner now appears only when **web search or Google Maps** was unavailable in
 at least half of a pass's discovery calls, or when no channel could search at all.

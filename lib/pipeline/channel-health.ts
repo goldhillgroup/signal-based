@@ -52,7 +52,9 @@ const REASONS: Reason[] = [
     actionable: false,
   },
   {
-    test: /timeout|timed out|ETIMEDOUT|abort/i,
+    // "TIMED-OUT" is how Apify reports a run that passed its limit; the hyphen
+    // is why this once read it as an unknown failure.
+    test: /timeout|timed[ -]?out|ETIMEDOUT|abort/i,
     short: "timed out",
     actionable: false,
   },

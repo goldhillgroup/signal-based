@@ -1092,6 +1092,9 @@ export function successionTermsFor(
 // to — it selects the phrasing set, so a repeat call asks a different
 // question instead of re-buying the same SERP (see SUCCESSION_QUERY_SETS).
 // Still exactly one SERP page per query, before and after rotation.
+/** The longest one web-search actor run may take. See the comment where it is used. */
+export const WEB_SEARCH_TIMEOUT_SECS = 150;
+
 async function discoverViaWebSearch(
   industries: Industry[],
   states: string[],
@@ -1128,6 +1131,21 @@ async function discoverViaWebSearch(
     .map((q) => `${q} ${stateName}`.trim())
     .join("\n");
 
+  // THE LIMIT IS THE ACTOR'S, AND ANYTHING PAST IT IS LOST, NOT TRUNCATED.
+  //
+  // This was 90 seconds. Measured on the live vendor, 2026-10-13: a call takes
+  // 60 to 85 seconds (three queries 67-71 s, the five queries a search sends once
+  // Jonathan's focus sentence is added 83 s, a single query 29-78 s), so a limit
+  // of 90 left a few seconds of headroom, and a call that ran over came back as
+  // "Actor run did not succeed (status: TIMED-OUT)" with NONE of its results. On
+  // the first production search after this was found, web search, the channel
+  // that yields a confirmed pair about once in thirty companies against once in
+  // 170 for Maps, was lost for the whole round and the folder said "Web search
+  // failed". That is the "Results may be incomplete" banner, and thin results,
+  // with the cause on the vendor's side of a number set here.
+  //
+  // 150 leaves real headroom, and nothing waits on it past the pass deadline (the
+  // loop only starts a round it has room for: see WORST_CASE_MS.discovery).
   const items = (await runActorSync(
     "apify~google-search-scraper",
     {
@@ -1137,7 +1155,7 @@ async function discoverViaWebSearch(
       countryCode: "us",
       languageCode: "en",
     },
-    90
+    WEB_SEARCH_TIMEOUT_SECS
   )) as Array<{ organicResults?: Array<{ url: string; title: string }> }>;
 
   // Billed per SERP page: one page per query.

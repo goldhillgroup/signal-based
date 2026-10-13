@@ -73,3 +73,12 @@ test("nothing able to search says so plainly", () => {
 test("a healthy run says nothing", () => {
   assert.equal(buildWarningLine([]), null);
 });
+
+test("Apify's own wording for a run that passed its limit is read as a timeout, not an unknown failure", () => {
+  // From a real run, 2026-10-13. The hyphen in TIMED-OUT is why this used to
+  // print the vague "Web search failed".
+  const w = buildWarningLine([
+    'Web search channel failed: Apify actor apify~google-search-scraper failed: 400 {"error":{"type":"run-failed","message":"Actor run did not succeed (run ID: isELC19EpzEWfUBkX, status: TIMED-OUT)."}}',
+  ]);
+  assert.ok(w && /Web search timed out/.test(w), w ?? "null");
+});

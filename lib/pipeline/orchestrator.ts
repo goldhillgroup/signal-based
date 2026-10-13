@@ -1,5 +1,5 @@
 import { createServiceRoleClient } from "../supabase/server";
-import { discoverProgressively, fetchCompanyPages, pickBestPage, fetchSingleUrl, isOffTradeName, isBlocked, DOMAIN_FETCH_BUDGET_MS, type Candidate, type FetchedPage } from "./apify";
+import { discoverProgressively, WEB_SEARCH_TIMEOUT_SECS, fetchCompanyPages, pickBestPage, fetchSingleUrl, isOffTradeName, isBlocked, DOMAIN_FETCH_BUDGET_MS, type Candidate, type FetchedPage } from "./apify";
 import { VendorUnavailableError, classifySignal, disprovePass } from "./openrouter";
 import { findContact, companyEmails } from "./anymailfinder";
 import { peopleFrom } from "./people";
@@ -590,8 +590,8 @@ export async function runSearchPipeline(
     // candidates and simply drain the buffer already paid for, which is better
     // behaviour anyway.
     const WORST_CASE_MS = {
-      /** Apify actor run, timeoutSecs = 120. */
-      discovery: 120_000,
+      /** The longest a discovery round may take: web search's actor limit (WEB_SEARCH_TIMEOUT_SECS) plus a few seconds. */
+      discovery: WEB_SEARCH_TIMEOUT_SECS * 1000 + 5_000,
       /** One company's whole page fetch, all layers. See DOMAIN_FETCH_BUDGET_MS. */
       fetch: DOMAIN_FETCH_BUDGET_MS + 5_000,
     } as const;
