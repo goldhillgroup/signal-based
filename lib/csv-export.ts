@@ -52,6 +52,11 @@ export type Exportable = Company & {
   ownGrade?: number | null;
   /** Jonathan's own note. */
   note?: string | null;
+  /**
+   * The OTHER lists this company was found in, when a combined export folded
+   * several rows for it into one. See lib/dedupe.ts.
+   */
+  alsoIn?: string;
 };
 
 /** Personal addresses beyond the one in `contact_email`. */
@@ -65,6 +70,10 @@ export const COLUMNS: { header: string; get: (c: Exportable) => string }[] = [
   // Empty on a single-folder export, where the column is noise, and the header
   // is dropped in that case below.
   { header: "list", get: (c) => c.listName ?? "" },
+  // Only present on a combined export where a company was in more than one list.
+  // The duplicate rows are folded into one, and this says where the rest were so
+  // nothing disappears without a trace.
+  { header: "also_in_lists", get: (c) => c.alsoIn ?? "" },
   // THE BAND, NOT THE NUMBER, and that is a decision with evidence behind it.
   //
   // Measured on the real database: median 15 out of 100, 86% of 448 leads in
@@ -225,6 +234,7 @@ function csvCell(value: string): string {
 export function usedColumns(companies: Exportable[]) {
   return COLUMNS.filter((c) => {
     if (c.header === "list") return companies.some((x) => (x.listName ?? "").length > 0);
+    if (c.header === "also_in_lists") return companies.some((x) => (x.alsoIn ?? "").length > 0);
     // Second and third contact: only when somebody in the sheet has one.
     if (/^contact_[23]_/.test(c.header)) return companies.some((x) => c.get(x).length > 0);
     return true;

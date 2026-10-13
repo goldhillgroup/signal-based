@@ -7,6 +7,7 @@ import { useSearches, type SearchFolder } from "@/lib/searches-store";
 import { Company } from "@/lib/company";
 
 import { downloadCompaniesCsv } from "@/lib/csv-export";
+import { dedupeCompanies } from "@/lib/dedupe";
 import { XlsxButton } from "@/components/XlsxButton";
 import { useMarks } from "@/lib/use-marks";
 import { CompaniesTable } from "@/components/CompaniesTable";
@@ -159,6 +160,11 @@ export default function AllLeadsPage() {
   // "Not a fit" tab inside a folder. The headline is about LEADS, and counting
   // the cut ones there would restate the exact confusion this page just had.
   const leadCount = leads.length;
+  // The same company sits in every list it was found in. These are the rows a
+  // combined export folds away, so the page can say so instead of letting 102
+  // leads and a 97-row spreadsheet look like a lost-data bug.
+  const duplicateLeads = dedupeCompanies(leads).removed;
+  const uniqueLeadCount = leadCount - duplicateLeads;
   /** Which list each lead came from, so a combined export can say. */
   const folderName = new Map(folders.map((f) => [f.id, folderTitle(f.label)]));
   const openFolder = contributing.find((f) => f.id === openFolderId) ?? null;
@@ -422,7 +428,11 @@ export default function AllLeadsPage() {
           <p className="text-sm text-gh-ink-secondary">
             {contributing.length === 0
               ? "No leads yet."
-              : `${contributing.length} list${contributing.length === 1 ? "" : "s"}, ${leadCount} lead${leadCount === 1 ? "" : "s"}. Open one to see inside.`}
+              : `${contributing.length} list${contributing.length === 1 ? "" : "s"}, ${leadCount} lead${leadCount === 1 ? "" : "s"}${
+                  duplicateLeads > 0
+                    ? ` (${uniqueLeadCount} different ${uniqueLeadCount === 1 ? "company" : "companies"}; ${duplicateLeads} ${duplicateLeads === 1 ? "is" : "are"} in more than one list)`
+                    : ""
+                }. Open one to see inside.`}
           </p>
           <div className="flex items-center gap-2">
             {/* ONE FILE FOR EVERY LIST.
@@ -437,18 +447,22 @@ export default function AllLeadsPage() {
                 onClick={() => {
                   // His notes and his own grade travel with the rows, so the
                   // CSV and the spreadsheet say the same thing.
+                  // ONE ROW PER COMPANY. The same company sits in every list it
+                  // was found in, so combining the lists produced duplicates
+                  // Jonathan then had to clean by hand. The best row is kept, no
+                  // address or note is lost, and the other lists are named.
                   downloadCompaniesCsv(
-                    withMarks(leads, (c) => folderName.get(c.searchId ?? "") ?? ""),
+                    dedupeCompanies(withMarks(leads, (c) => folderName.get(c.searchId ?? "") ?? "")).rows,
                     "all-leads"
                   );
                 }}
                 className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-gh-border bg-gh-surface px-3 py-1.5 text-xs font-semibold text-gh-ink-secondary transition-colors hover:border-gh-sky/40 hover:text-gh-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
               >
                 <DownloadIcon className="h-3.5 w-3.5" />
-                CSV all {leads.length}
+                CSV all {uniqueLeadCount}
               </button>
             )}
-            {leads.length > 0 && <XlsxButton count={leads.length} />}
+            {leads.length > 0 && <XlsxButton count={uniqueLeadCount} />}
             {contributing.length > 0 && (
               <div className="flex shrink-0 rounded-lg border border-gh-border bg-gh-surface-sunken p-0.5">
                 {(["cards", "list"] as const).map((k) => (

@@ -4,6 +4,7 @@ import { companiesToXlsx } from "@/lib/xlsx-export";
 import { folderTitle } from "@/lib/folder-title";
 import { loadMarks } from "@/lib/lead-notes";
 import { contactsForCompany, type ContactRow } from "@/lib/company";
+import { dedupeCompanies } from "@/lib/dedupe";
 import type { Exportable } from "@/lib/csv-export";
 
 /**
@@ -149,8 +150,13 @@ export async function POST(req: Request) {
     toCompany(r, body.searchId ? "" : (names.get(r.search_id ?? "") ?? ""), marks[r.id])
   );
 
+  // A combined export holds the same company once per list it was found in.
+  // One row each, with the other lists named in a column; a single list has no
+  // other lists to fold in.
+  const out = body.searchId ? companies : dedupeCompanies(companies).rows;
+
   const label = body.searchId ? (names.get(body.searchId) ?? "Leads") : "All leads";
-  const buffer = await companiesToXlsx(companies, label);
+  const buffer = await companiesToXlsx(out, label);
 
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
