@@ -139,46 +139,70 @@ Every list read now pages through the database's 1,000-row cap instead of silent
 dropping the oldest rows once a table passes it (the companies table is at 1,668
 rows and a folder can now hold 1,000).
 
-Search itself had three stretches where eight workers stood idle:
+**Search itself was waiting on discovery, not on reading.** Measured on the real
+vendors (one Texas landscaping round): the directory answered in 12 s, Google Maps
+in 12 s and **web search in 68 s**, and the round yielded about 19 candidates,
+roughly 35 seconds of reading for eight workers. A round at a time kept the workers
+busy about half the time, which is why a pass read 40 to 60 companies however well
+the reading was tuned. Splitting web search into parallel calls does not help (one
+query alone took 30 to 78 s); the vendor's latency cannot be shortened, only hidden.
+Three changes:
 
-1. **Waiting for the slowest discovery channel**, nearly always Google Maps, which
-   also yields least (1 pair in ~170 reads against 1 in 33 for web search). Reading
-   now **starts as soon as web search is back**; Maps' candidates join the back of the
-   queue when they land. Nothing is dropped, and a Maps call that never answers no
-   longer holds the pass.
-2. **At the end of every batch of 32 companies**, behind the last slow site. The
-   workers now share one queue, so none waits behind another.
-3. **Between discovery rounds.** The next round was only bought once the queue was
-   empty. It is now bought when the queue runs low, while the workers are still
-   reading, so the next candidates are usually there before they are needed.
+1. **Reading starts as soon as web search is back**, and the slower channels'
+   candidates join the back of the queue when they land. Nothing is dropped, and a
+   channel that never answers no longer holds the pass.
+2. **The workers share one queue** instead of taking 32 companies at a time, so none
+   waits behind the last slow site of a batch.
+3. **Discovery rounds overlap.** Up to three are in flight, and another is bought
+   whenever the queue plus what is already on its way would run short, judged by how
+   long rounds are actually taking in that run. Every limit still applies (time, the
+   money ceiling, the read ceiling, the target), and a round that comes back empty
+   or failed stops the top-ups until the loop has dealt with it.
 
-**Measured on a simulation, not on live vendors** (`scripts/sim-run.mts`, which runs
-the real pipeline and the real database against fake vendors with plausible
-latencies, so it costs nothing and two versions of the code can be compared under
-identical conditions). One pass, same world each time:
+Each channel's real answer time is now logged ("[discovery round 7] Web search 28
+results after 67.5s"), so production logs show what the vendors take.
 
-| | Before | After |
-|---|---|---|
-| First company read starts | ~64 s (waiting for Maps) | ~19 s |
-| Companies read in one pass | 64 | **108** |
-| Stalls at batch boundaries | yes | none |
-| Maps never answers | the pass waits on it | pass ends cleanly at 226 s, 107 read |
+**Measured on a simulation of those real latencies** (`scripts/sim-run.mts`, which
+runs the real pipeline and the real database against fake vendors, so it costs
+nothing and two versions of the code can be compared on identical conditions). One
+pass, same world each time:
 
-Also exercised on the simulation: Maps failing (reported once, as a warning), web
-search failing (Maps' candidates are read instead), every vendor out of credit
-(ends with "Could not search" and the reason), and an empty pool (declared dry after
-four empty rounds). The latencies are plausible, not measured, so the **ratio** is
-meaningful and the seconds are not a promise.
+| | Companies read in one pass |
+|---|---|
+| Before these changes | 40 |
+| Reading starts early, one shared queue, one background round | 60 |
+| Rounds overlap (now) | **98** |
 
-**Not yet proven on live vendors, and worth stating plainly:** the same changes
-have not been run against real Apify and OpenRouter, because that spends the
-client's credits. Reading more per pass buys more discovery rounds per pass (about
-one extra round, roughly 7 cents), so cost per company read should be unchanged
-while cost per pass rises with the work done. The seconds-per-company figure that
-sizes "about N passes" on the form (2.6) is still an estimate; the old measured
-figure was 5.2, and runs on the older code averaged 7 to 16 seconds a company end
-to end (**measured**, but including gaps between passes). It should be re-measured
-from the first real run.
+The original's 40 sits inside the 40 to 60 companies per pass seen in the real
+history, which is what makes the model credible. Also exercised: Maps failing
+(reported once, as a warning), web search failing (Maps' candidates are read
+instead), a channel that never answers (the pass still ends cleanly), every vendor
+out of credit (ends with "Could not search" and the reason), and an empty pool
+(declared dry after four empty rounds). **The ratio is meaningful; the seconds are
+not a promise.** Cost per company read is unchanged; a pass buys more discovery
+rounds (a round is about 3 cents), so cost per pass rises with the work done.
+
+**Checked on the real vendors** (about $0.50 of the client's credit in all):
+
+- One end-to-end search, `scripts/e2e-run.mts --mini` (filter mode, target 2, a state
+  with nothing on file): status complete, 12 companies read, 4 leads kept, 8 cut,
+  **$0.32**. The folder was removed afterwards and the companies kept as memory.
+- Five real classifier calls on realistic pages, which found and fixed two problems
+  in the co-owner list (staff leaking in, and historical founders being listed).
+- One discovery-only round, which produced the latencies above.
+
+**Not yet checked on real vendors:** the overlapping-rounds pipeline at full scale
+(it is verified on the simulation and in pieces), so the first full search after a
+deploy should be watched. A Google Maps call still running when a pass ends is billed
+but not counted in that pass's cost estimate. The seconds-per-company figure that
+sizes "about N passes" on the form (2.6) is still an estimate.
+
+**Co-owners for the leads already on file** (`scripts/backfill-co-owners.mts`, run
+2026-10-13): 148 companies, 124 read, **46 had other owners named, 74 people added**,
+3 addresses attributed to the right person, **$1.36** for the classifier calls.
+17 were skipped because the site would not load without a paid render, and 4 failed
+with the model's empty-answer problem; re-running the script retries only those. It
+buys no addresses: finding emails stays the separate, confirmed step.
 
 ### Things worth knowing
 
