@@ -5,6 +5,7 @@ import { folderTitle } from "@/lib/folder-title";
 import { loadMarks } from "@/lib/lead-notes";
 import { contactsForCompany, type ContactRow } from "@/lib/company";
 import { dedupeCompanies } from "@/lib/dedupe";
+import { readAllPages } from "@/lib/supabase/read-all";
 import type { Exportable } from "@/lib/csv-export";
 
 /**
@@ -137,12 +138,17 @@ export async function POST(req: Request) {
   const { data: searches } = await service.from("searches").select("id, label");
   const names = new Map((searches ?? []).map((s) => [s.id, folderTitle(s.label)]));
 
-  let q = service.from("companies").select(SELECT).eq("status", "qualified");
-  if (body.searchId) q = q.eq("search_id", body.searchId);
-  const { data, error } = await q;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  const rows = (data ?? []) as unknown as Row[];
+  // A combined export is the leads that are IN A FOLDER, which is exactly what
+  // Lead Lists counts and shows. It used to take every qualified row there was,
+  // including the ones reset-leads.mts detaches from their folder to keep as
+  // memory ("a company with no folder is invisible while remaining fully
+  // known"). The button said "Excel 148" and the file held 488 rows, 340 of them
+  // leads from before a reset that appear nowhere in the app.
+  const rows = await readAllPages<Row>((from, to) => {
+    const q = service.from("companies").select(SELECT).eq("status", "qualified").order("id");
+    return (body.searchId ? q.eq("search_id", body.searchId) : q.not("search_id", "is", null)).range(from, to);
+  });
+  if (!rows) return NextResponse.json({ error: "Could not read the leads." }, { status: 500 });
   const marks = await loadMarks(service);
   // The list column only earns its place on a combined export; a single folder
   // already knows which one it is.

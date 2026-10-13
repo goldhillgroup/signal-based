@@ -24,6 +24,7 @@ import {
   TrashIcon,
 } from "@/components/icons";
 import { ENRICH_CEILING_PER_COMPANY_USD } from "@/lib/pipeline/pricing";
+import { isWrongKindOfBusiness } from "@/lib/pipeline/recheck-policy";
 import { SheetsButton } from "@/components/SheetsButton";
 
 /**
@@ -423,6 +424,15 @@ export default function AllLeadsPage() {
     // are drawn at once from what the front door already knows.
     const rows = opened[openFolder.id];
     const visible = rows ?? [];
+    // WHAT THE PAGE SHOWS, AND NO MORE. The "Not a fit" tab leaves out the
+    // companies that were a different KIND of business (funeral homes,
+    // newspapers, directories), and the export used to carry them anyway: the tab
+    // read 11 while the button offered 17. A hidden row is hidden everywhere or
+    // nowhere, so the file is built from the same rows, as it is on the list
+    // page.
+    const exportable = visible.filter(
+      (c) => c.status !== "rejected" || !isWrongKindOfBusiness(c.rejectionReason)
+    );
     // The CSV carries the cut companies too, labelled by the `verdict` column.
     // The button says so, because a file three times the size of the screen is
     // a surprise worth spending eight words on.
@@ -471,19 +481,21 @@ export default function AllLeadsPage() {
               </button>
               <button
                 type="button"
-                onClick={() => downloadCompaniesCsv(visible, slugify(folderTitle(openFolder.label)))}
-                disabled={visible.length === 0}
+                // His notes and his own grade go with the rows, as they do from the
+                // list page and the combined export.
+                onClick={() => downloadCompaniesCsv(withMarks(exportable), slugify(folderTitle(openFolder.label)))}
+                disabled={exportable.length === 0}
                 className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-gh-navy px-4 py-2.5 text-sm font-semibold text-white transition-colors duration-200 hover:bg-gh-navy-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <DownloadIcon className="h-4 w-4" />
-                Download{rows ? ` ${visible.length}` : ""}
-                {rows && visibleLeads !== visible.length && (
+                Download{rows ? ` ${exportable.length}` : ""}
+                {rows && visibleLeads !== exportable.length && (
                   <span className="font-normal text-white/60">
-                    ({visibleLeads} leads + {visible.length - visibleLeads} not a fit)
+                    ({visibleLeads} leads + {exportable.length - visibleLeads} not a fit)
                   </span>
                 )}
               </button>
-              <SheetsButton companies={visible} />
+              <SheetsButton companies={withMarks(exportable)} />
             </div>
           </div>
         </div>

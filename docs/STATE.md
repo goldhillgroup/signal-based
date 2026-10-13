@@ -1,7 +1,152 @@
 # Where Signal Radar is
 
-Written 14 August 2026. Every number here was read from the live system or the
-live vendor APIs, not estimated.
+Written 14 August 2026, with the update below added 13 October 2026. Every number
+in the August sections was read from the live system or the live vendor APIs.
+The October update says, item by item, which numbers were measured and which are
+reasoning.
+
+---
+
+## Update, 13 October 2026: Jonathan's four issues, and speed
+
+Jonathan reported four problems after two days of use. Each was traced to its
+cause before anything was changed. **Measured** means read from the live database
+that day. **Not yet proven live** means the change is tested in isolation and
+reviewed, but no real search has been run through it, because a real search
+spends the client's vendor credits. The first one after this goes out should be
+watched.
+
+### 1. "Results may be incomplete" kept appearing
+
+Three separate causes, none of them the search being incomplete:
+
+- A trade or state with **no public licence list** (most of them) was reported as
+  the licensing channel having *failed*. It now says nothing, because there was
+  nothing to search.
+- A channel that failed for **some states only** ("Web search failed for CA/NY")
+  was not understood by the banner and printed as "A discovery channel failed".
+- **One timeout** in a four-call search raised the same banner as a dead vendor.
+
+The banner now appears only when **web search or Google Maps** was unavailable in
+at least half of a pass's discovery calls, or when no channel could search at all.
+Directories and licensing boards being quiet no longer raises it.
+
+### 2. A target of 50 returned 2 or 3 leads
+
+The ceiling was 240 companies read per search. A confirmed pair turns up about one
+read in thirty (**measured**: web search 1 in 33), so 50 pairs needs ~1,500 reads.
+The request was unreachable however well the run worked, and the dialog said so
+only in small print. Also found, **measured**:
+
+- 205 of the 209 companies due for a re-check were **dead or bot-blocked sites**.
+  Nothing moved their date forward, so the same few came back on every search:
+  three of them were re-read in 9 of the last 10 searches.
+- They were queued *ahead* of fresh discovery, and a dead site is the slowest read
+  in the pipeline. **Five of the last twelve searches spent their entire
+  four-minute pass on eleven re-reads and read nothing new.**
+- Re-reads were counted as new ground and as fresh rejections even when the row
+  already existed, so a run reported 66 companies scanned against a folder holding
+  eleven, and that inflated count stopped the search.
+
+What changed: a search may now read up to **1,000 companies** (it was 240); the
+choices are 10, 20, 50, 100 and 200; re-checks go **behind** new ground, at most 8
+per pass and a small share of the read budget, judged companies before dead sites,
+and each is moved on when read; counters move only for rows that exist; passes
+carry on by themselves (up to 14), and a finished folder that stopped short shows
+**Keep searching**, which picks up where it stopped.
+
+**Honest expectation:** the form now says what the arithmetic says, "expect about
+N confirmed pairs, plus the good family-owned companies found on the way". A target
+of 50 pairs will usually return fewer than 50 pairs. That is a real event in the
+world, not something more spending conjures. Not yet proven live.
+
+### 3. Duplicate leads when combining exports
+
+**Measured:** 110 domains were stored in more than one row, 14 of them as a
+*qualified lead in several lists*, one company eleven times. A company is stored
+once per folder by design, and re-checks had been inserting it again every time.
+
+- **At the source:** a lead already on another list is not added again (one
+  exception: a fit-only lead that has since grown a real founder-and-successor pair
+  replaces it); a re-check that is still a "no" stores nothing.
+- **In the exports:** the combined CSV, Excel and Google Sheets copy keep **one row
+  per company**, the strongest one, with no address or note lost, and an
+  `also_in_lists` column naming the other lists. Lead Lists says "171 leads (148
+  different companies; 23 are in more than one list)", so the shorter file is
+  explained rather than looking like lost data. Verified on the real data: the
+  combined file has 148 rows and 148 distinct domains.
+- **What is already stored:** `scripts/dedupe-companies.mts` removes it. It is
+  **plan-only by default** and has not been applied. Current plan: 27 domains,
+  **23 duplicate lead rows and 98 duplicate cut rows**, 8 addresses moved onto the
+  surviving row, notes and 1-5 grades carried over, 20 folders recounted. Apply
+  with `npx tsx scripts/dedupe-companies.mts --write`.
+
+### 4. Co-owners missing, when the primary owner has no email
+
+Four gaps, all real:
+
+1. The page classifier returned two people, the founder and the successor. A page
+   naming three brothers, or a husband and wife, or a managing partner beside the
+   founder, produced two names. It now returns up to four more owners and
+   leaders (staff titles are filtered out), stored as people on the company.
+2. Enrichment bought an address for **one** person and, if that came back empty,
+   settled the company for good. It now tries the other listed people (up to three
+   more) when the first lookup found nothing, or only a company-wide mailbox rather
+   than a person. The vendor bills **only when it finds an address**, so a miss
+   costs nothing; the extra cost is at most one more found address per company.
+3. An address on the page beside a co-owner's name was filed as an anonymous inbox,
+   and on promotion every parked address took one person's verification result.
+   Each is now matched to the right person and verified on its own.
+4. Lists, cards and exports showed one personal contact per company. They now show
+   "+N more owners" and the CSV, Excel and Sheets carry `contact_2_*` and
+   `contact_3_*` columns (hidden when empty).
+
+**Not done:** companies already in the database were not re-read for co-owners.
+That needs a model call per company and is the client's money; it is a small
+backfill script if wanted. The new classifier instruction has not been run against
+a live page.
+
+### Faster and smoother
+
+**Measured**, against the real data, on a production build:
+
+| | Before | After |
+|---|---|---|
+| Lead Lists first load | 780 KB, every company with every contact | **31 KB**, one query |
+| Folder tiles visible | after the whole 780 KB | **~0.55 s** |
+| Opening a folder | already loaded | **~0.2 s** (35 KB) |
+| Returning to Lead Lists | full reload | **~50 ms**, refreshes behind |
+| Activity feed | 4-6 requests per page, every contact column | one, three columns, cached 30 s |
+
+Every list read now pages through the database's 1,000-row cap instead of silently
+dropping the oldest rows once a table passes it (the companies table is at 1,668
+rows and a folder can now hold 1,000).
+
+Search itself had two stretches where eight workers stood idle: waiting for the
+slowest discovery channel (nearly always Google Maps, which also yields least, 1
+pair in ~170 reads) and at the end of every batch of 32 companies behind the last
+slow site. Reading now **starts as soon as web search is back**, Maps' candidates
+join the back of the queue when they land (nothing is dropped), and the workers
+share one queue so none waits behind another.
+
+**Not yet proven live, and worth stating plainly:** the building blocks have their
+own tests (26), but the glue in the search loop was type-checked and reviewed, not
+run against live vendors. The seconds-per-company figure that sizes "about N
+passes" on the form (2.6) is an estimate; the old measured figure was 5.2 before
+these changes, and runs on the older code averaged 7 to 16 seconds a company
+end to end (**measured**, but including gaps between passes). It should be
+re-measured from the first real run.
+
+### Things worth knowing
+
+- `.env.local` has a stray `ho` before its first key (`hoNEXT_PUBLIC_SUPABASE_URL`).
+  Left alone. Local builds read the Supabase URL as empty because of it; Vercel uses
+  its own settings, so production is unaffected.
+- The sidebar's "180 leads found" adds up each folder's own counter, which had
+  drifted from the rows (171 leads actually on file). Applying the cleanup script
+  recounts them.
+- A Google Maps call still running when a pass ends is billed by Apify but not
+  counted in that pass's cost estimate.
 
 ---
 

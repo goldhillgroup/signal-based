@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import { readAllPages } from "@/lib/supabase/read-all";
 
 /**
  * How many leads still have no address, per list, counted from the rows.
@@ -23,16 +24,23 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const service = createServiceRoleClient();
-  const { data, error } = await service
-    .from("companies")
-    .select("search_id, contacts(email, find_status)")
-    .eq("status", "qualified");
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  const rows = (data ?? []) as unknown as {
+  // Only leads that are in a folder, filtered in the database. This used to fetch
+  // every qualified company with all its contacts and throw the folderless ones
+  // away afterwards, which was two thirds of the rows (346 of 517 on 2026-10-13),
+  // on a request the sidebar makes for its badge.
+  const rows = await readAllPages<{
     search_id: string | null;
     contacts: { email: string | null; find_status: string }[] | null;
-  }[];
+  }>((from, to) =>
+    service
+      .from("companies")
+      .select("id, search_id, contacts(email, find_status)")
+      .eq("status", "qualified")
+      .not("search_id", "is", null)
+      .order("id")
+      .range(from, to)
+  );
+  if (!rows) return NextResponse.json({ error: "Could not read the leads." }, { status: 500 });
 
   const byFolder: Record<string, number> = {};
   for (const c of rows) {
