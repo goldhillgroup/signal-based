@@ -28,8 +28,19 @@ import { EnrichScopeDialog } from "./EnrichScopeDialog";
 import { SheetsButton } from "./SheetsButton";
 import { useMarks } from "@/lib/use-marks";
 import { XlsxButton } from "./XlsxButton";
+import { friendlyNote } from "@/lib/folder-note";
+import { continuationState } from "@/lib/pipeline/scan-limits";
 
-export function FolderView({ folder: folderProp, companies: companiesProp }: { folder: SearchFolder; companies: Company[] }) {
+export function FolderView({
+  folder: folderProp,
+  companies: companiesProp,
+  onKeepSearching,
+}: {
+  folder: SearchFolder;
+  companies: Company[];
+  /** Resume this search: the page mounts the progress dialog, which carries on. */
+  onKeepSearching?: () => void;
+}) {
   const { fetchFolder, fetchCompanies, startEnrichment } = useSearches();
   const { withMarks } = useMarks();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -305,13 +316,48 @@ export function FolderView({ folder: folderProp, companies: companiesProp }: { f
                   </span>
                 </>
               )}
-              {folder.errorMessage && (
+              {friendlyNote(folder.errorMessage) && (
                 <>
                   <span aria-hidden>·</span>
-                  <span>{folder.errorMessage}</span>
+                  <span>{friendlyNote(folder.errorMessage)}</span>
                 </>
               )}
             </p>
+            {onKeepSearching &&
+              (() => {
+                // The same rule the server applies (continuationState), so this
+                // button is only offered when pressing it will actually do
+                // something. Passes used to carry on only while the progress
+                // dialog stayed open; leave it and the search simply stopped
+                // with the target unmet and no way to resume.
+                const c = continuationState({
+                  status: folder.status,
+                  mode: folder.mode,
+                  targetSignals: folder.targetSignals,
+                  companiesScanned: folder.companiesScanned,
+                  qualified: folder.qualifiedCount,
+                  verify: folder.verifyCount,
+                  fitOnly: folder.fitOnlyCount,
+                  poolExhausted: folder.candidatesPoolExhausted,
+                });
+                if (!c.canContinue) return null;
+                return (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={onKeepSearching}
+                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-gh-navy px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-gh-navy-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+                    >
+                      <RadarIcon className="h-3.5 w-3.5" />
+                      Keep searching
+                    </button>
+                    <span className="text-[11px] text-gh-ink-muted">
+                      Read {folder.companiesScanned.toLocaleString()} of up to{" "}
+                      {c.ceiling.toLocaleString()} companies so far. It picks up where this stopped.
+                    </span>
+                  </div>
+                );
+              })()}
             {/* EXPORTS WHAT THE PAGE SHOWS.
                 It exported every row, including the ones deliberately hidden
                 from the "Not a fit" tab for being a different KIND of business

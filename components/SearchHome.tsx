@@ -20,15 +20,15 @@ import { ReturnOverview } from "./ReturnOverview";
 import { SearchProgress } from "./SearchProgress";
 import { StatePicker } from "./StatePicker";
 import { BuildingIcon, CheckIcon, SearchIcon, UsersIcon, ZapIcon } from "./icons";
-import { passesNeeded, companiesPerPass, scansFor } from "@/lib/pipeline/scan-limits";
+import { passesNeeded, companiesPerPass, scansFor, likelyPairs, likelyFits } from "@/lib/pipeline/scan-limits";
 import { RUN_CEILING_MS } from "@/lib/pipeline/reap";
 
-// 5 and 8 added at the bottom. At the platform's default 300s ceiling a single
-// pass reads about 57 companies, so 8 is the largest target that finishes in
-// one press — and before this the smallest option on offer was 10, which could
-// not. The bigger targets stay: they work, they just take more than one press,
-// and the note under the picker says so.
-const TARGET_OPTIONS = [5, 8, 10, 20, 50];
+// Up to 200 now. The list used to stop at 50, and 50 was a trap: it asked for
+// 50 confirmed pairs, which arrive about one read in thirty, from a run that was
+// capped at 240 reads, so it returned 2 or 3 and looked broken. Jonathan asked
+// for more than 50 per search. A big target is several automatic passes in one
+// press, and the note under the picker says how many and what to expect.
+const TARGET_OPTIONS = [10, 20, 50, 100, 200];
 
 // Shown under the ask box. Deliberately span the shapes the old regex parser
 // silently mishandled — a multi-state request, a region, a metro — so the
@@ -85,9 +85,12 @@ export function SearchHome({
   // but whether the person searching KNOWS it is happening — which is why this
   // exists as a labelled switch instead of silent behaviour.
   const [includeAlreadyChecked, setIncludeAlreadyChecked] = useState(false);
-  // 8, the largest that completes in a single pass at the default ceiling.
-  // Was 20, which needs three.
-  const [target, setTarget] = useState(8);
+  // 20. This was 8, "the largest that completes in a single pass", which made
+  // the default search the one that could not find anything: eight PAIRS arrive
+  // about one read in thirty, and a run that stops after one pass reads far
+  // fewer than that. Passes continue by themselves, so a larger default costs
+  // nothing in effort.
+  const [target, setTarget] = useState(20);
   // 'filter' counts companies that fit, which arrive about one in six.
   // 'signal' and 'hybrid' count founder-and-successor pairs, which arrive
   // about one in twenty — so the same number means a very different amount
@@ -532,13 +535,23 @@ export function SearchHome({
               <p className="mt-2 text-[11px] leading-relaxed text-gh-ink-secondary">
                 {seekingSignals ? (
                   <>
-                    Reads up to {willRead} companies. A founder-and-successor
-                    pair turns up in roughly one company in twenty, so expect a
-                    handful of confirmed pairs plus every good family-owned
-                    company found on the way — those are kept, not discarded.
+                    Reads up to {willRead.toLocaleString()} companies. A
+                    founder-and-successor pair turns up in roughly one company
+                    in thirty, so expect about {likelyPairs(willRead)} confirmed
+                    pairs, plus around {likelyFits(willRead)} good family-owned
+                    companies found on the way. Those are kept, not discarded.
+                    {target > likelyPairs(willRead) && (
+                      <>
+                        {" "}Asking for more pairs than that just means it reads
+                        right up to the limit.
+                      </>
+                    )}
                   </>
                 ) : (
-                  <>Reads up to {willRead} companies to find {target} that fit.</>
+                  <>
+                    Reads up to {willRead.toLocaleString()} companies to find{" "}
+                    {target} that fit.
+                  </>
                 )}{" "}
                 {passes > 1 ? (
                   <>
@@ -768,7 +781,7 @@ export function SearchHome({
               along in the first because it is the same fact. */}
           <p>
             Reads up to{" "}
-            <strong className="font-semibold text-gh-ink">{willRead} companies</strong>
+            <strong className="font-semibold text-gh-ink">{willRead.toLocaleString()} companies</strong>
             {passes > 1 ? ` over about ${passes} passes` : ""}, looking for {target}{" "}
             {targetUnit(mode, target)}.
           </p>

@@ -15,6 +15,11 @@ export default function FolderPage() {
   const { fetchFolder, fetchCompanies } = useSearches();
   const [folder, setFolder] = useState<SearchFolder | null | "loading">("loading");
   const [companies, setCompanies] = useState<Company[]>([]);
+  // "Keep searching" on a finished list. Mounting the progress dialog on a
+  // COMPLETE folder is all it takes: its loop asks the server to continue
+  // whenever the target is unmet, exactly as it does between passes of a live
+  // search, and the server refuses if there is no reason to.
+  const [resuming, setResuming] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -64,7 +69,7 @@ export default function FolderPage() {
   // Search is still running (e.g. the user navigated here directly via a
   // bookmark/refresh mid-run) — resume the same live progress view rather
   // than showing an empty table.
-  if (folder.status === "running") {
+  if (folder.status === "running" || resuming) {
     return (
       <SearchProgress
         searchId={folder.id}
@@ -74,10 +79,12 @@ export default function FolderPage() {
           setCompanies(c);
           const refreshed = await fetchFolder(folder.id);
           setFolder(refreshed);
+          setResuming(false);
         }}
         onError={async () => {
           const refreshed = await fetchFolder(folder.id);
           setFolder(refreshed);
+          setResuming(false);
         }}
         // Without this the dialog rendered with NO way out: the close button is
         // conditional on onDismiss, and there was no Escape or backdrop either.
@@ -107,5 +114,5 @@ export default function FolderPage() {
     );
   }
 
-  return <FolderView folder={folder} companies={companies} />;
+  return <FolderView folder={folder} companies={companies} onKeepSearching={() => setResuming(true)} />;
 }

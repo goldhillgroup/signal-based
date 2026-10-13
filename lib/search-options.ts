@@ -22,7 +22,11 @@ export const MODE_META: Record<
     label: "Hybrid",
     description:
       "Every company that fits, succession signals ranked first, everyone else right behind.",
-    targetLabel: "Companies to find:",
+    // "Companies to find" was wrong for this mode: the number counts founder-and-
+    // successor PAIRS (the fit-only companies it passes on the way are kept but
+    // do not count), so asking for 50 "companies" and being handed 2 pairs read
+    // as a broken search. The label now says what is counted.
+    targetLabel: "Pairs to find:",
   },
   signal: {
     label: "Signal only",

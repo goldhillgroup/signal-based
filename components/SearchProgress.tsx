@@ -29,11 +29,13 @@ interface Props {
 /**
  * How many automatic passes a single press may take.
  *
- * 6 x ~57 companies covers the 240-company absolute scan ceiling, so the
- * server's own limits are always the ones that actually stop it. This exists
- * only so a bug in those limits cannot spend without bound.
+ * Sized to the read ceiling, which is now 1,000 companies (it was 240, which is
+ * why this was 6). At roughly 100 a pass that is ten, so 14 leaves headroom while
+ * still being the independent brake it exists to be: the server's own limits
+ * (target met, pool dry, ceiling) should always be the ones that stop it, and
+ * this only holds if a bug means they never do.
  */
-const MAX_AUTO_PASSES = 6;
+const MAX_AUTO_PASSES = 14;
 
 // ONE definition, shared with the pipeline. See lib/pipeline/target-count.
 //

@@ -3,7 +3,7 @@ import { VALID_INDUSTRIES } from "@/lib/pipeline/intake-types";
 import { after } from "next/server";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { runSearchPipeline } from "@/lib/pipeline/orchestrator";
-import { MAX_SCAN_MULTIPLIER, ABSOLUTE_SCAN_CEILING } from "@/lib/pipeline/scan-limits";
+import { continuationState } from "@/lib/pipeline/scan-limits";
 import type { Industry, SearchMode } from "@/lib/supabase/types";
 
 // See app/api/search/route.ts for why 300 and how to raise it.
@@ -57,26 +57,36 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (error || !search) {
     return NextResponse.json({ error: "Search not found" }, { status: 404 });
   }
-  if (search.status === "running") {
-    return NextResponse.json({ error: "A pass is already running." }, { status: 409 });
-  }
-  if (search.status === "failed") {
-    return NextResponse.json({ error: "That search failed, start a new one." }, { status: 400 });
-  }
-
+  // ONE RULE, shared with the progress dialog and the folder page's "Keep
+  // searching" button (see continuationState). This handler used to carry its
+  // own copy, measured the read ceiling with the fit multiplier for every mode
+  // (so a target of 8 was refused at 48 companies read though the run was
+  // allowed 160), and counted fit-only companies toward a hybrid target that the
+  // orchestrator counts pairs only for.
   const target = search.target_signals ?? 0;
   const mode = (search.mode ?? "hybrid") as SearchMode;
-  // Mirrors the orchestrator's countsTowardTarget: 'signal' mode counts only
-  // real signals, everything else counts fit-only leads too.
-  const found =
-    mode === "signal"
-      ? (search.qualified_count ?? 0) + (search.verify_count ?? 0)
-      : (search.qualified_count ?? 0) + (search.verify_count ?? 0) + (search.fit_only_count ?? 0);
+  const state = continuationState({
+    status: search.status,
+    mode,
+    targetSignals: target,
+    companiesScanned: search.companies_scanned ?? 0,
+    qualified: search.qualified_count ?? 0,
+    verify: search.verify_count ?? 0,
+    fitOnly: search.fit_only_count ?? 0,
+    poolExhausted: !!search.candidates_pool_exhausted,
+  });
+  const found = state.found;
 
-  if (found >= target) {
+  if (state.reason === "running") {
+    return NextResponse.json({ error: "A pass is already running." }, { status: 409 });
+  }
+  if (state.reason === "failed") {
+    return NextResponse.json({ error: "That search failed, start a new one." }, { status: 400 });
+  }
+  if (state.reason === "target-met") {
     return NextResponse.json({ continued: false, reason: "Target already reached.", found, target });
   }
-  if (search.candidates_pool_exhausted) {
+  if (state.reason === "pool-dry") {
     return NextResponse.json({
       continued: false,
       reason: "No more companies to check for this search.",
@@ -84,9 +94,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       target,
     });
   }
-
-  const scanCeiling = Math.min(target * MAX_SCAN_MULTIPLIER, ABSOLUTE_SCAN_CEILING);
-  if ((search.companies_scanned ?? 0) >= scanCeiling) {
+  if (state.reason === "ceiling") {
     return NextResponse.json({
       continued: false,
       reason: `Read ${search.companies_scanned} companies, the limit for a target of ${target}.`,
