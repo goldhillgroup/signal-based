@@ -69,6 +69,14 @@ export interface PagePerson {
 const OWNER_LEVEL =
   /\b(owner|co-?owner|proprietor|principal|partner|founder|co-?founder|president|vice[- ]president|v\.?p\.?|chair(?:man|woman|person)?|ceo|coo|cfo|chief (?:executive|operating|financial) officer|general manager|managing (?:director|member|partner)|director)\b/i;
 
+/**
+ * People the page speaks of as gone. Found on a real backfill run: a company's
+ * history section names the founder and his sons, and the model listed them all
+ * as people to reach. The prompt now says "involved now", and this is the net
+ * under it for the plain cases ("the late Ralph Sr.", "in memory of").
+ */
+const GONE = /\b(the late|late founder|deceased|passed away|passed on|in (?:loving )?memory|memorial|rest in peace|r\.?i\.?p\.?)\b/i;
+
 /** How the page ties them to the owners. Enough on its own, whatever their job. */
 const FAMILY =
   /\b(wife|husband|spouse|son|daughter|brother|sister|sibling|father|mother|dad|mom|nephew|niece|cousin|uncle|aunt|grandson|granddaughter|grandfather|grandmother|in-law|child|children|relative|family|co-?owner|partner)\b/i;
@@ -117,6 +125,8 @@ export function cleanOtherPeople(raw: unknown, alreadyKnown: (string | null | un
     const ownerLevel = !!title && OWNER_LEVEL.test(title);
     const family = !!relationship && FAMILY.test(relationship);
     if (!ownerLevel && !family) continue;
+    // Gone is not a contact.
+    if (GONE.test(`${title ?? ""} ${relationship ?? ""} ${name}`)) continue;
 
     seen.add(k);
     out.push({ name, title, relationship });

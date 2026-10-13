@@ -1675,7 +1675,16 @@ function raceMs<T>(p: Promise<T>, ms: number): Promise<T | null> {
   });
 }
 
-export async function fetchCompanyPages(domains: string[]): Promise<Map<string, FetchedPage[]>> {
+export async function fetchCompanyPages(
+  domains: string[],
+  /**
+   * `freeOnly` stops after the plain fetch, which costs nothing. For work where a
+   * site that will not load for free is simply skipped rather than paid for (the
+   * co-owner backfill re-reads leads that were already accepted, and a render or
+   * a crawler run for each blocked one would be money spent on a nice-to-have).
+   */
+  opts: { freeOnly?: boolean } = {}
+): Promise<Map<string, FetchedPage[]>> {
   // Fail loud on real misconfiguration (e.g. missing token) before the
   // per-domain try/catch below has a chance to swallow it as "this domain's
   // site didn't load" — that per-domain tolerance is for individual site
@@ -1695,6 +1704,7 @@ export async function fetchCompanyPages(domains: string[]): Promise<Map<string, 
       byDomain.set(domain, free.pages);
       return;
     }
+    if (opts.freeOnly) return;
 
     // DEAD-DOMAIN FAST PATH — every seeded request failed at the network
     // level (DNS, connection refused, timeout): the site is down, not picky.

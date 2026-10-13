@@ -157,3 +157,22 @@ test("an address matched to a co-owner takes THEIR title, not the successor's", 
 test("the source tag is stable", () => {
   assert.equal(PAGE_PERSON_SOURCE, "page:person");
 });
+
+test("people the page speaks of as gone are not contacts", () => {
+  const out = cleanOtherPeople(
+    [
+      { name: "Ralph Mann Sr.", title: "Founder", relationship: "the late founder, father of Ralph Jr. and George" },
+      { name: "Hank Doyle", title: "Co-founder (deceased)", relationship: null },
+      { name: "George Mann", title: "Vice President", relationship: "brother of Ralph Jr." },
+    ],
+    []
+  );
+  assert.deepEqual(out.map((p) => p.name), ["George Mann"]);
+});
+
+test("a founder who has only stepped back is still a person", () => {
+  // "Founder and Trusted Advisor": still there, and the strongest succession signal
+  // there is, so the plain word "founder" must not be treated as gone.
+  const out = cleanOtherPeople([{ name: "John Wahl", title: "Founder and Trusted Advisor", relationship: "father of David" }], []);
+  assert.deepEqual(out.map((p) => p.name), ["John Wahl"]);
+});

@@ -51,14 +51,14 @@ interface Row {
   recheck_after: string | null;
   last_crawled_at: string | null;
   first_seen_at: string | null;
-  contacts: { id: string; email: string | null; find_status: string; name_inferred: boolean; find_source: string | null }[];
+  contacts: { id: string; name: string | null; email: string | null; find_status: string; name_inferred: boolean; find_source: string | null }[];
 }
 
 const rows: Row[] = [];
 for (let from = 0; ; from += 500) {
   const { data, error } = await sb
     .from("companies")
-    .select("id,domain,search_id,status,has_signal,confidence,recheck_after,last_crawled_at,first_seen_at,contacts(id,email,find_status,name_inferred,find_source)")
+    .select("id,domain,search_id,status,has_signal,confidence,recheck_after,last_crawled_at,first_seen_at,contacts(id,name,email,find_status,name_inferred,find_source)")
     .not("search_id", "is", null)
     .range(from, from + 499);
   if (error) {
@@ -110,6 +110,9 @@ for (const [, group] of groups) {
     let winner = leads[0];
     for (const r of leads) if (betterThan(r, winner)) winner = r;
     const haveEmails = new Set(winner.contacts.map((c) => (c.email ?? "").toLowerCase()).filter(Boolean));
+    // A person with no address is a row too (a co-owner read off the page), and the
+    // same person would otherwise arrive twice.
+    const haveNames = new Set(winner.contacts.filter((c) => !c.email).map((c) => (c.name ?? "").trim().toLowerCase()).filter(Boolean));
     for (const loser of leads.filter((r) => r !== winner)) {
       leadDupes++;
       deleteIds.push(loser.id);
@@ -119,6 +122,11 @@ for (const [, group] of groups) {
         const e = (c.email ?? "").toLowerCase();
         if (e && haveEmails.has(e)) continue; // already on the survivor
         if (e) haveEmails.add(e);
+        if (!e) {
+          const n = (c.name ?? "").trim().toLowerCase();
+          if (n && haveNames.has(n)) continue; // the survivor already lists them
+          if (n) haveNames.add(n);
+        }
         moveContacts.push({ id: c.id, to: winner.id });
       }
     }
