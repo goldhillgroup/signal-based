@@ -6,7 +6,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dedupeCompanies, domainKey } from "../lib/dedupe.js";
+import { countDuplicates, dedupeCompanies, domainKey } from "../lib/dedupe.js";
 import type { Company, Contact } from "../lib/company.js";
 
 const contact = (email: string, name: string | null = null, source = "anymailfinder"): Contact => ({
@@ -115,4 +115,19 @@ test("the other lists are named, so nothing is silent", () => {
 test("order of first appearance is preserved", () => {
   const out = dedupeCompanies([co({ domain: "z.com" }), co({ domain: "a.com" }), co({ domain: "z.com" })]).rows;
   assert.deepEqual(out.map((r) => r.domain), ["z.com", "a.com"]);
+});
+
+test("the headline's duplicate count agrees with what the export removes", () => {
+  // Lead Lists says "N are in more than one list" from the bare id and domain of
+  // each lead, before any full row is loaded. If that ever drifted from the
+  // export, the page would promise one number of rows and the file hold another.
+  const rows = [
+    co({ domain: "acmewire.com" }), co({ domain: "WWW.AcmeWire.com" }), co({ domain: "acmewire.com" }),
+    co({ domain: "b.com" }), co({ domain: "b.com" }),
+    co({ domain: "c.com" }),
+    co({ domain: "" }), co({ domain: "" }), // no domain: two different companies, not one
+  ];
+  assert.equal(countDuplicates(rows), dedupeCompanies(rows).removed);
+  assert.equal(countDuplicates(rows), 3);
+  assert.equal(countDuplicates([]), 0);
 });

@@ -64,9 +64,10 @@ for (let from = 0; ; from += 500) {
     console.error("read failed:", error.message);
     process.exit(1);
   }
-  if (!data?.length) break;
-  rows.push(...(data as unknown as Row[]));
-  if (data.length < 500) break;
+  const page = (data ?? []) as unknown as Row[];
+  if (page.length === 0) break;
+  rows.push(...page);
+  if (page.length < 500) break;
 }
 
 const norm = (d: string) => d.trim().toLowerCase().replace(/^www\./, "");

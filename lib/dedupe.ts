@@ -37,6 +37,23 @@ export function domainKey(d: string | null | undefined): string {
   return (d ?? "").trim().toLowerCase().replace(/^www\./, "");
 }
 
+/**
+ * The identity two rows are compared by. A row with no usable domain is its own
+ * company, never folded into another one that is also missing a domain.
+ */
+export function dedupeKey(c: { id: string; domain: string | null | undefined }): string {
+  return domainKey(c.domain) || `id:${c.id}`;
+}
+
+/**
+ * How many rows a combined export would fold away, from the bare minimum of
+ * each row. Lead Lists shows this in its headline before any full row has been
+ * loaded, so it must agree with dedupeCompanies(...).removed exactly.
+ */
+export function countDuplicates(rows: { id: string; domain: string | null | undefined }[]): number {
+  return rows.length - new Set(rows.map(dedupeKey)).size;
+}
+
 const CONFIDENCE_RANK: Record<string, number> = { high: 3, medium: 2, verify: 1 };
 
 /** Higher is better. Compared field by field, most important first. */
@@ -97,7 +114,7 @@ export function dedupeCompanies<T extends Dedupable>(companies: T[]): DedupeResu
   const groups = new Map<string, T[]>();
   const order: string[] = [];
   for (const c of companies) {
-    const k = domainKey(c.domain) || `id:${c.id}`;
+    const k = dedupeKey(c);
     if (!groups.has(k)) {
       groups.set(k, []);
       order.push(k);

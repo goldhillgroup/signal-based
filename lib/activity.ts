@@ -137,23 +137,60 @@ export function dayLabel(iso: string): string {
  * Used by BOTH the nav badge and the page, so the number on the rail can never
  * mean something different from the list it opens.
  */
+/**
+ * ONE SHARED, CACHED REQUEST for "when was each list last enriched".
+ *
+ * It was one request per store update. The sidebar badge and the History page
+ * both call useActivity, the folders store updates several times while a page
+ * loads, and each update re-ran the fetch: measured on the live site, four to
+ * six calls per page load, each scanning every company. They now share one
+ * in-flight request and one 30-second answer, and the answer is only refreshed
+ * early when an enrichment's state has actually changed.
+ */
+const ENRICHED_TTL_MS = 30_000;
+let enrichedCache: { at: number; key: string; value: Record<string, string> } | null = null;
+let enrichedInflight: Promise<Record<string, string>> | null = null;
+
+function loadEnrichedAt(key: string): Promise<Record<string, string>> {
+  if (enrichedCache && enrichedCache.key === key && Date.now() - enrichedCache.at < ENRICHED_TTL_MS) {
+    return Promise.resolve(enrichedCache.value);
+  }
+  if (enrichedInflight) return enrichedInflight;
+  enrichedInflight = fetch("/api/activity")
+    .then((r) => r.json())
+    .then((j) => {
+      const value = (j?.lastEnrichedAt ?? {}) as Record<string, string>;
+      enrichedCache = { at: Date.now(), key, value };
+      return value;
+    })
+    .catch(() => enrichedCache?.value ?? {})
+    .finally(() => {
+      enrichedInflight = null;
+    });
+  return enrichedInflight;
+}
+
 export function useActivity() {
   const { folders } = useSearches();
   const seen = useSyncExternalStore(subscribeSeen, readSeen, () => "");
 
-  const [enrichedAt, setEnrichedAt] = useState<Record<string, string>>({});
+  // What would change the answer: a list's enrichment starting, finishing, or
+  // finding more. Not "the store updated", which happens constantly.
+  const enrichKey = useMemo(
+    () => folders.map((f) => `${f.id}:${f.enrichmentStatus}:${f.contactsFound ?? 0}`).join("|"),
+    [folders]
+  );
+
+  const [enrichedAt, setEnrichedAt] = useState<Record<string, string>>(() => enrichedCache?.value ?? {});
   useEffect(() => {
     let off = false;
-    fetch("/api/activity")
-      .then((r) => r.json())
-      .then((j) => {
-        if (!off && j?.lastEnrichedAt) setEnrichedAt(j.lastEnrichedAt);
-      })
-      .catch(() => {});
+    loadEnrichedAt(enrichKey).then((v) => {
+      if (!off) setEnrichedAt(v);
+    });
     return () => {
       off = true;
     };
-  }, [folders]);
+  }, [enrichKey]);
 
   const items = useMemo(() => itemsFrom(folders, enrichedAt), [folders, enrichedAt]);
   const unread = seen ? items.filter((i) => i.at > seen).length : items.length;

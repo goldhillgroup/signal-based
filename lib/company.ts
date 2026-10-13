@@ -289,6 +289,17 @@ export interface Company {
 }
 
 /**
+ * The least that Lead Lists needs to draw its folders: which folder, which
+ * company, and the three facts a folder is counted and grouped by.
+ *
+ * It exists because the page used to download every company with its evidence
+ * quote and every contact (780 KB on the live database, 2026-10-13) to print a
+ * lead count on a tile. The full rows are fetched for ONE folder when it is
+ * opened, or for all of them when a combined export is asked for.
+ */
+export type LeadSummary = Pick<Company, "id" | "searchId" | "domain" | "state" | "industry" | "hasSignal">;
+
+/**
  * The contact, but only once the lookup step has actually run.
  *
  * A row still at 'not_attempted' holds an email parked free off the company's

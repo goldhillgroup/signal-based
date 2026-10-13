@@ -28,7 +28,7 @@ import type {
   FindStatus,
   VerificationStatus,
 } from "./supabase/types";
-import { contactsForCompany, type Company } from "./company";
+import { contactsForCompany, type Company, type LeadSummary } from "./company";
 
 export interface SearchFolder {
   id: string;
@@ -194,7 +194,12 @@ interface SearchesContextValue {
   // what's in it. Same single-tenant model as the rest of the app (RLS is
   // "any authenticated user sees everything"), so this is genuinely all of
   // Jonathan's leads, not scoped to one search_id.
-  fetchAllCompanies: () => Promise<Company[]>;
+  //
+  // FULL rows, with evidence and contacts: what a combined export needs and
+  // nothing else does. Lead Lists draws itself from fetchLeadSummaries.
+  fetchAllLeads: () => Promise<Company[]>;
+  /** One tiny row per lead — enough to count and group folders. Null on failure, so an outage is not shown as "no leads". */
+  fetchLeadSummaries: () => Promise<LeadSummary[] | null>;
   createSearch: (params: {
     /** Verticals to search. Empty or omitted means every vertical in the ICP. */
     industries?: Industry[];
@@ -228,6 +233,33 @@ interface SearchesContextValue {
   renameSearch: (searchId: string, label: string) => Promise<void>;
   /** Rejections for one folder. Separate because the lead views deliberately exclude them. */
   fetchRejected: (searchId: string) => Promise<Company[]>;
+}
+
+/** Rows per request. Smaller than PostgREST's own cap (1000), so a page is never cut short by it. */
+const PAGE_SIZE = 500;
+
+/**
+ * Read every row a query matches, a page at a time.
+ *
+ * PostgREST answers at most `max_rows` rows per request (1000 on Supabase unless
+ * changed) and does not say it truncated, so a plain select silently drops the
+ * tail once a table outgrows it. The companies table keeps every company ever
+ * read, cut ones included, so it grows by hundreds of rows a day and was about
+ * to cross that line (667 rows on 2026-10-13); a folder can now hold 1000 of
+ * its own since searches may read that many.
+ *
+ * Returns null on any failure, so a half-read list is never passed off as whole.
+ */
+async function readAllPages<T>(
+  page: (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error: unknown }>
+): Promise<T[] | null> {
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await page(from, from + PAGE_SIZE - 1);
+    if (error || !data) return null;
+    out.push(...(data as T[]));
+    if (data.length < PAGE_SIZE) return out;
+  }
 }
 
 const SearchesContext = createContext<SearchesContextValue | null>(null);
@@ -284,44 +316,83 @@ export function SearchesProvider({ children }: { children: ReactNode }) {
 
   const fetchCompanies = useCallback(
     async (id: string): Promise<Company[]> => {
-      const { data, error } = await supabase
-        .from("companies")
-        .select("*, signal_evidence(*), contacts(*)")
-        .eq("search_id", id)
-        .order("last_crawled_at", { ascending: false });
-      if (error || !data) return [];
-      return bySignalFirst((data as unknown as CompanyJoinRow[]).map(mapCompanyRow));
+      const rows = await readAllPages<CompanyJoinRow>((from, to) =>
+        supabase
+          .from("companies")
+          .select("*, signal_evidence(*), contacts(*)")
+          .eq("search_id", id)
+          .order("last_crawled_at", { ascending: false })
+          .order("id")
+          .range(from, to)
+      );
+      return rows ? bySignalFirst(rows.map(mapCompanyRow)) : [];
     },
     [supabase]
   );
 
-  const fetchAllCompanies = useCallback(async (): Promise<Company[]> => {
-    // Leads AND the companies that were cut. The cut ones are not mixed into
-    // the lead list — CompaniesTable files them under their own "Not a fit"
-    // tab, and the page's headline counts only status='qualified' — but they
-    // have to be fetched for that tab to have anything in it.
-    //
-    // search_id NOT NULL is the other half, and it is not optional.
-    // reset-leads.mts empties the dashboard by DETACHING companies rather than
-    // deleting them — that is what preserves cross-search memory, the recheck
-    // schedule and the channel priors, and its whole safety argument is that
-    // "the UI only ever shows leads through a folder, so a company with no
-    // folder is invisible while remaining fully known".
-    //
-    // This query was the one place that was not true. It counted every
-    // qualified row in the database, so All Leads announced "80 leads across 1
-    // folder, open one to see them" while the only folder held 28 and the other
-    // 52 were detached memory with no folder to open. The sidebar and the
-    // folder tile both said 28, because they aggregate folder counts — so the
-    // dashboard disagreed with itself on its headline number.
-    const { data, error } = await supabase
-      .from("companies")
-      .select("*, signal_evidence(*), contacts(*)")
-      .in("status", ["qualified", "rejected"])
-      .not("search_id", "is", null)
-      .order("last_crawled_at", { ascending: false });
-    if (error || !data) return [];
-    return bySignalFirst((data as unknown as CompanyJoinRow[]).map(mapCompanyRow));
+  // WHICH ROWS COUNT AS "A LEAD ON THE DASHBOARD", for both queries below:
+  // qualified, and attached to a folder.
+  //
+  // search_id NOT NULL is not optional. reset-leads.mts empties the dashboard by
+  // DETACHING companies rather than deleting them — that is what preserves
+  // cross-search memory, the recheck schedule and the channel priors, and its
+  // whole safety argument is that "the UI only ever shows leads through a
+  // folder, so a company with no folder is invisible while remaining fully
+  // known".
+  //
+  // This query was once the one place that was not true. It counted every
+  // qualified row in the database, so All Leads announced "80 leads across 1
+  // folder, open one to see them" while the only folder held 28 and the other
+  // 52 were detached memory with no folder to open. The sidebar and the folder
+  // tile both said 28, because they aggregate folder counts — so the dashboard
+  // disagreed with itself on its headline number.
+  //
+  // Rejected companies are NOT in either query. They belong to one folder's
+  // "Not a fit" tab and arrive with that folder (fetchCompanies).
+  const fetchLeadSummaries = useCallback(async (): Promise<LeadSummary[] | null> => {
+    const rows = await readAllPages<{
+      id: string;
+      search_id: string | null;
+      domain: string;
+      state: string | null;
+      industry: Industry;
+      has_signal: boolean | null;
+    }>((from, to) =>
+      supabase
+        .from("companies")
+        .select("id,search_id,domain,state,industry,has_signal")
+        .eq("status", "qualified")
+        .not("search_id", "is", null)
+        .order("id")
+        .range(from, to)
+    );
+    if (!rows) return null;
+    return rows.map((r) => ({
+      id: r.id,
+      searchId: r.search_id,
+      domain: r.domain,
+      state: r.state ?? "-",
+      industry: r.industry,
+      hasSignal: r.has_signal,
+    }));
+  }, [supabase]);
+
+  const fetchAllLeads = useCallback(async (): Promise<Company[]> => {
+    const rows = await readAllPages<CompanyJoinRow>((from, to) =>
+      supabase
+        .from("companies")
+        .select("*, signal_evidence(*), contacts(*)")
+        .eq("status", "qualified")
+        .not("search_id", "is", null)
+        .order("last_crawled_at", { ascending: false })
+        .order("id")
+        .range(from, to)
+    );
+    // Thrown, not swallowed into []: this feeds a file. A failed read that
+    // downloaded an empty (or half-full) spreadsheet would be taken for the
+    // truth about how many leads there are.
+    if (!rows) throw new Error("Could not load your leads. Try again in a moment.");
+    return bySignalFirst(rows.map(mapCompanyRow));
   }, [supabase]);
 
   const createSearch = useCallback(
@@ -392,14 +463,17 @@ export function SearchesProvider({ children }: { children: ReactNode }) {
   // rejections matter has to ask for them separately.
   const fetchRejected = useCallback(
     async (searchId: string): Promise<Company[]> => {
-      const { data, error } = await supabase
-        .from("companies")
-        .select("*, signal_evidence(*), contacts(*)")
-        .eq("search_id", searchId)
-        .eq("status", "rejected")
-        .order("name", { ascending: true });
-      if (error || !data) return [];
-      return (data as unknown as CompanyJoinRow[]).map(mapCompanyRow);
+      const rows = await readAllPages<CompanyJoinRow>((from, to) =>
+        supabase
+          .from("companies")
+          .select("*, signal_evidence(*), contacts(*)")
+          .eq("search_id", searchId)
+          .eq("status", "rejected")
+          .order("name", { ascending: true })
+          .order("id")
+          .range(from, to)
+      );
+      return rows ? rows.map(mapCompanyRow) : [];
     },
     [supabase]
   );
@@ -467,14 +541,15 @@ export function SearchesProvider({ children }: { children: ReactNode }) {
       getFolder,
       fetchFolder,
       fetchCompanies,
-      fetchAllCompanies,
+      fetchAllLeads,
+      fetchLeadSummaries,
       createSearch,
       startEnrichment,
       deleteSearch,
       renameSearch,
       fetchRejected,
     }),
-    [folders, loading, refreshFolders, getFolder, fetchFolder, fetchCompanies, fetchAllCompanies, createSearch, startEnrichment, deleteSearch, renameSearch, fetchRejected]
+    [folders, loading, refreshFolders, getFolder, fetchFolder, fetchCompanies, fetchAllLeads, fetchLeadSummaries, createSearch, startEnrichment, deleteSearch, renameSearch, fetchRejected]
   );
 
   return <SearchesContext.Provider value={value}>{children}</SearchesContext.Provider>;

@@ -26,27 +26,41 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const service = createServiceRoleClient();
+
+  // ONLY THE ROWS ENRICHMENT WROTE. This used to select every company with every
+  // contact joined (~670 companies, 400 contacts), which took 0.8 to 1.1 seconds
+  // on the live site, and it ran on every page load, up to six times. A lookup
+  // leaves a row at "found" or "not_found"; a parked page address sits at
+  // "not_attempted" and says nothing about when enrichment last ran. Filtering to
+  // the first two and reading newest-first is a few hundred small rows, and the
+  // first row seen for a search IS its latest enrichment.
   const { data, error } = await service
-    .from("companies")
-    .select("search_id, contacts(created_at)")
-    .not("search_id", "is", null);
+    .from("contacts")
+    .select("created_at, companies!inner(search_id)")
+    .neq("find_status", "not_attempted")
+    .not("companies.search_id", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(2000);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const rows = (data ?? []) as unknown as {
-    search_id: string | null;
-    contacts: { created_at: string }[] | null;
+    created_at: string;
+    companies: { search_id: string | null } | { search_id: string | null }[] | null;
   }[];
 
   const lastEnrichedAt: Record<string, string> = {};
-  for (const c of rows) {
-    if (!c.search_id) continue;
-    for (const k of c.contacts ?? []) {
-      const at = k.created_at;
-      if (!at) continue;
-      if (!lastEnrichedAt[c.search_id] || at > lastEnrichedAt[c.search_id]) {
-        lastEnrichedAt[c.search_id] = at;
-      }
-    }
+  for (const k of rows) {
+    const co = Array.isArray(k.companies) ? k.companies[0] : k.companies;
+    const id = co?.search_id;
+    if (!id || !k.created_at) continue;
+    // Newest first, so the first one seen is the answer.
+    if (!lastEnrichedAt[id]) lastEnrichedAt[id] = k.created_at;
   }
-  return NextResponse.json({ lastEnrichedAt });
+  return NextResponse.json(
+    { lastEnrichedAt },
+    // The browser may reuse it for half a minute. The sidebar badge and the
+    // History page both ask on every navigation, and the answer changes only
+    // when an enrichment run finishes.
+    { headers: { "Cache-Control": "private, max-age=30" } }
+  );
 }

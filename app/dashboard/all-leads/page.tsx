@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { folderTitle } from "@/lib/folder-title";
 import Link from "next/link";
 import { useSearches, type SearchFolder } from "@/lib/searches-store";
-import { Company } from "@/lib/company";
+import type { Company, LeadSummary } from "@/lib/company";
 
 import { downloadCompaniesCsv } from "@/lib/csv-export";
-import { dedupeCompanies } from "@/lib/dedupe";
+import { countDuplicates, dedupeCompanies } from "@/lib/dedupe";
 import { XlsxButton } from "@/components/XlsxButton";
 import { useMarks } from "@/lib/use-marks";
 import { CompaniesTable } from "@/components/CompaniesTable";
@@ -76,7 +76,7 @@ const TRADE_LABEL: Record<string, string> = {
  * and a label, and a label he has renamed to "Tuesday call" says nothing about
  * either. The companies know, and they cannot disagree with themselves.
  */
-function folderBucket(f: SearchFolder, leads: Company[], by: FolderGroupBy): string {
+function folderBucket(f: SearchFolder, leads: LeadSummary[], by: FolderGroupBy): string {
   if (by === "month") {
     return new Date(f.createdAt).toLocaleDateString("en-US", { month: "long", year: "numeric" });
   }
@@ -97,10 +97,39 @@ function folderBucket(f: SearchFolder, leads: Company[], by: FolderGroupBy): str
   return leads.length > 0 ? "Fit-only leads" : "Nothing found";
 }
 
+/**
+ * The front door is drawn from one tiny row per lead, not from the leads.
+ *
+ * It used to download every company with its evidence quote and every contact
+ * (780 KB on the live database, 2026-10-13) to print a count on a tile. Now the
+ * tiles come from LeadSummary rows, a folder's full rows arrive when it is
+ * opened, and every lead in full is fetched only when a combined export asks.
+ *
+ * The summaries are remembered for the life of the tab, so returning to this
+ * page paints the tiles at once and the refresh lands behind them.
+ */
+let summaryMemory: LeadSummary[] | null = null;
+/** Rows fetched for a combined export stay good for this long. */
+const ALL_LEADS_TTL_MS = 60_000;
+
 export default function AllLeadsPage() {
-  const { fetchAllCompanies, folders, deleteSearch, renameSearch, startEnrichment } =
-    useSearches();
-  const [companies, setCompanies] = useState<Company[] | "loading">("loading");
+  const {
+    fetchLeadSummaries,
+    fetchAllLeads,
+    fetchCompanies,
+    folders,
+    loading: foldersLoading,
+    deleteSearch,
+    renameSearch,
+    startEnrichment,
+  } = useSearches();
+  const [summaries, setSummaries] = useState<LeadSummary[] | null>(summaryMemory);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadTick, setReloadTick] = useState(0);
+  /** Full rows of every folder opened so far, keyed by folder. */
+  const [opened, setOpened] = useState<Record<string, Company[]>>({});
+  const [csvBusy, setCsvBusy] = useState(false);
+  const allLeadsRef = useRef<{ at: number; rows: Promise<Company[]> } | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [openFolderId, setOpenFolderId] = useState<string | null>(null);
   // HOW THE FOLDERS ARE DRAWN, not which rows are shown.
@@ -129,25 +158,54 @@ export default function AllLeadsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    fetchAllCompanies().then((c) => {
-      if (!cancelled) setCompanies(c);
+    fetchLeadSummaries().then((s) => {
+      if (cancelled) return;
+      if (s) {
+        summaryMemory = s;
+        setSummaries(s);
+        setLoadFailed(false);
+      } else {
+        setLoadFailed(true);
+      }
     });
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchLeadSummaries, reloadTick]);
 
-  if (companies === "loading") return null;
+  // A folder's full rows, fetched every time it is opened. Rows already on hand
+  // from an earlier visit show at once while the fresh ones come in behind.
+  useEffect(() => {
+    if (!openFolderId) return;
+    let cancelled = false;
+    fetchCompanies(openFolderId).then((rows) => {
+      if (cancelled) return;
+      // fetchCompanies answers [] when the read fails. Never let that wipe rows
+      // that are already on screen.
+      setOpened((o) => (rows.length === 0 && o[openFolderId] ? o : { ...o, [openFolderId]: rows }));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [openFolderId, fetchCompanies]);
 
-  // Folders that actually contributed a lead, newest first. An empty folder is
-  // a dead card.
-  // LEADS only. `companies` also carries the rejected rows now (they feed the
-  // "Not a fit" tab once a folder is open), and every number derived here —
-  // the tile's lead count, its signal count, which folders count as
-  // contributing, and how they are bucketed — is about leads. Counting a cut
-  // company as a lead is the bug this page just had at the headline level.
-  const leads = companies.filter((c) => c.status === "qualified");
+  if (summaries === null && loadFailed) {
+    return (
+      <LoadFailed
+        onRetry={() => {
+          setLoadFailed(false);
+          setReloadTick((t) => t + 1);
+        }}
+      />
+    );
+  }
+  if (summaries === null || foldersLoading) return <ListsSkeleton />;
+
+  // LEADS only, and only those whose folder still exists. A folder deleted a
+  // moment ago must not keep counting toward the headline while the summaries
+  // refresh behind it.
+  const folderIds = new Set(folders.map((f) => f.id));
+  const leads = summaries.filter((s) => s.searchId && folderIds.has(s.searchId));
   const counts = new Map<string, number>();
   const signals = new Map<string, number>();
   for (const c of leads) {
@@ -155,21 +213,59 @@ export default function AllLeadsPage() {
     counts.set(c.searchId, (counts.get(c.searchId) ?? 0) + 1);
     if (c.hasSignal) signals.set(c.searchId, (signals.get(c.searchId) ?? 0) + 1);
   }
+  // Folders that actually contributed a lead, newest first. An empty folder is
+  // a dead card.
   const contributing = folders.filter((f) => counts.has(f.id));
-  // `companies` now also carries the rejected rows, so they can reach the
-  // "Not a fit" tab inside a folder. The headline is about LEADS, and counting
-  // the cut ones there would restate the exact confusion this page just had.
   const leadCount = leads.length;
   // The same company sits in every list it was found in. These are the rows a
   // combined export folds away, so the page can say so instead of letting 102
   // leads and a 97-row spreadsheet look like a lost-data bug.
-  const duplicateLeads = dedupeCompanies(leads).removed;
+  const duplicateLeads = countDuplicates(leads);
   const uniqueLeadCount = leadCount - duplicateLeads;
   /** Which list each lead came from, so a combined export can say. */
   const folderName = new Map(folders.map((f) => [f.id, folderTitle(f.label)]));
   const openFolder = contributing.find((f) => f.id === openFolderId) ?? null;
 
-  const leadsByFolder = new Map<string, Company[]>();
+  /**
+   * Every lead in full, for a combined export. Fetched once and reused for a
+   * minute; the button asks for it as the pointer arrives so that, by the click,
+   * it is usually already here.
+   */
+  function allLeadsRows(): Promise<Company[]> {
+    const memo = allLeadsRef.current;
+    if (memo && Date.now() - memo.at < ALL_LEADS_TTL_MS) return memo.rows;
+    const rows = fetchAllLeads();
+    allLeadsRef.current = { at: Date.now(), rows };
+    // A failed read must not be remembered, or every later click re-throws it.
+    rows.catch(() => {
+      if (allLeadsRef.current?.rows === rows) allLeadsRef.current = null;
+    });
+    return rows;
+  }
+
+  async function downloadAll() {
+    setError("");
+    setCsvBusy(true);
+    try {
+      const all = (await allLeadsRows()).filter((c) => c.searchId && folderIds.has(c.searchId));
+      // His notes and his own grade travel with the rows, so the CSV and the
+      // spreadsheet say the same thing.
+      // ONE ROW PER COMPANY. The same company sits in every list it was found
+      // in, so combining the lists produced duplicates Jonathan then had to
+      // clean by hand. The best row is kept, no address or note is lost, and
+      // the other lists are named.
+      downloadCompaniesCsv(
+        dedupeCompanies(withMarks(all, (c) => folderName.get(c.searchId ?? "") ?? "")).rows,
+        "all-leads"
+      );
+    } catch (e) {
+      setError((e as Error).message || "Could not build that file.");
+    } finally {
+      setCsvBusy(false);
+    }
+  }
+
+  const leadsByFolder = new Map<string, LeadSummary[]>();
   for (const c of leads) {
     if (!c.searchId) continue;
     const list = leadsByFolder.get(c.searchId) ?? [];
@@ -211,9 +307,11 @@ export default function AllLeadsPage() {
     // frame. Waiting for the request to return before clearing these left the
     // folder's rows on screen under a heading that had already gone.
     if (openFolderId === target.id) setOpenFolderId(null);
-    setCompanies((prev) =>
-      prev === "loading" ? prev : prev.filter((c) => c.searchId !== target.id)
-    );
+    const remaining = (summaries ?? []).filter((c) => c.searchId !== target.id);
+    summaryMemory = remaining;
+    setSummaries(remaining);
+    setOpened((o) => Object.fromEntries(Object.entries(o).filter(([id]) => id !== target.id)));
+    allLeadsRef.current = null;
     try {
       await deleteSearch(target.id);
     } catch (e) {
@@ -227,18 +325,23 @@ export default function AllLeadsPage() {
     setPendingPick(null);
     try {
       await startEnrichment(openFolderId, undefined, ids);
-      // Pull the rows back so the picked companies show their new contact
-      // state without a manual refresh.
-      const fresh = await fetchAllCompanies();
-      setCompanies(fresh);
+      // Pull this folder's rows back so the picked companies show their new
+      // contact state without a manual refresh. The combined export's rows are
+      // out of date now too.
+      allLeadsRef.current = null;
+      const fresh = await fetchCompanies(openFolderId);
+      setOpened((o) => ({ ...o, [openFolderId]: fresh }));
     } catch (e) {
       setEnrichError((e as Error).message || "Could not start the lookup.");
     }
   }
 
-  const pickedRejected = pendingPick
-    ? companies.filter((c) => pendingPick.includes(c.id) && c.status === "rejected").length
-    : 0;
+  const pickedRejected =
+    pendingPick && openFolderId
+      ? (opened[openFolderId] ?? []).filter(
+          (c) => pendingPick.includes(c.id) && c.status === "rejected"
+        ).length
+      : 0;
 
   const enrichDialog = (
     <ConfirmDialog
@@ -316,11 +419,16 @@ export default function AllLeadsPage() {
 
   // ── Level 2: one folder's leads ──────────────────────────────────────────
   if (openFolder) {
-    const visible = companies.filter((c) => c.searchId === openFolder.id);
+    // Undefined until this folder's rows have arrived. The header and its count
+    // are drawn at once from what the front door already knows.
+    const rows = opened[openFolder.id];
+    const visible = rows ?? [];
     // The CSV carries the cut companies too, labelled by the `verdict` column.
     // The button says so, because a file three times the size of the screen is
     // a surprise worth spending eight words on.
-    const visibleLeads = visible.filter((c) => c.status === "qualified").length;
+    const visibleLeads = rows
+      ? rows.filter((c) => c.status === "qualified").length
+      : (counts.get(openFolder.id) ?? 0);
     const selected = visible.find((c) => c.id === selectedId) ?? null;
 
     return (
@@ -368,8 +476,8 @@ export default function AllLeadsPage() {
                 className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-gh-navy px-4 py-2.5 text-sm font-semibold text-white transition-colors duration-200 hover:bg-gh-navy-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <DownloadIcon className="h-4 w-4" />
-                Download {visible.length}
-                {visibleLeads !== visible.length && (
+                Download{rows ? ` ${visible.length}` : ""}
+                {rows && visibleLeads !== visible.length && (
                   <span className="font-normal text-white/60">
                     ({visibleLeads} leads + {visible.length - visibleLeads} not a fit)
                   </span>
@@ -388,18 +496,22 @@ export default function AllLeadsPage() {
           </p>
         )}
 
-        <CompaniesTable
-          key={openFolder.id}
-          companies={visible}
-          onRowClick={(c) => setSelectedId(c.id)}
-          defaultView="table"
-          onEnrichSelected={(ids) => {
-            if (ids.length === 0) return;
-            setEnrichError("");
-            setPendingPick(ids);
-          }}
-          enrichBusy={openFolder.enrichmentStatus === "running"}
-        />
+        {rows ? (
+          <CompaniesTable
+            key={openFolder.id}
+            companies={visible}
+            onRowClick={(c) => setSelectedId(c.id)}
+            defaultView="table"
+            onEnrichSelected={(ids) => {
+              if (ids.length === 0) return;
+              setEnrichError("");
+              setPendingPick(ids);
+            }}
+            enrichBusy={openFolder.enrichmentStatus === "running"}
+          />
+        ) : (
+          <RowsSkeleton />
+        )}
 
         {/* Under the leads, on both folder routes. This page and
             /dashboard/lists/[id] are two different renders of the same thing,
@@ -444,22 +556,14 @@ export default function AllLeadsPage() {
             {leads.length > 0 && (
               <button
                 type="button"
-                onClick={() => {
-                  // His notes and his own grade travel with the rows, so the
-                  // CSV and the spreadsheet say the same thing.
-                  // ONE ROW PER COMPANY. The same company sits in every list it
-                  // was found in, so combining the lists produced duplicates
-                  // Jonathan then had to clean by hand. The best row is kept, no
-                  // address or note is lost, and the other lists are named.
-                  downloadCompaniesCsv(
-                    dedupeCompanies(withMarks(leads, (c) => folderName.get(c.searchId ?? "") ?? "")).rows,
-                    "all-leads"
-                  );
-                }}
-                className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-gh-border bg-gh-surface px-3 py-1.5 text-xs font-semibold text-gh-ink-secondary transition-colors hover:border-gh-sky/40 hover:text-gh-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+                onClick={downloadAll}
+                onPointerEnter={() => void allLeadsRows().catch(() => {})}
+                onFocus={() => void allLeadsRows().catch(() => {})}
+                disabled={csvBusy}
+                className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-gh-border bg-gh-surface px-3 py-1.5 text-xs font-semibold text-gh-ink-secondary transition-colors hover:border-gh-sky/40 hover:text-gh-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40 disabled:cursor-wait disabled:opacity-60"
               >
                 <DownloadIcon className="h-3.5 w-3.5" />
-                CSV all {uniqueLeadCount}
+                {csvBusy ? "Preparing…" : `CSV all ${uniqueLeadCount}`}
               </button>
             )}
             {leads.length > 0 && <XlsxButton count={uniqueLeadCount} />}
@@ -568,6 +672,58 @@ export default function AllLeadsPage() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/** The front door while the counts come in: the same shape, so nothing jumps when they land. */
+function ListsSkeleton() {
+  return (
+    <div className="mx-auto max-w-7xl space-y-6" aria-busy="true" aria-label="Loading your lead lists">
+      <div>
+        <div className="h-8 w-40 rounded-lg bg-gh-surface-sunken motion-safe:animate-pulse" />
+        <div className="mt-2 h-4 w-72 max-w-full rounded bg-gh-surface-sunken motion-safe:animate-pulse" />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {[0, 1, 2].map((i) => (
+          <div
+            key={i}
+            className="h-[132px] rounded-xl border border-gh-border bg-gh-surface motion-safe:animate-pulse"
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** A folder's rows while they are being fetched. */
+function RowsSkeleton() {
+  return (
+    <div className="space-y-2" aria-busy="true" aria-label="Loading this list">
+      {[0, 1, 2, 3, 4, 5].map((i) => (
+        <div
+          key={i}
+          className="h-14 rounded-xl border border-gh-border bg-gh-surface motion-safe:animate-pulse"
+        />
+      ))}
+    </div>
+  );
+}
+
+function LoadFailed({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="mx-auto max-w-md py-20 text-center">
+      <p className="font-display text-lg font-semibold text-gh-ink">Could not load your lead lists</p>
+      <p className="mt-2 text-sm text-gh-ink-secondary">
+        Nothing is lost. This is usually a dropped connection.
+      </p>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="mt-4 inline-flex cursor-pointer items-center rounded-lg bg-gh-navy px-4 py-2.5 text-sm font-semibold text-white transition-colors duration-200 hover:bg-gh-navy-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-sky/40"
+      >
+        Try again
+      </button>
     </div>
   );
 }
