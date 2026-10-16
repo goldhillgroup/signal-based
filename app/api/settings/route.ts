@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { setSetting, SETTINGS_KEYS } from "@/lib/settings";
 import { validateSecret } from "@/lib/settings-validate";
+import { checkKeyWithVendor } from "@/lib/key-check";
 
 const VALID_KEYS: Set<string> = new Set(SETTINGS_KEYS.map((k) => k.key));
 
@@ -33,26 +34,12 @@ export async function POST(req: Request) {
   const problem = validateSecret(key, trimmed);
   if (problem) return NextResponse.json({ error: problem }, { status: 400 });
 
-  // OpenRouter will say at once whether it accepts the key, and the answer also
-  // names the account it belongs to, which is what settles "did my top-up go to the
-  // right account". A network failure does not block saving: that says nothing
-  // about the key.
-  if (key === "OPENROUTER_API_KEY") {
-    const res = await fetch("https://openrouter.ai/api/v1/auth/key", {
-      headers: { Authorization: `Bearer ${trimmed}` },
-      cache: "no-store",
-      signal: AbortSignal.timeout(8_000),
-    }).catch(() => null);
-    if (res && (res.status === 401 || res.status === 403)) {
-      return NextResponse.json(
-        {
-          error:
-            "OpenRouter does not accept that key (HTTP " + res.status + "). Create a new one at openrouter.ai/settings/keys " +
-            "while signed in to the account that holds your credits, and paste that. Nothing was saved, and the key that was here is untouched.",
-        },
-        { status: 400 }
-      );
-    }
+  // Then the vendor itself must confirm it, so a key that looks right but is revoked,
+  // mistyped, for a closed account or another vendor's never replaces a working one.
+  // See lib/key-check.ts for what counts as confirmed.
+  const check = await checkKeyWithVendor(key, trimmed);
+  if (check.verdict === "invalid" || check.verdict === "unreachable") {
+    return NextResponse.json({ error: check.message }, { status: 400 });
   }
 
   await setSetting(key, trimmed);
