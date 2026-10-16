@@ -15,6 +15,8 @@ export interface OpenRouterKeyInfo {
   limit?: number | null;
   limit_remaining?: number | null;
   is_free_tier?: boolean | null;
+  creator_user_id?: string | null;
+  organization_id?: string | null;
 }
 
 const usd = (n: number) => `$${n.toFixed(2)}`;

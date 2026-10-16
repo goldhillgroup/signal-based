@@ -1,6 +1,7 @@
 import { resolveSetting, getSetting } from "./settings";
 import { CLIENT_PLAN_USD } from "./pipeline/apify";
 import { describeOpenRouterKey, describeRejectedKey, keyTail, type OpenRouterKeyInfo } from "./openrouter-account";
+import { accountForApify, accountForEmail, accountForOpenRouter, accountForUnknownOwner, tailOf } from "./vendor-account";
 
 /**
  * Every vendor's balance, in one shape, so the Settings page can show them
@@ -35,6 +36,12 @@ export interface VendorMeta {
 }
 
 export interface VendorUsage extends VendorMeta {
+  /**
+   * Whose account the saved key is tied to, as far as the vendor says (an email, an
+   * account name, a user ID), or that it does not say, plus the key's last four
+   * characters. See lib/vendor-account.ts.
+   */
+  account?: string;
   /** false = we could not read this vendor. `headline` then holds the reason. */
   ok: boolean;
   /**
@@ -107,9 +114,10 @@ async function getJson<T>(
  * "I don't know" is not "you're fine" and not "you're out" either, so it must
  * not colour the card red or amber — the UI styles `ok: false` separately.
  */
-export function unreadable(meta: VendorMeta, reason: string, detail: string[] = []): VendorUsage {
+export function unreadable(meta: VendorMeta, reason: string, detail: string[] = [], account?: string): VendorUsage {
   return {
     ...meta,
+    account,
     ok: false,
     headline: reason,
     detail,
@@ -185,7 +193,7 @@ const OPENROUTER_CREDITS_URL = "https://openrouter.ai/api/v1/credits";
 
 async function fetchOpenRouterPrimary(meta: VendorMeta): Promise<VendorUsage> {
   const key = await resolveSetting("OPENROUTER_API_KEY", process.env.OPENROUTER_API_KEY);
-  if (!key) return unreadable(meta, "No key configured");
+  if (!key) return unreadable(meta, "No key configured", [], accountForUnknownOwner(meta.vendor, ""));
 
   const auth = { Authorization: `Bearer ${key}` };
   const [res, keyRes] = await Promise.all([
@@ -194,7 +202,10 @@ async function fetchOpenRouterPrimary(meta: VendorMeta): Promise<VendorUsage> {
   ]);
   // A refused key is shown with its length and shape, which is what shows at a glance that
   // it is the wrong value (on 2026-10-14 it was the two characters "25").
-  if (!res.ok) return unreadable(meta, res.reason, /HTTP 40[13]/.test(res.reason) ? describeRejectedKey(key) : []);
+  const keyData = keyRes.ok ? (keyRes.data.data ?? null) : null;
+  if (!res.ok) {
+    return unreadable(meta, res.reason, /HTTP 40[13]/.test(res.reason) ? describeRejectedKey(key) : [], accountForUnknownOwner("OpenRouter", tailOf(key)));
+  }
 
   const granted = num(res.data.data?.total_credits);
   const used = num(res.data.data?.total_usage);
@@ -205,6 +216,7 @@ async function fetchOpenRouterPrimary(meta: VendorMeta): Promise<VendorUsage> {
 
   return {
     ...meta,
+    account: accountForOpenRouter(keyData as { creator_user_id?: string; organization_id?: string } | null, tailOf(key)),
     ok: true,
     headline: `${usd(used)} of ${usd(granted)} used`,
     detail: [
@@ -213,7 +225,7 @@ async function fetchOpenRouterPrimary(meta: VendorMeta): Promise<VendorUsage> {
         : `Over by ${usd(Math.abs(left))}. Classify calls now come back 402 and a search refuses to start — there is no fallback key any more, by design.`,
       "Every classify and disprove call in a search bills here.",
       // Which account: the key's name and last characters, since OpenRouter will not say the login.
-      ...describeOpenRouterKey(keyRes.ok ? (keyRes.data.data ?? null) : null, keyTail(key)),
+      ...describeOpenRouterKey(keyData, keyTail(key)),
     ],
     percentUsed,
     resetsAt: null,
@@ -253,10 +265,13 @@ async function fetchApify(
   // near-identical one from a neighbouring endpoint. Probed live against
   // usage/monthly's totalUsageCreditsUsdAfterVolumeDiscount on all four
   // tokens: identical to 6 decimal places.
-  const res = await getJson<ApifyLimits>(
-    `https://api.apify.com/v2/users/me/limits?token=${encodeURIComponent(token)}`
-  );
-  if (!res.ok) return unreadable(meta, res.reason);
+  const [res, me] = await Promise.all([
+    getJson<ApifyLimits>(`https://api.apify.com/v2/users/me/limits?token=${encodeURIComponent(token)}`),
+    // Who owns the token: email, account name, plan. A second small free call.
+    getJson<{ data?: Parameters<typeof accountForApify>[0] }>(`https://api.apify.com/v2/users/me?token=${encodeURIComponent(token)}`),
+  ]);
+  const account = accountForApify(me.ok ? (me.data.data ?? null) : null, tailOf(token));
+  if (!res.ok) return unreadable(meta, res.reason, [], account);
 
   const d = res.data.data;
   const used = num(d?.current?.monthlyUsageUsd);
@@ -292,6 +307,7 @@ async function fetchApify(
 
   return {
     ...meta,
+    account,
     ok: true,
     headline:
       limit === null
@@ -320,22 +336,22 @@ interface TavilyUsage {
 
 async function fetchTavily(meta: VendorMeta): Promise<VendorUsage> {
   const key = await resolveSetting("TAVILY_API_KEY", process.env.TAVILY_API_KEY);
-  if (!key) return unreadable(meta, "No key configured");
+  if (!key) return unreadable(meta, "No key configured", [], accountForUnknownOwner(meta.vendor, ""));
 
   const res = await getJson<TavilyUsage>("https://api.tavily.com/usage", {
     Authorization: `Bearer ${key}`,
   });
-  if (!res.ok) return unreadable(meta, res.reason);
+  const who = (plan?: string | null) => accountForUnknownOwner("Tavily", tailOf(key), plan ? `${plan} plan` : null);
+  if (!res.ok) return unreadable(meta, res.reason, [], who());
 
   const account = res.data.account;
   const planUsage = num(account?.plan_usage);
-  if (planUsage === null) return unreadable(meta, "Usage missing from the response");
+  if (planUsage === null) return unreadable(meta, "Usage missing from the response", [], who());
   const planLimit = num(account?.plan_limit);
   const keyUsage = num(res.data.key?.usage);
   const percentUsed = pctUsed(planUsage, planLimit);
 
   const detail: string[] = [];
-  if (account?.current_plan) detail.push(`Plan: ${account.current_plan}.`);
   if (keyUsage !== null && keyUsage !== planUsage) {
     detail.push(`This key alone: ${units(keyUsage)}, the plan figure covers every key on the account.`);
   }
@@ -358,6 +374,7 @@ async function fetchTavily(meta: VendorMeta): Promise<VendorUsage> {
 
   return {
     ...meta,
+    account: who(account?.current_plan),
     ok: true,
     headline:
       planLimit === null
@@ -389,15 +406,16 @@ interface FirecrawlUsage {
 
 async function fetchFirecrawl(meta: VendorMeta): Promise<VendorUsage> {
   const key = await resolveSetting("FIRECRAWL_API_KEY", process.env.FIRECRAWL_API_KEY);
-  if (!key) return unreadable(meta, "No key configured");
+  if (!key) return unreadable(meta, "No key configured", [], accountForUnknownOwner(meta.vendor, ""));
 
   const res = await getJson<FirecrawlUsage>("https://api.firecrawl.dev/v1/team/credit-usage", {
     Authorization: `Bearer ${key}`,
   });
-  if (!res.ok) return unreadable(meta, res.reason);
+  const who = accountForUnknownOwner("Firecrawl", tailOf(key));
+  if (!res.ok) return unreadable(meta, res.reason, [], who);
 
   const remaining = num(res.data.data?.remaining_credits);
-  if (remaining === null) return unreadable(meta, "Balance missing from the response");
+  if (remaining === null) return unreadable(meta, "Balance missing from the response", [], who);
   const planCredits = num(res.data.data?.plan_credits);
 
   // Firecrawl reports a BALANCE, not consumption, and the balance can sit
@@ -424,6 +442,7 @@ async function fetchFirecrawl(meta: VendorMeta): Promise<VendorUsage> {
 
   return {
     ...meta,
+    account: who,
     ok: true,
     headline: `${units(remaining)} credits left`,
     detail,
@@ -445,7 +464,7 @@ interface AnymailfinderAccount {
 
 async function fetchAnymailfinder(meta: VendorMeta): Promise<VendorUsage> {
   const key = await resolveSetting("ANYMAILFINDER_API_KEY", process.env.ANYMAILFINDER_API_KEY);
-  if (!key) return unreadable(meta, "No key configured");
+  if (!key) return unreadable(meta, "No key configured", [], accountForUnknownOwner(meta.vendor, ""));
 
   // /v5.0/meta/account.json is the ONLY account endpoint this API answers.
   // /v5.0/users/me, /v5.0/account, /v4.1/account, /v5.1/meta/account.json,
@@ -456,10 +475,11 @@ async function fetchAnymailfinder(meta: VendorMeta): Promise<VendorUsage> {
     "https://api.anymailfinder.com/v5.0/meta/account.json",
     { Authorization: `Bearer ${key}` }
   );
-  if (!res.ok) return unreadable(meta, res.reason);
+  if (!res.ok) return unreadable(meta, res.reason, [], accountForUnknownOwner("Anymailfinder", tailOf(key)));
+  const who = accountForEmail(res.data.email, tailOf(key));
 
   const left = num(res.data.credits_left);
-  if (left === null) return unreadable(meta, "Balance missing from the response");
+  if (left === null) return unreadable(meta, "Balance missing from the response", [], who);
 
   // THEIR credits_total IS NOT THE PLAN SIZE.
   //
@@ -475,7 +495,6 @@ async function fetchAnymailfinder(meta: VendorMeta): Promise<VendorUsage> {
   const percentUsed = total === null ? null : pctUsed(total - left, total);
 
   const detail: string[] = [];
-  if (res.data.email) detail.push(`Account: ${res.data.email}.`);
   // What the vendor will not tell us, counted from our own side: every
   // purchased address is exactly one billed credit, so this is the spend
   // Signal Radar is responsible for. It says nothing about lookups made from
@@ -488,6 +507,7 @@ async function fetchAnymailfinder(meta: VendorMeta): Promise<VendorUsage> {
 
   return {
     ...meta,
+    account: who,
     ok: true,
     headline: total === null ? `${units(left)} credits left` : `${units(left)} of ${units(total)} credits left`,
     detail,
@@ -541,12 +561,13 @@ const MILLIONVERIFIER_LOW_CREDITS = 500;
 
 async function fetchMillionVerifier(meta: VendorMeta): Promise<VendorUsage> {
   const key = await resolveSetting("MILLIONVERIFIER_API_KEY", process.env.MILLIONVERIFIER_API_KEY);
-  if (!key) return unreadable(meta, "No key configured");
+  if (!key) return unreadable(meta, "No key configured", [], accountForUnknownOwner(meta.vendor, ""));
 
   const res = await getJson<MillionVerifierCredits>(
     `https://api.millionverifier.com/api/v3/credits?api=${encodeURIComponent(key)}`
   );
-  if (!res.ok) return unreadable(meta, res.reason);
+  const who = accountForUnknownOwner("MillionVerifier", tailOf(key));
+  if (!res.ok) return unreadable(meta, res.reason, [], who);
 
   // Unlike the other five, this API answers HTTP 200 with an `error` field on
   // a bad key instead of a 4xx (verified live: a junk key returns 200 and
@@ -556,7 +577,9 @@ async function fetchMillionVerifier(meta: VendorMeta): Promise<VendorUsage> {
   if (credits === null) {
     return unreadable(
       meta,
-      res.data.error ? `Rejected by the API (${res.data.error})` : "Balance missing from the response"
+      res.data.error ? `Rejected by the API (${res.data.error})` : "Balance missing from the response",
+      [],
+      who
     );
   }
 
@@ -567,6 +590,7 @@ async function fetchMillionVerifier(meta: VendorMeta): Promise<VendorUsage> {
 
   return {
     ...meta,
+    account: who,
     ok: true,
     headline: `${units(credits)} credits left`,
     detail,

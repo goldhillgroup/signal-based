@@ -185,6 +185,12 @@ export function SettingsForm({ rows: initialRows }: { rows: Row[] }) {
                   />
                 </div>
               )}
+              {/* Whose account this key is tied to, as far as the vendor says. */}
+              {u.account && (
+                <p className="mt-1.5 text-[11px] leading-relaxed text-gh-ink">
+                  <span className="font-semibold">Account:</span> {u.account}
+                </p>
+              )}
               {(u.detail.length > 0 || u.resetNote) && (
                 <p className="mt-1.5 text-[11px] leading-relaxed text-gh-ink-secondary">
                   {[...u.detail, u.resetNote].filter(Boolean).join(" · ")}
