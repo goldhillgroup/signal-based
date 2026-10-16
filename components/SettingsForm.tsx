@@ -26,6 +26,12 @@ const LEVEL: Record<WarnLevel, { pill: string; bar: string; label: string }> = {
   exhausted: { pill: "bg-gh-critical/10 text-gh-critical", bar: "var(--gh-critical)", label: "spent" },
 };
 
+// A card that could not be READ used to wear the "ok" badge (its warn level is "ok" on
+// purpose, because "I don't know" is not "you're out"), so a rejected key read as
+// "ok  The key saved here was rejected". Jonathan quoted it as "okvendor returned HTTP 401".
+const UNREADABLE = { pill: "bg-gh-warning/25 text-gh-ink", bar: "var(--gh-warning)", label: "can't read" };
+const REJECTED = { pill: "bg-gh-critical/10 text-gh-critical", bar: "var(--gh-critical)", label: "key rejected" };
+
 const STATUS_META: Record<Row["status"], { label: string; color: string; bg: string }> = {
   db: { label: "Set in Settings", color: "#0b7a0b", bg: "#e2f6e2" },
   env: { label: "Using .env fallback", color: "#0b5e85", bg: "#e2f3fb" },
@@ -160,7 +166,7 @@ export function SettingsForm({ rows: initialRows }: { rows: Row[] }) {
               </p>
             );
           }
-          const lv = LEVEL[u.warnLevel];
+          const lv = u.ok ? LEVEL[u.warnLevel] : /rejected/i.test(u.headline) ? REJECTED : UNREADABLE;
           return (
             <div className="mt-2.5 rounded-lg bg-gh-surface-sunken px-3 py-2.5">
               <div className="flex flex-wrap items-center gap-2">
@@ -194,7 +200,13 @@ export function SettingsForm({ rows: initialRows }: { rows: Row[] }) {
             autoComplete="off"
             value={drafts[row.key] ?? ""}
             onChange={(e) => setDrafts((d) => ({ ...d, [row.key]: e.target.value }))}
-            placeholder="Enter a new value to change"
+            // Says what to paste. It used to say "Enter a new value to change", and a top-up
+            // amount (25) went into the OpenRouter key box and replaced the working key.
+            placeholder={
+              row.key === "OPENROUTER_API_KEY"
+                ? "Paste a whole OpenRouter key (starts sk-or-), not an amount"
+                : "Paste the whole new API key to replace this one"
+            }
             className="min-w-[200px] flex-1 rounded-lg border border-gh-border bg-gh-surface-sunken px-3 py-2 text-sm text-gh-ink placeholder:text-gh-ink-muted focus:border-gh-sky focus:outline-none focus:ring-2 focus:ring-gh-sky/20"
           />
           <button

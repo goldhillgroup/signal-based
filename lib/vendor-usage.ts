@@ -1,5 +1,6 @@
 import { resolveSetting, getSetting } from "./settings";
 import { CLIENT_PLAN_USD } from "./pipeline/apify";
+import { describeOpenRouterKey, describeRejectedKey, keyTail, type OpenRouterKeyInfo } from "./openrouter-account";
 
 /**
  * Every vendor's balance, in one shape, so the Settings page can show them
@@ -106,12 +107,12 @@ async function getJson<T>(
  * "I don't know" is not "you're fine" and not "you're out" either, so it must
  * not colour the card red or amber — the UI styles `ok: false` separately.
  */
-export function unreadable(meta: VendorMeta, reason: string): VendorUsage {
+export function unreadable(meta: VendorMeta, reason: string, detail: string[] = []): VendorUsage {
   return {
     ...meta,
     ok: false,
     headline: reason,
-    detail: [],
+    detail,
     percentUsed: null,
     resetsAt: null,
     resetNote: "",
@@ -186,10 +187,14 @@ async function fetchOpenRouterPrimary(meta: VendorMeta): Promise<VendorUsage> {
   const key = await resolveSetting("OPENROUTER_API_KEY", process.env.OPENROUTER_API_KEY);
   if (!key) return unreadable(meta, "No key configured");
 
-  const res = await getJson<OpenRouterCredits>(OPENROUTER_CREDITS_URL, {
-    Authorization: `Bearer ${key}`,
-  });
-  if (!res.ok) return unreadable(meta, res.reason);
+  const auth = { Authorization: `Bearer ${key}` };
+  const [res, keyRes] = await Promise.all([
+    getJson<OpenRouterCredits>(OPENROUTER_CREDITS_URL, auth),
+    getJson<{ data?: OpenRouterKeyInfo }>("https://openrouter.ai/api/v1/key", auth),
+  ]);
+  // A refused key is shown with its length and shape, which is what shows at a glance that
+  // it is the wrong value (on 2026-10-14 it was the two characters "25").
+  if (!res.ok) return unreadable(meta, res.reason, /HTTP 40[13]/.test(res.reason) ? describeRejectedKey(key) : []);
 
   const granted = num(res.data.data?.total_credits);
   const used = num(res.data.data?.total_usage);
@@ -207,6 +212,8 @@ async function fetchOpenRouterPrimary(meta: VendorMeta): Promise<VendorUsage> {
         ? `${usd(left)} left.`
         : `Over by ${usd(Math.abs(left))}. Classify calls now come back 402 and a search refuses to start — there is no fallback key any more, by design.`,
       "Every classify and disprove call in a search bills here.",
+      // Which account: the key's name and last characters, since OpenRouter will not say the login.
+      ...describeOpenRouterKey(keyRes.ok ? (keyRes.data.data ?? null) : null, keyTail(key)),
     ],
     percentUsed,
     resetsAt: null,
