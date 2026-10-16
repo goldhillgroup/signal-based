@@ -72,9 +72,12 @@ function requiredCreditFor(targetSignals: number): number {
  * number in the dashboard next to the key.
  */
 let keyCapBound = false;
+/** The HTTP status when OpenRouter REFUSED the key (401/403) on the last read, else null. */
+let keyRejectedStatus: number | null = null;
 
 export async function openRouterRemaining(): Promise<number | null> {
   keyCapBound = false;
+  keyRejectedStatus = null;
   const key = await resolveSetting("OPENROUTER_API_KEY", process.env.OPENROUTER_API_KEY);
   if (!key) return null;
 
@@ -108,6 +111,10 @@ export async function openRouterRemaining(): Promise<number | null> {
           signal: AbortSignal.timeout(10_000),
         }).catch(() => null),
       ]);
+      // A refused KEY is not an unreadable balance. Treating it as one let a search
+      // start: discovery was billed, then every classify call came back 401 and nothing
+      // was judged (2026-10-14, after the saved key was overwritten with "25").
+      if (creditsRes.status === 401 || creditsRes.status === 403) keyRejectedStatus = creditsRes.status;
       if (!creditsRes.ok) return null;
       const b = (await creditsRes.json()) as Credits;
       const total = b.data?.total_credits;
@@ -153,6 +160,15 @@ export async function openRouterRemaining(): Promise<number | null> {
 export async function creditBlockerFor(targetSignals: number): Promise<string | null> {
   const need = requiredCreditFor(targetSignals);
   const left = await openRouterRemaining();
+  // Refuse BEFORE anything is spent. Only a refused key stops a search here; an
+  // outage or a timeout still fails open, as it always has.
+  if (keyRejectedStatus !== null) {
+    return (
+      `OpenRouter rejected the key saved in Settings (HTTP ${keyRejectedStatus}), so no company could be judged. ` +
+      `No search was started and nothing was spent. Create a new key at openrouter.ai/settings/keys, signed in to the ` +
+      `account that holds your credits, and paste it into Settings.`
+    );
+  }
   if (left === null) return null;
   if (left >= need) return null;
   // Which ceiling ran out decides the advice. "Top up" is actively wrong when

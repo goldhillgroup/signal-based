@@ -89,6 +89,8 @@ export function SettingsForm({ rows: initialRows }: { rows: Row[] }) {
       );
       setDrafts((d) => ({ ...d, [key]: "" }));
       setFeedback((f) => ({ ...f, [key]: "Saved. Takes effect on the next search." }));
+      // The balance cards read the keys, so they are stale the moment one changes.
+      loadUsage();
     } catch (e) {
       setFeedback((f) => ({ ...f, [key]: (e as Error).message }));
     } finally {

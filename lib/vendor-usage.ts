@@ -84,6 +84,14 @@ async function getJson<T>(
       cache: "no-store",
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
+    // A 401/403 is the vendor refusing the KEY, which is something he can fix in this
+    // very page, and it was reported as "vendor returned HTTP 401" with nothing to act on.
+    if (res.status === 401 || res.status === 403) {
+      return {
+        ok: false,
+        reason: `The key saved here was rejected (HTTP ${res.status}). Paste a fresh key from the vendor's dashboard in the box below.`,
+      };
+    }
     if (!res.ok) return { ok: false, reason: `vendor returned HTTP ${res.status}` };
     return { ok: true, data: (await res.json()) as T };
   } catch (e) {

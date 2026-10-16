@@ -121,3 +121,42 @@ test("an unreadable /key does not break the check", async () => {
     restore();
   }
 });
+
+test("a REFUSED key stops the search before anything is spent, and says what to do", async () => {
+  // 2026-10-14: the saved key was overwritten with "25". The gate read the 401 as "balance unknown",
+  // failed open, discovery was billed, and every classify call then came back 401.
+  globalThis.fetch = (async () => new Response(JSON.stringify({ error: { message: "Missing Authentication header", code: 401 } }), { status: 401 })) as typeof fetch;
+  try {
+    const blocker = await creditBlockerFor(8);
+    assert.ok(blocker, "the search must be refused");
+    assert.match(blocker!, /rejected the key saved in Settings \(HTTP 401\)/);
+    assert.match(blocker!, /nothing was spent/i);
+    assert.match(blocker!, /openrouter\.ai\/settings\/keys/);
+  } finally {
+    restore();
+  }
+});
+
+test("an OpenRouter outage still fails open: only a refused key stops a search", async () => {
+  globalThis.fetch = (async () => new Response("bad gateway", { status: 502 })) as typeof fetch;
+  try {
+    assert.equal(await creditBlockerFor(8), null);
+  } finally {
+    restore();
+  }
+});
+
+test("a later, healthy read clears the refusal", async () => {
+  globalThis.fetch = (async () => new Response("no", { status: 401 })) as typeof fetch;
+  try {
+    assert.ok(await creditBlockerFor(8));
+  } finally {
+    restore();
+  }
+  stub({ credits: { total_credits: 50, total_usage: 1 }, key: { limit: null, limit_remaining: null } });
+  try {
+    assert.equal(await creditBlockerFor(8), null, "a working key must not be remembered as a refused one");
+  } finally {
+    restore();
+  }
+});
