@@ -24,7 +24,7 @@ import { getSetting, setSetting } from "../settings";
 import { packQueue, unpackQueue, queueKey } from "./candidate-queue";
 import { withDbRetry, isDuplicateKey } from "./db-retry";
 import { cleanOtherPeople, titleFor, PAGE_PERSON_SOURCE } from "./co-owners";
-import { runWithCounters, estimateUsd, describeCost, type CostCounters } from "./cost-tracker";
+import { runWithCounters, estimateUsd, stackCost, type CostCounters } from "./cost-tracker";
 
 // Contact enrichment (Anymailfinder + MillionVerifier) lives in
 // enrichContacts() at the bottom of this file, NOT inline in the discovery
@@ -499,6 +499,10 @@ export async function runSearchPipeline(
   // land on the search row so each run's spend is a visible number, not a
   // dashboard archaeology project.
   const costCounters: CostCounters = { counts: {} };
+  // What earlier passes of this search already spent, read from the row when the pass starts.
+  // This pass's own meter starts at zero, so every cost write adds it on top (see stackCost).
+  let priorCostUsd: number | null = null;
+  let priorCostLine: string | null = null;
   // ── PROGRESS WRITES, COALESCED ───────────────────────────────────────
   //
   // Every company wrote the search row two or three times (scanned, then
@@ -700,10 +704,12 @@ export async function runSearchPipeline(
       // measured in the same units the ceiling was written in.
       const { data: prior } = await supabase
         .from("searches")
-        .select("companies_scanned, qualified_count, verify_count, fit_only_count, rejected_count")
+        .select("companies_scanned, qualified_count, verify_count, fit_only_count, rejected_count, cost_estimate_usd, cost_breakdown")
         .eq("id", searchId)
         .single();
       if (prior) {
+        priorCostUsd = prior.cost_estimate_usd ?? null;
+        priorCostLine = prior.cost_breakdown ?? null;
         totalScanned = prior.companies_scanned ?? 0;
         qualified = prior.qualified_count ?? 0;
         verify = prior.verify_count ?? 0;
@@ -1469,7 +1475,12 @@ export async function runSearchPipeline(
         // fresh-ground budget the scan ceiling is measured in.
         if (candidate.channel !== "recheck") {
           totalScanned++;
-          queueBump({ companies_scanned: totalScanned, pages_fetched: totalScanned });
+          // The running cost goes with the progress, so a pass the platform cuts off still leaves its spend on the row.
+          queueBump({
+            companies_scanned: totalScanned,
+            pages_fetched: totalScanned,
+            cost_estimate_usd: stackCost(priorCostUsd, priorCostLine, costCounters).cost_estimate_usd,
+          });
         }
         const page = pickBestPage(domainPages);
 
@@ -2237,8 +2248,7 @@ export async function runSearchPipeline(
       // Separate from error_message on purpose: this run SUCCEEDED, it just
       // searched a smaller surface than it looks like it did.
       warnings: buildWarningLine(channelFailures, 4, { calls: discoveryAttempts }),
-      cost_estimate_usd: estimateUsd(costCounters),
-      cost_breakdown: describeCost(costCounters) || null,
+      ...stackCost(priorCostUsd, priorCostLine, costCounters),
       finished_at: new Date().toISOString(),
     });
   } catch (e) {
@@ -2258,8 +2268,7 @@ export async function runSearchPipeline(
       status: "failed",
       error_message: (e as Error).message?.slice(0, 500) ?? "Unknown error",
       // Even a failed run spent money — record what it got through.
-      cost_estimate_usd: estimateUsd(costCounters),
-      cost_breakdown: describeCost(costCounters) || null,
+      ...stackCost(priorCostUsd, priorCostLine, costCounters),
       finished_at: new Date().toISOString(),
     });
   }
@@ -2291,19 +2300,7 @@ async function addEnrichmentCost(
       .eq("id", searchId)
       .single();
 
-    const priorUsd = data?.cost_estimate_usd ?? 0;
-    const priorLine = data?.cost_breakdown ?? null;
-    const line = describeCost(counters);
-
-    return {
-      // Re-rounded after the addition — two values each rounded to 3 decimals
-      // still add up to float noise (0.30000000000000004) otherwise.
-      cost_estimate_usd: Math.round((priorUsd + estimateUsd(counters)) * 1000) / 1000,
-      // A pass that bought nothing (every contact reused from a known domain,
-      // or nothing left to enrich) describes as "" — leave the discovery line
-      // exactly as it was instead of appending a dangling separator.
-      cost_breakdown: line ? (priorLine ? `${priorLine} · ${line}` : line) : priorLine,
-    };
+    return stackCost(data?.cost_estimate_usd, data?.cost_breakdown, counters);
   } catch {
     // Couldn't read the existing total. Degrade to "this pass's spend isn't
     // recorded" rather than writing enrichment-only figures over a run's real

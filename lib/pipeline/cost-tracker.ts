@@ -95,3 +95,26 @@ export function describeCost(counters: CostCounters): string {
   if (c.millionverifier_check) parts.push(`${c.millionverifier_check} verifications`);
   return parts.join(" · ");
 }
+
+/**
+ * This pass's spend added to what the search row already carries.
+ *
+ * A search runs in several passes (each one a separate function call with its own meter),
+ * and enrichment is one more. Writing a pass's own total straight onto the row REPLACED the
+ * earlier passes: on 2026-10-19 three searches read $1.75, $0.88 and $0.36 on the dashboard
+ * while OpenRouter itself reported $33.55 spent on the key that day. Every write now stacks.
+ */
+export function stackCost(
+  priorUsd: number | null | undefined,
+  priorLine: string | null | undefined,
+  counters: CostCounters
+): { cost_estimate_usd: number; cost_breakdown: string | null } {
+  const line = describeCost(counters);
+  return {
+    // Re-rounded after the addition: two values each rounded to 3 decimals still add up to
+    // float noise (0.30000000000000004).
+    cost_estimate_usd: Math.round((Number(priorUsd ?? 0) + estimateUsd(counters)) * 1000) / 1000,
+    // A pass that spent nothing leaves the earlier line exactly as it was, with no dangling separator.
+    cost_breakdown: line ? (priorLine ? `${priorLine} · ${line}` : line) : (priorLine ?? null),
+  };
+}

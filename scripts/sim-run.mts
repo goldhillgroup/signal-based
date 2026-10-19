@@ -371,11 +371,12 @@ try {
       await sb.from("searches").update({ status: "running", finished_at: null }).eq("id", SEARCH_ID);
     }
     await runSearchPipeline(SEARCH_ID, ["landscaping"], ["TX"], TARGET, "hybrid", null, { min: null, max: null }, true);
-    const { data: st } = await sb.from("searches").select("companies_scanned").eq("id", SEARCH_ID).single();
+    const { data: st } = await sb.from("searches").select("companies_scanned, cost_estimate_usd").eq("id", SEARCH_ID).single();
     const { data: rs } = await sb.from("companies").select("last_crawled_at").eq("search_id", SEARCH_ID).gte("last_crawled_at", new Date(startedPass).toISOString()).order("last_crawled_at");
     const scanned = (st as { companies_scanned: number }).companies_scanned;
+    const costOnRow = (st as { cost_estimate_usd: number | null }).cost_estimate_usd;
     const firstAt = rs && rs.length ? ((+new Date((rs[0] as { last_crawled_at: string }).last_crawled_at) - startedPass) / 1000).toFixed(1) : "-";
-    passLog.push(`pass ${pass}: ${((Date.now() - startedPass) / 1000).toFixed(0)}s, read ${scanned - readBefore}, first company stored ${firstAt}s after the pass began`);
+    passLog.push(`pass ${pass}: ${((Date.now() - startedPass) / 1000).toFixed(0)}s, read ${scanned - readBefore}, first company stored ${firstAt}s after the pass began, cost on the row $${costOnRow ?? "none"}`);
     readBefore = scanned;
   }
 } catch (e) {

@@ -7,6 +7,10 @@ reasoning.
 
 ---
 
+## Update, 19 October 2026: the cost figure on a search was too low
+
+The "cost" shown on each search, and the Spent total on the Overview page, were ESTIMATES metered inside one pass of a search. A search that runs in several passes wrote only its LAST pass over the row, so multi-pass searches read far too low: three searches on 19 October showed $1.75, $0.88 and $0.36 while OpenRouter itself reported $33.55 spent on the key that day. Cost now stacks across passes (`stackCost` in `lib/pipeline/cost-tracker.ts`), and the running cost is written with the progress counters so a pass the platform cuts off still leaves its spend. Searches run BEFORE this change keep their understated figures: the vendors' own totals are the reliable record for them (Settings shows those).
+
 ## Update, 13 October 2026: Jonathan's four issues, and speed
 
 Jonathan reported four problems after two days of use. Each was traced to its
